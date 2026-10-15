@@ -1,6 +1,6 @@
 {
  "car_id": null,
- "_generated_at": "2026-10-15T04:14:48Z",
+ "_generated_at": "2026-10-15T06:22:56Z",
  "banners": [
   {
    "id": 1,
@@ -181,13 +181,13 @@
      "price": 200000,
      "old_price": 240000,
      "badge": null,
-     "stock": 10,
+     "stock": 9,
      "car_id": null,
      "product_type": "razmerli",
      "sizes": [
       {
        "size": "H4",
-       "stock": 10
+       "stock": 9
       }
      ],
      "warranty": "1 yil",
