@@ -1,6 +1,6 @@
 {
  "car_id": null,
- "_generated_at": "2026-10-24T12:16:40Z",
+ "_generated_at": "2026-10-24T14:11:13Z",
  "banners": [
   {
    "id": 900001,
@@ -239,7 +239,7 @@
      "price": 80000,
      "old_price": 95000,
      "badge": null,
-     "stock": 50,
+     "stock": 49,
      "car_id": null,
      "product_type": "razmerli",
      "sizes": [
@@ -253,7 +253,7 @@
       },
       {
        "size": "H4",
-       "stock": 10
+       "stock": 9
       },
       {
        "size": "H7",
