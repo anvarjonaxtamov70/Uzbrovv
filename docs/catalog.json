@@ -1,8 +1,48 @@
 {
  "car_id": null,
- "_generated_at": "2026-10-24T08:15:30Z",
- "banners": [],
+ "_generated_at": "2026-10-24T10:11:35Z",
+ "banners": [
+  {
+   "id": 900001,
+   "title": "Uzbrov",
+   "subtitle": "",
+   "tag": "",
+   "color_from": "#3a3f4b",
+   "color_to": "#0c0d11",
+   "photo_url": "https://i.ibb.co/n84FY8Cb/8270a62a8877.jpg",
+   "photo_external": true,
+   "video_url": null,
+   "video_external": true,
+   "has_media": true
+  }
+ ],
  "stories": [
+  {
+   "key": "aksiyalar",
+   "title": "Aksiyalar",
+   "emoji": "🔥",
+   "color_from": "#ff2d3a",
+   "color_to": "#6d0a10",
+   "count": 1,
+   "items": [
+    {
+     "id": 900007,
+     "heading": "Uzbrovv",
+     "title": "Uzbrovv",
+     "body": "",
+     "emoji": "🔥",
+     "color_from": "#34c77b",
+     "color_to": "#0f3d27",
+     "photo_url": "https://i.ibb.co/xq9PV2tv/d5f686911a06.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "link": null,
+     "createdAt": 1792835689518
+    }
+   ]
+  },
   {
    "key": "bugun",
    "title": "Bugun",
@@ -12,20 +52,20 @@
    "count": 1,
    "items": [
     {
-     "id": 6,
-     "heading": "Nexia 3. Bi led va RGB maska",
-     "title": "Nexia 3. Bi led va RGB maska",
-     "body": "1 yil kafolatlangan",
+     "id": 900012,
+     "heading": "Uzbrovv",
+     "title": "Uzbrovv",
+     "body": "",
      "emoji": "⚡️",
-     "color_from": "#ff6b3d",
-     "color_to": "#3a0f00",
-     "photo_url": null,
-     "photo_external": false,
+     "color_from": "#5ad69a",
+     "color_to": "#123524",
+     "photo_url": "https://i.ibb.co/xq9PV2tv/d5f686911a06.jpg",
+     "photo_external": true,
      "video_url": null,
      "video_external": true,
-     "has_media": false,
+     "has_media": true,
      "link": null,
-     "createdAt": null
+     "createdAt": 1792835818657
     }
    ]
   },
@@ -38,20 +78,20 @@
    "count": 1,
    "items": [
     {
-     "id": 7,
-     "heading": "Surxandaryolik klentimzdan  izoh.",
-     "title": "Surxandaryolik klentimzdan  izoh.",
-     "body": "Nexia 2 fara zubori holatda. Bi led va RGB maska blan yigʻib bergandik",
+     "id": 900005,
+     "heading": "Uzbrovv",
+     "title": "Uzbrovv",
+     "body": "",
      "emoji": "💬",
-     "color_from": "#e01020",
-     "color_to": "#2a0006",
-     "photo_url": null,
-     "photo_external": false,
+     "color_from": "#2fb4a0",
+     "color_to": "#0c2f2a",
+     "photo_url": "https://i.ibb.co/xq9PV2tv/d5f686911a06.jpg",
+     "photo_external": true,
      "video_url": null,
      "video_external": true,
-     "has_media": false,
+     "has_media": true,
      "link": null,
-     "createdAt": null
+     "createdAt": 1792835504289
     }
    ]
   },
@@ -64,20 +104,124 @@
    "count": 1,
    "items": [
     {
-     "id": 8,
-     "heading": "Damasga bi led va RGB maska",
-     "title": "Damasga bi led va RGB maska",
+     "id": 900006,
+     "heading": "Uzbrovv",
+     "title": "Uzbrovv",
      "body": "",
      "emoji": "🏆",
-     "color_from": "#ff4b3e",
-     "color_to": "#1a0508",
-     "photo_url": "https://i.ibb.co/BHVJYFSm/d0c7c5270016.jpg",
+     "color_from": "#7edca8",
+     "color_to": "#133325",
+     "photo_url": "https://i.ibb.co/xq9PV2tv/d5f686911a06.jpg",
      "photo_external": true,
      "video_url": null,
      "video_external": true,
      "has_media": true,
      "link": null,
-     "createdAt": null
+     "createdAt": 1792835546538
+    }
+   ]
+  },
+  {
+   "key": "kafolat",
+   "title": "Kafolat",
+   "emoji": "🛡",
+   "color_from": "#c1121f",
+   "color_to": "#101215",
+   "count": 1,
+   "items": [
+    {
+     "id": 900008,
+     "heading": "Uzbrovv",
+     "title": "Uzbrovv",
+     "body": "",
+     "emoji": "🛡",
+     "color_from": "#239a5c",
+     "color_to": "#0e1f17",
+     "photo_url": "https://i.ibb.co/xq9PV2tv/d5f686911a06.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "link": null,
+     "createdAt": 1792835718980
+    }
+   ]
+  },
+  {
+   "key": "lokatsiya",
+   "title": "Manzil",
+   "emoji": "📍",
+   "color_from": "#ff8f3d",
+   "color_to": "#2b1200",
+   "count": 1,
+   "items": [
+    {
+     "id": 900009,
+     "heading": "Uzbrovv",
+     "title": "Uzbrovv",
+     "body": "",
+     "emoji": "📍",
+     "color_from": "#4cd68f",
+     "color_to": "#10301f",
+     "photo_url": "https://i.ibb.co/xq9PV2tv/d5f686911a06.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "link": null,
+     "createdAt": 1792835744368
+    }
+   ]
+  },
+  {
+   "key": "tolov",
+   "title": "To'lov",
+   "emoji": "💳",
+   "color_from": "#ff2d55",
+   "color_to": "#25040c",
+   "count": 1,
+   "items": [
+    {
+     "id": 900010,
+     "heading": "Uzbrovv",
+     "title": "Uzbrovv",
+     "body": "",
+     "emoji": "💳",
+     "color_from": "#3ccf9a",
+     "color_to": "#0c2c22",
+     "photo_url": "https://i.ibb.co/xq9PV2tv/d5f686911a06.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "link": null,
+     "createdAt": 1792835762084
+    }
+   ]
+  },
+  {
+   "key": "aloqa",
+   "title": "Aloqa",
+   "emoji": "📞",
+   "color_from": "#ff5f6d",
+   "color_to": "#20060a",
+   "count": 1,
+   "items": [
+    {
+     "id": 900011,
+     "heading": "Uzbrovv",
+     "title": "Uzbrovv",
+     "body": "",
+     "emoji": "📞",
+     "color_from": "#6fe0b0",
+     "color_to": "#113126",
+     "photo_url": "https://i.ibb.co/xq9PV2tv/d5f686911a06.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "link": null,
+     "createdAt": 1792835782808
     }
    ]
   }
