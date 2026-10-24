@@ -247,14 +247,14 @@ window.ZimmerCars = (function () {
     <!-- Yorug'lik: blur filtri emas, ko'p bosqichli gradient (mobil uchun arzon) -->
     <radialGradient id="carLight" cx="50%" cy="50%" r="50%">
       <stop offset="0%"   stop-color="#ffffff" stop-opacity=".95"/>
-      <stop offset="30%"  stop-color="#a8ecc6" stop-opacity=".6"/>
-      <stop offset="62%"  stop-color="#34c77b" stop-opacity=".24"/>
-      <stop offset="100%" stop-color="#34c77b" stop-opacity="0"/>
+      <stop offset="30%"  style="stop-color:var(--accent-pale)" stop-opacity=".6"/>
+      <stop offset="62%"  style="stop-color:var(--accent)" stop-opacity=".24"/>
+      <stop offset="100%" style="stop-color:var(--accent)" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="carBeam" x1="1" y1="0" x2="0" y2="0">
       <stop offset="0%"   stop-color="#e3fbef" stop-opacity=".5"/>
-      <stop offset="60%"  stop-color="#34c77b" stop-opacity=".12"/>
-      <stop offset="100%" stop-color="#34c77b" stop-opacity="0"/>
+      <stop offset="60%"  style="stop-color:var(--accent)" stop-opacity=".12"/>
+      <stop offset="100%" style="stop-color:var(--accent)" stop-opacity="0"/>
     </linearGradient>
   </defs>
 

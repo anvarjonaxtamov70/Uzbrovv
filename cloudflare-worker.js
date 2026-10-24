@@ -61,7 +61,7 @@ const DEFAULT_MAX_AGE = 86400; // 24 soat
 // berishga to'g'ri keladi).
 // Har deploy'da ko'tariladi — `/health` dagi bu raqam Cloudflare'da
 // YANGI nusxa turganini tasdiqlashning eng oson yo'li.
-const VERSION = "1.8.0";
+const VERSION = "1.9.0";
 const FEATURES = [
   "order",
   /* Razmerli tovarlar: buyurtma qatorida `size` bo'ladi va qoldiq AYNAN
@@ -99,6 +99,8 @@ const FEATURES = [
   "booking_atomic_root",
   "admin_status_atomic_compensation",
   "catalog_write_validated",
+  // 1.9.0 — bosh sahifadagi rang generatori: `catalog/settings/theme`
+  "theme",
 ];
 
 /** Mini App'dan yuklanadigan fayl chegarasi.
@@ -1504,6 +1506,11 @@ const CATALOG_WRITE_FIELDS = {
   stories: new Set(["id", "_key", "category", "title", "heading", "body", "emoji", "color_from", "color_to", "photo_url", "photo_id", "video_url", "video_id", "link", "sort", "is_active", "deleted", "createdAt", "updatedAt", "source"]),
   banners: new Set(["id", "_key", "title", "subtitle", "tag", "color_from", "color_to", "photo_url", "photo_id", "video_url", "video_id", "sort", "is_active", "deleted", "createdAt", "updatedAt", "source"]),
   music: new Set(["id", "_key", "title", "audio_url", "audio_id", "duration", "sort", "is_active", "deleted", "createdAt", "updatedAt", "source"]),
+  /* 1.9.0 — Mini App sozlamalari. Hozircha bitta yozuv: `catalog/settings/theme`
+     — bosh sahifadagi «Rang» generatori (admin) tanlagan brend rangi
+     (ton/to'yinganlik/ochlik). `catalog` hammaga o'qiladi, ya'ni har bir
+     mijoz ilovasi shu rangda ochiladi. */
+  settings: new Set(["h", "s", "l", "updatedAt", "source"]),
 };
 const CATALOG_COUNTERS = {
   products: "products_counter",
@@ -1540,6 +1547,10 @@ function catColor(v) {
 const CATALOG_FIELD_CHECK = {
   // raqamlar
   id: (v) => catNum(v, 0, MAX_TS),
+  // rang generatori (catalog/settings/theme)
+  h: (v) => catNum(v, 0, 360),
+  s: (v) => catNum(v, 0, 100),
+  l: (v) => catNum(v, 0, 100),
   sort: (v) => catNum(v, -100000, 100000),
   price: (v) => catNum(v, 0, 100000000000),
   old_price: (v) => catNum(v, 0, 100000000000),

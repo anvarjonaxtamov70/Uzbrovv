@@ -934,76 +934,7 @@
     }
   }
 
-  /** `/api/music` zaxirasi — Mini App fon musiqasi.
-   *
-   *  FAQAT TASHQI HAVOLALI treklar qaytariladi. Telegram `file_id`
-   *  brauzerda ochilmaydi — uni Render'ning `/api/media` proksisi
-   *  beradi, Render esa aynan shu holatda uxlagan. Shu sababli
-   *  `audio_id` bilan saqlangan trek bu yerda tashlab ketiladi:
-   *  ochilmaydigan manzilni qaytarish faqat xato ovoziga olib kelardi. */
-  async function music() {
-    try {
-      var list = rows(await readNode("music"))
-        .filter(function (r) {
-          return (
-            !r.deleted &&
-            Number(r.is_active) !== 0 &&
-            /^https?:\/\//i.test(String(r.audio_url || ""))
-          );
-        })
-        .map(function (r) {
-          return {
-            id: r.id,
-            title: r.title || "Fon musiqasi",
-            url: String(r.audio_url),
-            external: true,
-            duration: Number(r.duration) || 0,
-            sort: Number(r.sort) || 0,
-          };
-        });
-      list.sort(function (a, b) {
-        return (a.sort || 0) - (b.sort || 0) || (a.id || 0) - (b.id || 0);
-      });
-      return { tracks: list };
-    } catch (err) {
-      /* Musiqa — qo'shimcha imkoniyat. O'qilmasa jim qolamiz: tugma
-         ko'rinmaydi va mijoz hech qanday xato ko'rmaydi. */
-      return { tracks: [] };
-    }
-  }
 
-  /** Bulutdagi trek HOLATI — o'chirilgan/yashirilgan/tartib.
-   *
-   *  `music()` dan farqi: bu yerda HECH QANDAY filtr yo'q. Sabab —
-   *  chaqiruvchiga aynan «bu trek o'chirilgan» degan MA'LUMOT kerak, filtr
-   *  esa uni yashirib qo'yardi va o'chirilgan trek serverdagi ro'yxatdan
-   *  chiqarilmasdi (`app.js: fetchMusicTracks`).
-   *
-   *  `readNode()` o'chirilganlarni tashlab ketmaydi — filtr `rows()` da,
-   *  shuning uchun bu yerda XOM tugun o'qiladi. */
-  async function musicState() {
-    var node = await readNode("music");
-    if (!node) return [];
-    var out = [];
-    var keys = Array.isArray(node)
-      ? node.map(function (_, i) { return i; })
-      : Object.keys(node);
-    keys.forEach(function (k) {
-      var r = node[k];
-      if (!r || typeof r !== "object") return;
-      out.push({
-        id: r.id === undefined ? (isNaN(+k) ? k : +k) : r.id,
-        title: r.title || "",
-        audio_url: r.audio_url || "",
-        audio_id: r.audio_id || "",
-        duration: Number(r.duration) || 0,
-        sort: Number(r.sort) || 0,
-        is_active: r.is_active,
-        deleted: !!r.deleted,
-      });
-    });
-    return out;
-  }
 
   /* ---- Umumiy kesh (bosh sahifa keshi alohida — u `save`/`cached`) ----
      Firebase ham o'qilmagan holat uchun: mijoz ilgari ko'rgan variantlar
@@ -1596,9 +1527,6 @@
     cars: cars,
     tuning: tuning,
     services: services,
-    music: music,
-    /** Admin paneli va `loadMusic()` uchun: XOM holat (filtrsiz). */
-    musicState: musicState,
     // Navbat va Bi-LED — imzolangan Worker endpointlari orqali
     bookingDates: bookingDates,
     bookingSlots: bookingSlots,

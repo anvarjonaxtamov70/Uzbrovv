@@ -41,10 +41,6 @@
      telefondan ikki akkaunt kirsa ma'lumot aralashmasligi uchun.
      ==================================================================== */
   const CART_KEY = "zimmer_cart";
-  /* Fon musiqasi yoqilganmi. Foydalanuvchiga bog'lanmaydi (`userKey`
-     ishlatilmaydi): bu qurilma sozlamasi, bir telefondan ikki kishi
-     kirsa ham ovoz kutilmaganda yonib ketmasligi kerak. */
-  const MUSIC_KEY = "zimmer_music_on";
   const ADDR_KEY = "zimmer_addresses";
   const SEEN_KEY = "zimmer_seen";
   const FAV_KEY = "zimmer_favorites";
@@ -269,7 +265,8 @@
     const box = $("burst");
     box.innerHTML = "";
     box.classList.remove("hidden");
-    const colors = ["#34c77b", "#ffffff", "#7edca8", "#239a5c", "#a8ecc6", "#30d158"];
+    // Brend rangidan (rang generatori) + oq — konfetti ilova rangiga mos
+    const colors = ["var(--accent)", "#ffffff", "var(--mint)", "var(--accent-2)", "var(--accent-pale)", "#ffffff"];
     for (let i = 0; i < 42; i++) {
       const p = el("i");
       p.style.left = Math.random() * 100 + "%";
@@ -879,22 +876,8 @@
     // Skeletonni tozalaymiz (panelning o'zi ham qayta chizadi)
     if (body) body.innerHTML = "";
 
-    const intent = S.adminIntent;
-    S.adminIntent = null;
-    if (window.ZimmerShop) {
-      const opened = window.ZimmerShop.open();
-      // Bosh sahifadagi «+» dan kelgan bo'lsa — darhol «Yangi story» oynasi
-      if (intent === "story-add" && window.ZimmerStories) {
-        try {
-          await opened;
-          if (S.page !== "admin") return;
-          await window.ZimmerStories.open();
-          if (S.page === "admin") window.ZimmerStories.openAdd();
-        } catch (err) {
-          console.error("[admin] story oynasi ochilmadi:", err);
-        }
-      }
-    } else if (window.ZimmerAdmin) window.ZimmerAdmin.open();
+    if (window.ZimmerShop) window.ZimmerShop.open();
+    else if (window.ZimmerAdmin) window.ZimmerAdmin.open();
     else if (body) {
       body.append(
         el("p", "empty", "Boshqaruv paneli topilmadi. Ilovani yangilab ko'ring.")
@@ -2204,18 +2187,251 @@
 
   /* ------------------------------------------------------- halqalar qatori */
 
+  /* ==================================================================
+     RANG GENERATORI (bosh sahifa → «Rang», faqat admin)
+
+     Butun ilovaning brend rangi UCHTA son: ton (h), to'yinganlik (s) va
+     ochlik/to'qlik (l). Ular `<html>` ga CSS o'zgaruvchisi bo'lib yoziladi
+     (`--h/--s/--l`) va stylesheet barcha tuslarni (och, to'q, shaffof,
+     gradient) shulardan HISOBLAYDI — ya'ni rang bitta joyda o'zgaradi.
+
+     QAYERDA SAQLANADI
+       * `catalog/settings/theme` (Firebase, Worker orqali, faqat admin) —
+         hammaga: har bir mijozning ilovasi shu rangda ochiladi;
+       * `localStorage["uzb_theme"]` — kesh: index.html dagi skript uni
+         CSS'dan OLDIN qo'llaydi, ilova ochilganda yashil «miltillamaydi».
+     Worker eski bo'lsa (1.9.0 dan past) rang shu telefonda saqlanadi va
+     admin aniq xabar oladi (`override: true`).
+     ================================================================== */
+  const THEME_KEY = "uzb_theme";
+  const THEME_DEFAULT = { h: 149, s: 59, l: 49 };
+  const THEME_PATH = "catalog/settings/theme";
+  const THEME_PRESETS = [
+    ["Shalfey", 149, 59, 49],
+    ["Zumrad", 160, 84, 39],
+    ["Feruza", 174, 72, 42],
+    ["Moviy", 199, 89, 48],
+    ["Ko'k", 211, 100, 52],
+    ["Indigo", 241, 72, 63],
+    ["Binafsha", 280, 85, 65],
+    ["Pushti", 345, 100, 61],
+    ["Qizil", 3, 100, 61],
+    ["To'q sariq", 35, 100, 52],
+    ["Tilla", 40, 60, 56],
+    ["Kumush", 220, 8, 64],
+  ];
+
+  function themeClamp(t) {
+    const n = (v, lo, hi, d) => {
+      const x = Math.round(Number(v));
+      return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d;
+    };
+    t = t || {};
+    return {
+      h: n(t.h, 0, 360, THEME_DEFAULT.h),
+      s: n(t.s, 0, 100, THEME_DEFAULT.s),
+      l: n(t.l, 22, 78, THEME_DEFAULT.l),
+    };
+  }
+
+  function hslToRgb(h, s, l) {
+    s /= 100;
+    l /= 100;
+    const k = (n) => (n + h / 30) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return [f(0), f(8), f(4)].map((x) => Math.round(x * 255));
+  }
+
+  function themeHex(t) {
+    return (
+      "#" + hslToRgb(t.h, t.s, t.l).map((x) => x.toString(16).padStart(2, "0")).join("")
+    ).toUpperCase();
+  }
+
+  /** Tugma ustidagi matn: och rangda qora, to'q rangda oq (o'qilishi uchun). */
+  function themeInk(t) {
+    const [r, g, b] = hslToRgb(t.h, t.s, Math.max(8, t.l - 10)).map((v) => {
+      v /= 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.42 ? "#0b0b0c" : "#ffffff";
+  }
+
+  function applyTheme(t) {
+    t = themeClamp(t);
+    const st = document.documentElement.style;
+    st.setProperty("--h", String(t.h));
+    st.setProperty("--s", t.s + "%");
+    st.setProperty("--l", t.l + "%");
+    st.setProperty("--accent-ink", themeInk(t));
+    S.theme = t;
+    return t;
+  }
+
+  function cachedTheme() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(THEME_KEY) || "null");
+      return raw && typeof raw === "object" ? raw : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function rememberTheme(t, extra) {
+    try {
+      const v = Object.assign({}, themeClamp(t), { ink: themeInk(themeClamp(t)), at: Date.now() }, extra || {});
+      localStorage.setItem(THEME_KEY, JSON.stringify(v));
+    } catch (_) {}
+  }
+
+  /** Boot'dan keyin: umumiy (admin tanlagan) rangni bulutdan o'qiydi. */
+  async function loadGlobalTheme() {
+    const local = cachedTheme();
+    if (local) applyTheme(local);
+    const fbx = window.ZimmerFB;
+    if (!fbx || !fbx.available || !fbx.available()) return;
+    try {
+      const g = await fbx.get(THEME_PATH);
+      if (!g || typeof g !== "object" || g.h == null) return;
+      // Shu telefonda saqlangan (bulutga yozilmagan) rang yangiroq bo'lsa — o'sha qoladi
+      if (local && local.override && (local.at || 0) > (Number(g.updatedAt) || 0)) return;
+      if (S.themeEditing) return;
+      applyTheme(g);
+      rememberTheme(g, { at: Number(g.updatedAt) || Date.now() });
+    } catch (err) {
+      console.warn("[theme] umumiy rang o'qilmadi:", err && err.message);
+    }
+  }
+
+  function themeSameAs(a, b) {
+    return a && b && a.h === b.h && a.s === b.s && a.l === b.l;
+  }
+
+  function openThemeSheet() {
+    haptic("medium");
+    const start = themeClamp(S.theme || cachedTheme() || THEME_DEFAULT);
+    S.themeBefore = start;
+    S.themeEditing = true;
+    const presets = THEME_PRESETS.map(
+      (p, i) =>
+        '<button type="button" class="tg-preset" data-i="' + i + '" style="--c:hsl(' +
+        p[1] + " " + p[2] + "% " + p[3] + '%)" aria-label="' + esc(p[0]) + '"><i></i><span>' +
+        esc(p[0]) + "</span></button>"
+    ).join("");
+    openSheet(
+      "Ilova rangi",
+      '<div class="tg">' +
+        '<div class="tg-pv">' +
+          '<span class="tg-pv-sw" aria-hidden="true"></span>' +
+          '<span class="tg-pv-tx"><b id="tg-hex"></b><small id="tg-name"></small></span>' +
+          '<span class="tg-pv-btn" aria-hidden="true">Tugma</span>' +
+        "</div>" +
+        '<div class="tg-presets" id="tg-presets">' + presets + "</div>" +
+        '<div class="tg-ctl">' +
+          '<div class="tg-lbl"><span>Rang</span><b id="tg-hv"></b></div>' +
+          '<input type="range" class="tg-range tg-hue" id="tg-h" min="0" max="360" step="1" aria-label="Rang toni">' +
+          '<div class="tg-lbl"><span>To\'yinganlik</span><b id="tg-sv"></b></div>' +
+          '<input type="range" class="tg-range tg-sat" id="tg-s" min="0" max="100" step="1" aria-label="To\'yinganlik">' +
+          '<div class="tg-lbl"><span>To\'qlik / Ochlik</span><b id="tg-lv"></b></div>' +
+          '<input type="range" class="tg-range tg-light" id="tg-l" min="22" max="78" step="1" aria-label="Ochlik">' +
+        "</div>" +
+        '<div class="tg-acts">' +
+          '<button type="button" class="btn btn-ghost" id="tg-reset">Standart</button>' +
+          '<button type="button" class="btn btn-primary" id="tg-save">Saqlash</button>' +
+        "</div>" +
+        '<p class="tg-note">Saqlangach ilova barcha mijozlarda shu rangda ochiladi.</p>' +
+      "</div>"
+    );
+    const H = $("tg-h"), Sa = $("tg-s"), L = $("tg-l");
+    const paint = (t, fromSlider) => {
+      t = applyTheme(t);
+      if (!fromSlider) {
+        H.value = t.h;
+        Sa.value = t.s;
+        L.value = t.l;
+      }
+      $("tg-hv").textContent = t.h + "°";
+      $("tg-sv").textContent = t.s + "%";
+      $("tg-lv").textContent = t.l + "%";
+      $("tg-hex").textContent = themeHex(t);
+      const p = THEME_PRESETS.find((x) => x[1] === t.h && x[2] === t.s && x[3] === t.l);
+      $("tg-name").textContent = p ? p[0] : "O'zingizning rangingiz";
+      document.querySelectorAll(".tg-preset").forEach((b) => {
+        const q = THEME_PRESETS[+b.dataset.i];
+        b.classList.toggle("on", q[1] === t.h && q[2] === t.s && q[3] === t.l);
+      });
+    };
+    let raf = 0;
+    const onSlide = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => paint({ h: +H.value, s: +Sa.value, l: +L.value }, true));
+    };
+    [H, Sa, L].forEach((r) => {
+      r.oninput = onSlide;
+      r.onchange = () => haptic("selection");
+    });
+    $("tg-presets").onclick = (e) => {
+      const b = e.target.closest(".tg-preset");
+      if (!b) return;
+      haptic("selection");
+      const q = THEME_PRESETS[+b.dataset.i];
+      paint({ h: q[1], s: q[2], l: q[3] });
+    };
+    $("tg-reset").onclick = () => {
+      haptic("light");
+      paint(THEME_DEFAULT);
+    };
+    $("tg-save").onclick = () => saveTheme(themeClamp(S.theme));
+    paint(start);
+  }
+
+  /** «Saqlash» siz yopildi — oldingi rangga qaytamiz. */
+  function themeCancel() {
+    S.themeEditing = false;
+    if (S.themeBefore) applyTheme(S.themeBefore);
+  }
+
+  async function saveTheme(t) {
+    const btn = $("tg-save");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Saqlanmoqda…";
+    }
+    S.themeBefore = t; // yopilganda qaytariladigan rang — endi shu
+    try {
+      if (!window.ZimmerFB) throw new Error("Baza ulanmagan");
+      await window.ZimmerFB.put(THEME_PATH, {
+        h: t.h,
+        s: t.s,
+        l: t.l,
+        updatedAt: Date.now(),
+        source: "miniapp",
+      });
+      rememberTheme(t);
+      haptic("ok");
+      toast("✓ Rang saqlandi — barcha mijozlarda shu rang");
+    } catch (err) {
+      // Bulutga yozilmadi — hech bo'lmasa shu telefonda qolsin
+      rememberTheme(t, { override: true });
+      haptic("warn");
+      const old = /ruxsat etilmagan|eski|outdated/i.test(String((err && (err.message || err.code)) || ""));
+      toast(
+        old
+          ? "Rang shu telefonda saqlandi. Hammaga qo'llash uchun Cloudflare Worker'ni yangilang (1.9.0)."
+          : "Rang shu telefonda saqlandi. Hammaga yozilmadi: " + ((err && err.message) || "xato"),
+        7000
+      );
+    } finally {
+      S.themeEditing = false;
+      closeSheet();
+    }
+  }
+
   /** Tayyor muqovasi bor bo'limlar (`docs/img/stories/*.svg`). */
   const STORY_COVER_KEYS = [
     "aksiyalar", "bugun", "mijozlar", "natijalar", "kafolat", "lokatsiya", "tolov", "aloqa",
   ];
-
-  /** «+» halqasi: admin panelini ochib, to'g'ridan «Yangi story» oynasiga
-      o'tadi (`openAdminPanel` dagi `S.adminIntent`). */
-  function openStoryComposer() {
-    haptic("medium");
-    S.adminIntent = "story-add";
-    show("admin");
-  }
 
   /** HALQALAR (bo'limlar): bitta doira ichida bir nechta element.
       Hammasi ko'rilgan bo'lsa halqa xiralashadi (Instagram kabi). */
@@ -2244,25 +2460,27 @@
       box.append(node);
     });
 
-    /* «+» — YANGI STORY (faqat adminga, Avto_A1 dagi kabi qator boshida).
-       Bosilganda boshqaruv panelining story qo'shish oynasi ochiladi. */
+    /* «RANG» — RANG GENERATORI (faqat adminga, qator boshida).
+       Ilgari bu yerda «+ Qo'shish» (yangi story) turardi — mahsulot qarori
+       bilan olib tashlandi; story endi faqat Boshqaruv → Stories orqali
+       qo'shiladi. */
     const isAdmin = !!(S.me && S.me.is_admin);
     if (isAdmin) {
-      const add = el("button", "story story-add");
-      add.type = "button";
-      add.setAttribute("aria-label", "Yangi story qo'shish");
-      add.innerHTML = `
-        <div class="story-ring story-add-ring">
-          <i class="story-add-orbit" aria-hidden="true"></i>
-          <div class="story-face story-add-face">
-            <b class="story-add-plus" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></b>
+      const tb = el("button", "story story-theme");
+      tb.type = "button";
+      tb.setAttribute("aria-label", "Ilova rangini tanlash");
+      tb.innerHTML = `
+        <div class="story-ring story-theme-ring">
+          <i class="story-theme-orbit" aria-hidden="true"></i>
+          <div class="story-face story-theme-face">
+            <b class="story-theme-dot" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-1.9 2-1.9H17a4 4 0 0 0 4-4C21 6.4 17 3 12 3z"/><circle cx="7.5" cy="11.5" r="1.4"/><circle cx="10" cy="7.3" r="1.4"/><circle cx="15" cy="7.3" r="1.4"/></svg></b>
           </div>
         </div>
-        <span class="story-label">Qo'shish</span>`;
-      add.onclick = openStoryComposer;
-      box.prepend(add);
+        <span class="story-label">Rang</span>`;
+      tb.onclick = openThemeSheet;
+      box.prepend(tb);
     }
-    // Birorta ham story bo'lmasa — qator umuman ko'rinmaydi (adminga «+» uchun ko'rinadi)
+    // Birorta ham story bo'lmasa — qator umuman ko'rinmaydi (adminga «Rang» uchun ko'rinadi)
     box.classList.toggle("hidden", !S.rings.length && !isAdmin);
     // Bosqichma-bosqich chiqish (bir martalik)
     if (S.rings.length) {
@@ -2529,7 +2747,7 @@
       // Halqadagi bilan BIR XIL muqova — mijoz qaysi bo'limda ekanini taniydi
       const key = STORY_COVER_KEYS.includes(ring.key) ? ring.key : "default";
       ava.innerHTML = `<img src="img/stories/${key}.svg" alt="">`;
-      ava.style.background = "#0e2c1e";
+      ava.style.background = "#1c1c1e";
     }
     const nameEl = $("story-who-name");
     if (nameEl) {
@@ -2952,7 +3170,7 @@
          Rasmsiz bannerda — brend yashil gradienti. */
       node.style.background = photo
         ? "#0b0b0c"
-        : "linear-gradient(135deg, #1f6b46 0%, #0f3524 55%, #08160f 100%)";
+        : "linear-gradient(135deg, var(--accent-deep1) 0%, var(--accent-deep2) 55%, var(--accent-night) 100%)";
       node.innerHTML = `
         ${img(photo, "banner-bg")}
         ${photo ? '<div class="banner-shade"></div>' : ""}
@@ -3001,332 +3219,9 @@
     }, 5200);
   }
 
-  /* ==================================================================
-     FON MUSIQASI
-
-     Admin botga audio tashlaydi (`handlers/music.py`), Mini App esa
-     uni orqa fonda eshittiradi.
-
-     ENG MUHIM CHEKLOV — BRAUZER OVOZNI O'ZI BOSHLAMAYDI.
-     Chrome va Safari qoidasi: ovozli media foydalanuvchi sahifaga
-     TEGINMAGUNCHA o'ynatilmaydi (`NotAllowedError`). Bu Zimmer
-     kamchiligi emas va uni chetlab o'tishning to'g'ri yo'li YO'Q.
-
-     Shu sababli:
-       * musiqa FAQAT 🎵 tugmasi bosilganda boshlanadi (bu — teginish);
-       * tanlov qurilmada eslab qolinadi (`MUSIC_KEY`);
-       * keyingi kirishda darhol boshlashga urinamiz, brauzer rad etsa
-         BIRINCHI teginishni kutamiz va shundan keyin davom etadi.
-
-     Ya'ni mijoz bir marta yoqsa, boshqa hech narsa bosishi shart emas.
-     ================================================================== */
-
-  /** Musiqa holati. `el` — `<audio>`, kerak bo'lganda yasaladi. */
-  const MU = { el: null, tracks: [], index: 0, on: false, armed: false, loaded: false };
-
-  const musicWanted = () => {
-    try {
-      return localStorage.getItem(MUSIC_KEY) === "1";
-    } catch (_) {
-      return false;
-    }
-  };
-
-  const rememberMusic = (on) => {
-    try {
-      localStorage.setItem(MUSIC_KEY, on ? "1" : "0");
-    } catch (_) {}
-  };
-
-  /* ==================================================================
-     TREKLARNI YUKLASH — IKKI MANBANI BIRLASHTIRIB
-
-     NEGA SHUNDAY MURAKKAB
-     Musiqa ikki joyda yashaydi va HAR BIRIDA boshqa narsa bor:
-
-       • RENDER (`/api/music`, SQLite) — HAVOLA bor. Bot orqali
-         qo'shilgan trek Telegram `file_id` bilan saqlanadi va uni
-         brauzer o'qiy olmaydi; Render esa `/api/media/...` proksisi
-         bilan eshittirib beradi. Ya'ni havola faqat shu manbada.
-
-       • FIREBASE (`catalog/music`) — HOLAT bor: `deleted`, `is_active`,
-         `sort`. Admin paneli aynan shu tugunga yozadi (brauzerdan
-         to'g'ridan — tovar va stories bilan bir xil model).
-
-     Ilgari onlayn holatda FAQAT Render o'qilardi. Natijada admin
-     panelda trekni o'chirsa yoki tartibini o'zgartirsa — mijozlarda
-     HECH NARSA o'zgarmasdi (SQLite bu haqda bilmaydi va uni faqat bot
-     restart bo'lganda biladi).
-
-     Endi: HAVOLA Render'dan, HOLAT Firebase'dan. Ikkisidan bittasi
-     yiqilsa ham musiqa ishlashda davom etadi.
-     ================================================================== */
-  async function loadMusic() {
-    if (MU.loaded) return MU.tracks;
-    MU.loaded = true;
-    MU.tracks = await fetchMusicTracks();
-    if (!Array.isArray(MU.tracks)) MU.tracks = [];
-    return MU.tracks;
-  }
-
-  async function fetchMusicTracks() {
-    // Bulutdagi holat (o'chirilgan / yashirilgan / tartib) — HAR DOIM kerak
-    const cloud = window.ZimmerOffline && ZimmerOffline.musicState
-      ? await ZimmerOffline.musicState().catch(() => null)
-      : null;
-
-    /* Zaxira rejimda Render umuman yo'q — bulutdagi tashqi havolali
-       treklar bilan cheklanamiz (`ZimmerOffline.music()` shuni beradi). */
-    if (S.offline) {
-      try {
-        const res = await ZimmerOffline.music();
-        return (res && res.tracks) || [];
-      } catch (_) {
-        return [];
-      }
-    }
-
-    let server = [];
-    try {
-      const res = await api("/api/music");
-      server = (res && res.tracks) || [];
-    } catch (_) {
-      /* Server javob bermadi — bulutdan urinamiz. Bulut yo'lida faqat
-         tashqi havolali treklar bo'ladi (`file_id` ni brauzer o'qiy
-         olmaydi), shuning uchun ro'yxat bo'sh chiqishi ham normal. */
-      try {
-        const res = await ZimmerOffline.music();
-        return (res && res.tracks) || [];
-      } catch (_) {
-        return [];
-      }
-    }
-
-    // Bulut o'qilmadi — serverdagi ro'yxatni o'zgarishsiz qaytaramiz
-    if (!cloud || !cloud.length) return server;
-
-    const state = new Map();
-    cloud.forEach((r) => state.set(String(r.id), r));
-
-    const merged = server
-      .filter((t) => {
-        const st = state.get(String(t.id));
-        // Bulutda yozuv yo'q bo'lsa TO'SMAYMIZ: bot yangi trek qo'shgan,
-        // sinxron esa hali yetib bormagan bo'lishi mumkin.
-        if (!st) return true;
-        return !st.deleted && st.is_active !== 0 && st.is_active !== false;
-      })
-      .map((t) => {
-        const st = state.get(String(t.id));
-        return Object.assign({}, t, { sort: st ? Number(st.sort) || 0 : Number(t.sort) || 0 });
-      });
-
-    /* Bulutda BOR, serverda YO'Q treklar: admin panel orqali havola bilan
-       qo'shilgan bo'lishi mumkin (SQLite hali ko'chirmagan). Faqat tashqi
-       https havolali bo'lsa qo'shamiz — aks holda ochilmaydigan manzil. */
-    const known = new Set(server.map((t) => String(t.id)));
-    cloud.forEach((r) => {
-      if (known.has(String(r.id))) return;
-      if (r.deleted || r.is_active === 0 || r.is_active === false) return;
-      const url = String(r.audio_url || "");
-      if (!/^https?:\/\//i.test(url)) return;
-      merged.push({
-        id: r.id,
-        title: r.title || "Fon musiqasi",
-        url: url,
-        external: true,
-        duration: Number(r.duration) || 0,
-        sort: Number(r.sort) || 0,
-      });
-    });
-
-    merged.sort((a, b) => (a.sort || 0) - (b.sort || 0) || (Number(a.id) || 0) - (Number(b.id) || 0));
-    return merged;
-  }
-
-  /** Admin panel musiqani o'zgartirgandan keyin chaqiriladi:
-   *  ro'yxat qaytadan o'qiladi va tugma holati moslashtiriladi. */
-  async function reloadMusic() {
-    const wasOn = MU.on;
-    MU.loaded = false;
-    MU.tracks = await loadMusic();
-    // Eshitilayotgan trek o'chirilgan bo'lishi mumkin — indeksni tiklaymiz
-    if (MU.index >= MU.tracks.length) MU.index = 0;
-    if (!MU.tracks.length) {
-      if (MU.el) {
-        try {
-          MU.el.pause();
-        } catch (_) {}
-      }
-      MU.on = false;
-    } else if (wasOn) {
-      playCurrent();
-    }
-    paintMusicBtn();
-  }
-
-  /** `<audio>` elementini yasaydi (faqat bir marta). */
-  function musicEl() {
-    if (MU.el) return MU.el;
-    const el = document.createElement("audio");
-    el.id = "bg-music";
-    el.preload = "none";
-    el.loop = false; // navbatdagi trekka o'tish uchun `ended` kerak
-    /* Telefonda ovoz balandligini tizim boshqaradi, lekin fon musiqasi
-       suhbatni bosib ketmasligi kerak — shuning uchun pasaytirilgan. */
-    el.volume = 0.35;
-    el.addEventListener("ended", () => {
-      if (!MU.tracks.length) return;
-      MU.index = (MU.index + 1) % MU.tracks.length;
-      playCurrent();
-    });
-    el.addEventListener("error", () => {
-      /* Bitta trek ochilmasa keyingisiga o'tamiz. Hammasi ishlamasa
-         musiqani o'chiramiz — mijozga xato ko'rsatishning ma'nosi yo'q. */
-      if (MU.tracks.length > 1) {
-        MU.index = (MU.index + 1) % MU.tracks.length;
-        playCurrent();
-      } else {
-        setMusic(false, { remember: false });
-      }
-    });
-    document.body.appendChild(el);
-    MU.el = el;
-    return el;
-  }
-
-  /** Joriy trekni o'ynatadi. Brauzer rad etsa `false` qaytaradi. */
-  async function playCurrent() {
-    const track = MU.tracks[MU.index];
-    if (!track || !track.url) return false;
-    const el = musicEl();
-    const src = abs(track.url);
-    if (el.src !== src) {
-      el.src = src;
-      el.load();
-    }
-    try {
-      await el.play();
-      return true;
-    } catch (_) {
-      /* `NotAllowedError` — foydalanuvchi hali teginmagan. Xato EMAS,
-         kutilgan holat: birinchi teginishda qayta urinamiz. */
-      return false;
-    }
-  }
-
-  /** Musiqani yoqadi/o'chiradi va tugmani yangilaydi. */
-  async function setMusic(on, opts) {
-    const remember = !opts || opts.remember !== false;
-    MU.on = !!on;
-    if (remember) rememberMusic(MU.on);
-
-    if (!MU.on) {
-      if (MU.el) {
-        try {
-          MU.el.pause();
-        } catch (_) {}
-      }
-      paintMusicBtn();
-      return;
-    }
-
-    await loadMusic();
-    if (!MU.tracks.length) {
-      MU.on = false;
-      if (remember) rememberMusic(false);
-      paintMusicBtn();
-      return;
-    }
-
-    const started = await playCurrent();
-    if (!started) armMusic();
-    paintMusicBtn();
-  }
-
-  /** Birinchi teginishni kutib, shundan keyin boshlaydi.
-   *
-   *  Aynan shu — «mijoz bir marta yoqsa, keyingi kirishlarda o'zi
-   *  davom etadi» xatti-harakatini beradigan qism. */
-  function armMusic() {
-    if (MU.armed) return;
-    MU.armed = true;
-
-    const kick = async () => {
-      if (!MU.on) return unarm();
-      const started = await playCurrent();
-      if (started) unarm();
-    };
-    const unarm = () => {
-      MU.armed = false;
-      document.removeEventListener("pointerdown", kick);
-      document.removeEventListener("touchstart", kick);
-      document.removeEventListener("keydown", kick);
-    };
-
-    // `passive` — sahifa aylanishiga xalaqit bermasin
-    document.addEventListener("pointerdown", kick, { passive: true });
-    document.addEventListener("touchstart", kick, { passive: true });
-    document.addEventListener("keydown", kick);
-  }
-
-  /* SF Symbols uslubidagi chiziqli ikonlar (index.html dagi `.ic` bilan bir xil).
-     Emoji o'rniga: har telefonda bir xil chiziladi va iOS ko'rinishiga mos. */
-  const ICON_MUSIC_ON =
-    '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.5V5.8l10-2.3v11.7"/>' +
-    '<circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.2" r="2.5"/></svg>';
-  const ICON_MUSIC_OFF =
-    '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5.5 6.5 9H3.5v6h3l4.5 3.5z"/>' +
-    '<path d="m16 9.5 5 5M21 9.5l-5 5"/></svg>';
-
-  /** Tugma ko'rinishini holatga moslaydi. */
-  function paintMusicBtn() {
-    const btn = $("music-btn");
-    if (!btn) return;
-    // Trek yo'q bo'lsa tugma umuman ko'rinmaydi
-    const has = MU.tracks.length > 0;
-    btn.classList.toggle("hidden", !has);
-    if (!has) return;
-    btn.classList.toggle("on", MU.on);
-    btn.innerHTML = MU.on ? ICON_MUSIC_ON : ICON_MUSIC_OFF;
-    btn.setAttribute("aria-pressed", MU.on ? "true" : "false");
-    btn.setAttribute(
-      "aria-label",
-      MU.on ? "Fon musiqasini o'chirish" : "Fon musiqasini yoqish"
-    );
-    btn.title = MU.on ? "Musiqa yoniq" : "Musiqa o'chiq";
-  }
-
-  /** Boot'da bir marta chaqiriladi. */
-  async function initMusic() {
-    const btn = $("music-btn");
-    if (btn) {
-      btn.onclick = () => {
-        haptic("light");
-        setMusic(!MU.on);
-      };
-    }
-
-    await loadMusic();
-    paintMusicBtn();
-
-    // Mijoz ilgari yoqib qo'ygan bo'lsa — davom etamiz
-    if (MU.tracks.length && musicWanted()) await setMusic(true, { remember: false });
-
-    /* Ilova fonga o'tsa musiqani to'xtatamiz: batareya va trafik
-       behuda ketmasin, boshqa ilovadagi ovoz ustiga chiqmasin.
-       Qaytganda — mijoz yoqib qo'ygan bo'lsa davom etadi. */
-    document.addEventListener("visibilitychange", () => {
-      if (!MU.on || !MU.el) return;
-      if (document.hidden) {
-        try {
-          MU.el.pause();
-        } catch (_) {}
-      } else {
-        playCurrent();
-      }
-    });
-  }
+  /* FON MUSIQASI BUTUNLAY OLIB TASHLANDI (mahsulot qarori). Tugma, ijro,
+     admin bo'limi va bot buyrug'i ham yo'q. Bazadagi eski `music` jadvali
+     zararsiz qoladi — uni hech narsa o'qimaydi. */
 
   function stopBannerTimer() {
     if (S.bannerTimer) {
@@ -7063,6 +6958,8 @@
     syncBackButton();
   }
   function closeSheet() {
+    // Rang generatori «Saqlash» siz yopilsa — ko'rinish avvalgi rangga qaytadi
+    if (S.themeEditing) themeCancel();
     stopVideos();
     $("sheet").classList.add("hidden");
     $("sheet-content").innerHTML = "";
@@ -8957,7 +8854,6 @@
     /* Admin fon musiqasini o'chirsa/tartibini o'zgartirsa — ro'yxat
        DARHOL qaytadan o'qiladi va 🔇 tugmasi holatga moslashadi
        (oxirgi trek o'chirilsa tugma butunlay yashiriladi). */
-    reloadMusic: () => reloadMusic().catch(() => {}),
   };
 
   /* --------------------------------------------------------------- hodisa */
@@ -8997,7 +8893,6 @@
   /* Fon musiqasi. `await` QILINMAYDI: musiqa ilovaning ishga tushishini
      kutib turmasligi kerak — server javob bermasa ham do'kon ochilishi
      shart. Xato bo'lsa jim qoladi (tugma ko'rinmaydi). */
-  initMusic().catch(() => {});
 
   /* ---------------------------------------------------- XIZMATLAR bo'limi */
   /* Kartochkalar HAR chizishda qaytadan yasaladi, shuning uchun hodisa
@@ -10969,4 +10864,6 @@
 
   boot();
   initProductModal();
+  // Admin tanlagan umumiy rang (kesh index.html da allaqachon qo'llangan)
+  loadGlobalTheme();
 })();

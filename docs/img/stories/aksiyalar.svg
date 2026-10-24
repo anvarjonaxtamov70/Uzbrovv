@@ -1,25 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <!-- Uzbrovv stories muqovasi (aksiyalar). Vaqtinchalik: admin keyin o'zinikini qo'yadi. -->
+  <!-- Uzbrovv stories muqovasi: aksiyalar. Har bo'lim o'z rangida (dizayn rangiga bog'liq emas).
+       Almashtirish: shu faylni boshqa rasm bilan almashtiring. -->
   <defs>
-    <radialGradient id="bg" cx="32%" cy="22%" r="95%">
-      <stop offset="0" stop-color="#1e5e3f"/>
-      <stop offset=".5" stop-color="#0e2c1e"/>
-      <stop offset="1" stop-color="#050b08"/>
+    <radialGradient id="bg" cx="50%" cy="30%" r="80%">
+      <stop offset="0" stop-color="#4a0b22"/>
+      <stop offset="1" stop-color="#140208"/>
     </radialGradient>
-    <linearGradient id="ink" gradientUnits="userSpaceOnUse" x1="3" y1="3" x2="21" y2="21">
-      <stop offset="0" stop-color="#d4fbe6"/>
-      <stop offset=".45" stop-color="#5ad69a"/>
-      <stop offset="1" stop-color="#1f9a5e"/>
-    </linearGradient>
     <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0" stop-color="#34c77b" stop-opacity=".35"/>
-      <stop offset="1" stop-color="#34c77b" stop-opacity="0"/>
+      <stop offset="0" stop-color="#ff2d55" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#ff2d55" stop-opacity="0"/>
     </radialGradient>
+    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="4" y1="2" x2="20" y2="22">
+      <stop offset="0" stop-color="#ff9ab4"/>
+      <stop offset=".5" stop-color="#ff3b6b"/>
+      <stop offset="1" stop-color="#c9133f"/>
+    </linearGradient>
   </defs>
   <rect width="128" height="128" fill="url(#bg)"/>
-  <circle cx="64" cy="64" r="46" fill="url(#glow)"/>
-  <circle cx="64" cy="64" r="43" fill="none" stroke="#7edca8" stroke-opacity=".16" stroke-width="1.2"/>
-  <g transform="translate(28 28) scale(3)" fill="none" stroke="url(#ink)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M12 1.8l2.5 1.8 3.1-.1 1 2.9 2.5 1.8-1 3 1 3-2.5 1.8-1 2.9-3.1-.1L12 22.2l-2.5-1.8-3.1.1-1-2.9-2.5-1.8 1-3-1-3 2.5-1.8 1-2.9 3.1.1z"/><path d="M9.2 14.8l5.6-5.6"/><circle cx="9.6" cy="9.6" r="1.1"/><circle cx="14.4" cy="14.4" r="1.1"/>
+  <circle cx="64" cy="66" r="50" fill="url(#glow)"/>
+  <g transform="translate(26 25) scale(3.15)">
+    <path d="M12 1.6l2.6 1.9 3.2-.1 1 3.1 2.6 1.9-1 3.1 1 3.1-2.6 1.9-1 3.1-3.2-.1L12 22.4l-2.6-1.9-3.2.1-1-3.1-2.6-1.9 1-3.1-1-3.1 2.6-1.9 1-3.1 3.2.1z" fill="url(#g)"/><path d="M8.8 15.2l6.4-6.4" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="9.2" cy="9.2" r="1.6" fill="#fff"/><circle cx="14.8" cy="14.8" r="1.6" fill="#fff"/>
   </g>
 </svg>

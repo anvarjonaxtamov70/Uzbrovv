@@ -17,7 +17,6 @@ def get_routers() -> list:
         ai_chat,
         cart,
         fallback,
-        music,
         orders,
         queue,
         shop,
@@ -40,10 +39,6 @@ def get_routers() -> list:
         # avval o'sha oqimga tushishi kerak (u holat bilan filtrlangan).
         admin_crud.router,
         stories.router,
-        # Fon musiqasi: admin audio tashlaydi. `F.audio` boshqa hech qayerda
-        # ushlanmaydi, shuning uchun to'qnashuv yo'q — lekin AI'dan OLDIN
-        # turishi kerak (AI matnli xabarlarni oladi, audio esa shu yerga).
-        music.router,
         # ---- AI yordamchi ----
         #
         # `fallback` DAN OLDIN, qolgan hammasidan KEYIN.

@@ -46,19 +46,41 @@
   --muted: #a1a1a6;
   --dim: #6e6e73;
 
-  /* ---- ASOSIY AKSENT — shalfey yashil (brend) ---- */
-  --accent: #34c77b;
-  --accent-2: #1f8f55;
-  --accent-ink: #ffffff;               /* to'q yashil tugma ustidagi matn */
-  --accent-glow: rgba(52, 199, 123, 0.30);
-  /* Tugmalar uchun TO'QROQ yashil (ko'zni charchatmaydi, matn oq) */
-  --accent-grad: linear-gradient(135deg, #2cb46b 0%, #219a5b 55%, #17804a 100%);
-  --accent-soft: linear-gradient(135deg, rgba(76, 214, 143, 0.17), rgba(19, 107, 69, 0.06));
+  /* ---- ASOSIY AKSENT — RANG GENERATORI BOSHQARADI ----
+     Butun ilovaning brend rangi UCHTA son bilan beriladi:
+       --h  ton (0–360), --s  to'yinganlik (%), --l  ochlik/to'qlik (%).
+     Bosh sahifadagi «Rang» tugmasi (admin) shu uchtasini `<html>` ga
+     yozadi (app.js -> applyTheme) — qolgan barcha tuslar (och, to'q,
+     shaffof, gradient) SHU YERDA ulardan hisoblanadi. Ya'ni stylesheet'da
+     yashil rang qattiq yozilmagan: hammasi `var(--accent*)` yoki
+     `hsl(var(--h) var(--s) var(--l) / alfa)`.
+     Standart — shalfey yashil (#34c77b ≈ 149° 59% 49%). */
+  --h: 149;
+  --s: 59%;
+  --l: 49%;
+  --l1: min(calc(var(--l) + 9%), 90%);     /* bir pog'ona och */
+  --l2: min(calc(var(--l) + 22%), 92%);    /* och (yalpiz) */
+  --l3: max(calc(var(--l) - 18%), 6%);     /* to'q */
+  --s2: calc(var(--s) * 0.85);
 
-  /* ---- ikkinchi aksent — yalpiz (ilgari «tilla» edi: narx, premium) ---- */
-  --mint: #7edca8;
-  --mint-soft: rgba(126, 220, 168, 0.12);
-  --mint-glow: rgba(126, 220, 168, 0.32);
+  --accent: hsl(var(--h) var(--s) var(--l));
+  --accent-l1: hsl(var(--h) var(--s) var(--l1));
+  --accent-pale: hsl(var(--h) var(--s2) min(calc(var(--l) + 33%), 94%));
+  --accent-2: hsl(var(--h) var(--s) max(calc(var(--l) - 10%), 8%));
+  --accent-3: hsl(var(--h) var(--s) var(--l3));
+  --accent-deep1: hsl(var(--h) calc(var(--s) * 0.5) 25%);
+  --accent-deep2: hsl(var(--h) calc(var(--s) * 0.5) 18%);
+  --accent-deep3: hsl(var(--h) calc(var(--s) * 0.5) 12%);
+  --accent-night: hsl(var(--h) calc(var(--s) * 0.6) 8%);
+  --accent-ink: #ffffff;               /* tugma ustidagi matn (applyTheme: och rangda qora) */
+  --accent-glow: hsl(var(--h) var(--s) var(--l) / 0.30);
+  --accent-grad: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 55%, var(--accent-3) 100%);
+  --accent-soft: linear-gradient(135deg, hsl(var(--h) var(--s) var(--l1) / 0.17), hsl(var(--h) var(--s) var(--l3) / 0.06));
+
+  /* ---- ikkinchi aksent — och tus (narx, premium belgilar) ---- */
+  --mint: hsl(var(--h) var(--s2) var(--l2));
+  --mint-soft: hsl(var(--h) var(--s2) var(--l2) / 0.12);
+  --mint-glow: hsl(var(--h) var(--s2) var(--l2) / 0.32);
 
   /* ---- xavf: o'chirish, xato, bekor, nishon (iOS systemRed) ---- */
   --danger: #ff453a;
@@ -88,7 +110,7 @@
 
   /* ---- soyalar ---- */
   --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.32), 0 1px 3px rgba(0, 0, 0, 0.2);
-  --shadow-lifted: 0 18px 46px rgba(0, 0, 0, 0.45), 0 4px 14px rgba(52, 199, 123, 0.10);
+  --shadow-lifted: 0 18px 46px rgba(0, 0, 0, 0.45), 0 4px 14px hsl(var(--h) var(--s) var(--l) / 0.10);
 
   /* ---- LIQUID GLASS materiali (fayl oxiridagi blokda ishlatiladi) ---- */
   --glass: rgba(30, 30, 32, 0.62);
@@ -152,7 +174,7 @@ img, video { display: block; max-width: 100%; }
 .fx-beam {
   position: absolute; top: -12vh;
   width: 70vw; height: 60vh;
-  background: radial-gradient(ellipse at 50% 0%, rgba(52, 199, 123, 0.15), transparent 68%);
+  background: radial-gradient(ellipse at 50% 0%, hsl(var(--h) var(--s) var(--l) / 0.15), transparent 68%);
 }
 .fx-beam-1 { left: -22vw; }
 .fx-beam-2 { right: -24vw; }
@@ -202,7 +224,7 @@ img, video { display: block; max-width: 100%; }
 .hello-name {
   font-size: 40px; font-weight: 900; letter-spacing: -1.2px;
   margin-top: 6px; color: #fff;
-  text-shadow: 0 3px 26px rgba(52, 199, 123, 0.5);
+  text-shadow: 0 3px 26px hsl(var(--h) var(--s) var(--l) / 0.5);
 }
 .hello-skeleton {
   width: 220px; height: 26px; margin: 8px auto; border-radius: 10px;
@@ -364,7 +386,7 @@ img, video { display: block; max-width: 100%; }
   padding: 7px 4px;
   transition: color 0.2s, background 0.2s, border-color 0.2s;
 }
-.ptab.on { color: #fff; background: var(--accent-soft); border-color: rgba(52, 199, 123, 0.35); }
+.ptab.on { color: #fff; background: var(--accent-soft); border-color: hsl(var(--h) var(--s) var(--l) / 0.35); }
 
 .preview-caption {
   display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
@@ -375,8 +397,8 @@ img, video { display: block; max-width: 100%; }
 .preview-caption b { color: var(--text); font-weight: 600; }
 .tagline {
   background: var(--accent-soft);
-  border: 1px solid rgba(52, 199, 123, 0.22);
-  color: #b8f0d2;
+  border: 1px solid hsl(var(--h) var(--s) var(--l) / 0.22);
+  color: var(--accent-pale);
   padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600;
 }
 
@@ -526,7 +548,7 @@ img, video { display: block; max-width: 100%; }
 }
 .swatch-name { font-weight: 600; font-size: 13px; }
 .swatch-price { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
-.swatch.selected .swatch-price { color: #b8f0d2; }
+.swatch.selected .swatch-price { color: var(--accent-pale); }
 
 /* --------------------------------------------------------------- yakun */
 .summary { display: grid; gap: 9px; }
@@ -676,7 +698,7 @@ img, video { display: block; max-width: 100%; }
   position: relative;                 /* element soni belgisi uchun */
   width: 66px; height: 66px; border-radius: 50%;
   padding: 2.5px;
-  background: conic-gradient(from 210deg, var(--accent), #a8ecc6, #136b45, var(--accent));
+  background: conic-gradient(from 210deg, var(--accent), var(--accent-pale), var(--accent-3), var(--accent));
   display: grid; place-items: center; margin-bottom: 6px;
   transition: transform 0.18s var(--spring);
 }
@@ -808,7 +830,7 @@ img, video { display: block; max-width: 100%; }
 .status.new { color: #7db8ff; }
 .status.accepted, .status.confirmed { color: var(--green); }
 .status.in_work { color: var(--amber); }
-.status.done, .status.delivered { color: #7edca8; }
+.status.done, .status.delivered { color: var(--mint); }
 .status.cancelled { color: var(--danger); }
 
 .item-sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
@@ -902,7 +924,7 @@ img, video { display: block; max-width: 100%; }
 .story-spinner {
   position: absolute; top: 50%; left: 50%; z-index: 4;
   width: 36px; height: 36px; margin: -18px 0 0 -18px;
-  border: 2.5px solid rgba(52, 199, 123, 0.2);
+  border: 2.5px solid hsl(var(--h) var(--s) var(--l) / 0.2);
   border-top-color: var(--accent); border-radius: 50%;
   display: flex; animation: storySpin 0.85s linear infinite;
 }
@@ -1084,7 +1106,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 }
 .adm-tile:active {
   transform: scale(0.94);
-  border-color: rgba(76, 214, 143, 0.45);
+  border-color: hsl(var(--h) var(--s) var(--l1) / 0.45);
 }
 
 /* Ikonka doirasi — plitkaga hayot beradi */
@@ -1092,7 +1114,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   width: 38px; height: 38px; flex: none;
   border-radius: 12px;
   background: var(--accent-soft);
-  border: 1px solid rgba(76, 214, 143, 0.18);
+  border: 1px solid hsl(var(--h) var(--s) var(--l1) / 0.18);
   display: grid; place-items: center;
   font-size: 19px; line-height: 1;
   transition: transform 0.2s var(--spring);
@@ -1143,7 +1165,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   border-radius: var(--r-sm); color: var(--muted);
   font-size: 12px; font-weight: 600;
 }
-.adm-period.on { background: var(--accent-soft); border-color: rgba(76, 214, 143, 0.35); color: #fff; }
+.adm-period.on { background: var(--accent-soft); border-color: hsl(var(--h) var(--s) var(--l1) / 0.35); color: #fff; }
 
 .adm-figures { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .adm-figure {
@@ -1159,13 +1181,13 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .adm-figure.wide {
   position: relative; overflow: hidden;
   grid-column: 1 / -1; padding: 18px;
-  background: var(--accent-soft); border-color: rgba(76, 214, 143, 0.3);
+  background: var(--accent-soft); border-color: hsl(var(--h) var(--s) var(--l1) / 0.3);
 }
 /* Katta blokda yumshoq nur — gradient bilan, blur ishlatilmaydi */
 .adm-figure.wide::after {
   content: ""; position: absolute; right: -30px; top: -40px;
   width: 150px; height: 150px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(76, 214, 143, 0.22), transparent 70%);
+  background: radial-gradient(circle, hsl(var(--h) var(--s) var(--l1) / 0.22), transparent 70%);
   pointer-events: none;
 }
 .adm-figure b {
@@ -1340,7 +1362,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .adm-field textarea { resize: vertical; }
 .adm-field select { appearance: none; }
 .adm-field input:focus, .adm-field select:focus, .adm-field textarea:focus {
-  outline: none; border-color: rgba(76, 214, 143, 0.5);
+  outline: none; border-color: hsl(var(--h) var(--s) var(--l1) / 0.5);
 }
 
 .adm-color { display: flex; gap: 8px; align-items: center; }
@@ -1473,7 +1495,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   position: relative; display: flex; flex-direction: column; gap: 9px;
   padding: 13px; border-radius: 16px;
   background: linear-gradient(150deg, var(--accent-soft), rgba(0, 0, 0, 0.3));
-  border: 1px solid rgba(76, 214, 143, 0.26);
+  border: 1px solid hsl(var(--h) var(--s) var(--l1) / 0.26);
 }
 .adm-pv.is-soon {
   border-style: dashed;
@@ -1524,7 +1546,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   border-radius: var(--r-sm); color: var(--muted);
   font-size: 12px; font-weight: 600;
 }
-.adm-tab.on { background: var(--accent-soft); border-color: rgba(76, 214, 143, 0.35); color: #fff; }
+.adm-tab.on { background: var(--accent-soft); border-color: hsl(var(--h) var(--s) var(--l1) / 0.35); color: #fff; }
 
 .adm-filters { margin-bottom: 12px; }
 
@@ -1667,12 +1689,12 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 
 .bts-info {
   margin-top: 12px; padding: 13px 14px; border-radius: var(--r-md);
-  background: var(--accent-soft); border: 1px solid rgba(52, 199, 123, 0.25);
+  background: var(--accent-soft); border: 1px solid hsl(var(--h) var(--s) var(--l) / 0.25);
   font-size: 12.5px; line-height: 1.55;
 }
 .bts-info b { font-size: 14px; display: block; margin-bottom: 5px; }
 .bts-info > div { color: var(--muted); }
-.bts-landmark { color: #8fe3b6; }
+.bts-landmark { color: var(--accent-pale); }
 
 /* ==================== MAP PICKER ==================== */
 .map-picker-overlay {
@@ -1719,7 +1741,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   bottom: calc(102px + var(--safe-b));
   width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer;
   background: var(--surface);
-  box-shadow: 0 6px 20px rgba(0,0,0,0.45), 0 0 0 1px rgba(52, 199, 123,0.25);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.45), 0 0 0 1px hsl(var(--h) var(--s) var(--l) / 0.25);
   display: flex; align-items: center; justify-content: center;
   color: var(--accent); transition: transform .18s ease, background .2s;
 }
@@ -1740,7 +1762,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .addr-name-sheet {
   width: 100%; max-width: 500px;
   background: linear-gradient(180deg, var(--surface-2), var(--bg-2));
-  border: 1px solid rgba(52, 199, 123,0.2);
+  border: 1px solid hsl(var(--h) var(--s) var(--l) / 0.2);
   border-radius: 24px 24px 0 0;
   padding: 22px 20px calc(22px + var(--safe-b));
   box-shadow: 0 -12px 40px rgba(0,0,0,0.5);
@@ -1764,7 +1786,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   color: var(--text); font-size: 16px; outline: none;
   transition: .2s; margin-bottom: 14px;
 }
-.addr-name-input:focus { border-color: var(--accent); background: rgba(52, 199, 123,0.06); }
+.addr-name-input:focus { border-color: var(--accent); background: hsl(var(--h) var(--s) var(--l) / 0.06); }
 .addr-name-input::placeholder { color: rgba(255,255,255,0.35); }
 .addr-name-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
 .addr-chip {
@@ -1773,7 +1795,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   color: var(--text); cursor: pointer; transition: .18s;
 }
 .addr-chip:active { transform: scale(0.93); }
-.addr-chip.sel { background: rgba(52, 199, 123,0.15); border-color: var(--accent); color: var(--accent); }
+.addr-chip.sel { background: hsl(var(--h) var(--s) var(--l) / 0.15); border-color: var(--accent); color: var(--accent); }
 .addr-name-coords {
   font-size: 11px; color: var(--muted); text-align: center;
   margin-bottom: 14px; display: flex; align-items: center; justify-content: center; gap: 5px;
@@ -1806,7 +1828,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .dlv-addr-del:active { transform: scale(0.82); background: rgba(255,69,58,0.28); color: #ff453a; }
 .dlv-map-btn {
   width: 100%; padding: 14px; border-radius: 14px;
-  background: rgba(52, 199, 123,0.1); border: 1px solid rgba(52, 199, 123,0.35);
+  background: hsl(var(--h) var(--s) var(--l) / 0.1); border: 1px solid hsl(var(--h) var(--s) var(--l) / 0.35);
   color: var(--accent); font-weight: 800; cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 8px;
   margin-top: 10px; font-size: 14px; transition: .18s;
@@ -1861,13 +1883,13 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   position: relative; overflow: hidden;
   padding: 20px 18px; margin-bottom: 20px; border-radius: 20px; text-align: center;
   background: linear-gradient(160deg, var(--accent-soft), rgba(0, 0, 0, 0.32));
-  border: 1px solid rgba(52, 199, 123, 0.22);
+  border: 1px solid hsl(var(--h) var(--s) var(--l) / 0.22);
   animation: coIn 0.34s var(--silk) both;
 }
 .pz-hero::after {
   content: ""; position: absolute; top: -55%; left: 50%; width: 240px; height: 240px;
   transform: translateX(-50%); pointer-events: none;
-  background: radial-gradient(circle, rgba(52, 199, 123, 0.13), transparent 70%);
+  background: radial-gradient(circle, hsl(var(--h) var(--s) var(--l) / 0.13), transparent 70%);
 }
 .pz-hero small {
   position: relative; display: block; font-size: 10.5px; font-weight: 800;
@@ -1902,7 +1924,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 /* Qatorlar orasidagi ingichka chiziq — chetlarga tegmaydi (iOS uslubi) */
 .pz-row + .pz-row { box-shadow: inset 0 1px 0 var(--line); }
 .pz-row:active { background: var(--surface-2); }
-.pz-row.is-on { background: rgba(52, 199, 123, 0.06); }
+.pz-row.is-on { background: hsl(var(--h) var(--s) var(--l) / 0.06); }
 
 .pz-radio {
   flex: none; width: 21px; height: 21px; border-radius: 50%;
@@ -1922,7 +1944,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   display: flex; align-items: center; justify-content: center; font-size: 19px;
   background: var(--surface-2); border: 1px solid var(--line);
 }
-.pz-row.is-on .pz-ic { border-color: rgba(52, 199, 123, 0.3); }
+.pz-row.is-on .pz-ic { border-color: hsl(var(--h) var(--s) var(--l) / 0.3); }
 /* Usulga xos yumshoq tus — ro'yxat bir xil kulrang bo'lib qolmasin */
 .pz-ic-card { color: #4ba3ff; background: rgba(75, 163, 255, 0.10); }
 .pz-ic-app { color: #2fd6e4; background: rgba(47, 214, 228, 0.10); }
@@ -1947,14 +1969,14 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .pz-card {
   position: relative; overflow: hidden;
   border-radius: 18px; padding: 16px 17px 14px;
-  background: linear-gradient(135deg, #15211b, #123524 55%, #101813);
-  border: 1px solid rgba(52, 199, 123, 0.28);
+  background: linear-gradient(135deg, #15211b, var(--accent-deep2) 55%, #101813);
+  border: 1px solid hsl(var(--h) var(--s) var(--l) / 0.28);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .pz-card::after {
   content: ""; position: absolute; top: -40%; right: -18%; width: 60%; height: 165%;
   pointer-events: none;
-  background: radial-gradient(ellipse, rgba(52, 199, 123, 0.16), transparent 70%);
+  background: radial-gradient(ellipse, hsl(var(--h) var(--s) var(--l) / 0.16), transparent 70%);
 }
 .pz-card-top {
   position: relative; display: flex; align-items: center; justify-content: space-between;
@@ -2177,7 +2199,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .es-icon {
   width: 84px; height: 84px; margin: 0 auto 18px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center; font-size: 38px;
-  background: var(--accent-soft); border: 1px solid rgba(52, 199, 123, 0.25);
+  background: var(--accent-soft); border: 1px solid hsl(var(--h) var(--s) var(--l) / 0.25);
 }
 .es-title { margin: 0 0 8px; font-size: 19px; font-weight: 800; color: #fff; }
 .es-desc { margin: 0 auto 20px; max-width: 280px; font-size: 13.5px; color: var(--muted); line-height: 1.55; }
@@ -2203,11 +2225,11 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   position: relative; overflow: hidden; border-radius: 22px; padding: 22px 18px;
   margin-bottom: 16px;
   background: linear-gradient(145deg, var(--accent-soft), rgba(0, 0, 0, 0.4));
-  border: 1px solid rgba(52, 199, 123, 0.22);
+  border: 1px solid hsl(var(--h) var(--s) var(--l) / 0.22);
 }
 .pf-glow {
   position: absolute; top: -30%; right: -10%; width: 150px; height: 150px;
-  background: radial-gradient(circle, rgba(52, 199, 123, 0.16), transparent 70%);
+  background: radial-gradient(circle, hsl(var(--h) var(--s) var(--l) / 0.16), transparent 70%);
   pointer-events: none;
 }
 .pf-head { display: flex; align-items: center; gap: 15px; position: relative; z-index: 1; }
@@ -2216,7 +2238,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   width: 64px; height: 64px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 26px; font-weight: 900; color: #fff; text-transform: uppercase;
-  background: var(--accent-grad); box-shadow: 0 0 0 4px rgba(52, 199, 123, 0.18);
+  background: var(--accent-grad); box-shadow: 0 0 0 4px hsl(var(--h) var(--s) var(--l) / 0.18);
 }
 .pf-vip-ring { position: absolute; inset: -5px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; }
 .pf-card.is-vip .pf-vip-ring { opacity: 1; animation: pfRing 2s ease-in-out infinite; }
@@ -2230,7 +2252,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .pf-meta p { margin: 0 0 4px; font-size: 12px; color: var(--muted); }
-.pf-since { font-size: 10.5px; color: #8fe3b6; font-weight: 700; }
+.pf-since { font-size: 10.5px; color: var(--accent-pale); font-weight: 700; }
 .pf-edit {
   width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
   background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); color: var(--accent);
@@ -2254,7 +2276,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .pf-block-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .pf-block-head h4 { margin: 0; font-size: 14px; font-weight: 800; color: #fff; }
 .pf-mini-btn {
-  background: var(--accent-soft); border: 1px solid rgba(52, 199, 123, 0.3); color: var(--accent);
+  background: var(--accent-soft); border: 1px solid hsl(var(--h) var(--s) var(--l) / 0.3); color: var(--accent);
   padding: 6px 13px; border-radius: 10px; font-size: 11.5px; font-weight: 700;
   cursor: pointer; transition: transform 0.15s var(--silk);
 }
@@ -2549,10 +2571,10 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .ap-upload {
   position: relative; text-align: center; padding: 24px 16px; margin-bottom: 12px;
   border-radius: 16px; cursor: pointer;
-  background: rgba(52, 199, 123, 0.06); border: 1.5px dashed rgba(52, 199, 123, 0.4);
+  background: hsl(var(--h) var(--s) var(--l) / 0.06); border: 1.5px dashed hsl(var(--h) var(--s) var(--l) / 0.4);
   transition: background 0.2s, transform 0.15s var(--silk);
 }
-.ap-upload:active { transform: scale(0.99); background: rgba(52, 199, 123, 0.1); }
+.ap-upload:active { transform: scale(0.99); background: hsl(var(--h) var(--s) var(--l) / 0.1); }
 .ap-upload input[type="file"] {
   position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;
 }
@@ -2613,7 +2635,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 /* razmerlar */
 .ap-sized {
   margin-top: 12px; padding: 14px; border-radius: 14px;
-  background: rgba(0, 0, 0, 0.35); border: 1px dashed rgba(52, 199, 123, 0.35);
+  background: rgba(0, 0, 0, 0.35); border: 1px dashed hsl(var(--h) var(--s) var(--l) / 0.35);
 }
 .ap-size-row { display: flex; gap: 8px; margin-bottom: 8px; }
 .ap-size-row .ap-input { margin-bottom: 0; }
@@ -2627,7 +2649,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .ap-size-del:active { transform: scale(0.92); }
 .ap-add-size {
   width: 100%; padding: 12px; margin-top: 4px; border-radius: 12px; cursor: pointer;
-  background: rgba(52, 199, 123, 0.12); border: 1px dashed rgba(52, 199, 123, 0.45);
+  background: hsl(var(--h) var(--s) var(--l) / 0.12); border: 1px dashed hsl(var(--h) var(--s) var(--l) / 0.45);
   color: var(--accent); font-size: 12.5px; font-weight: 800; letter-spacing: 0.4px;
 }
 .ap-add-size:active { transform: scale(0.98); }
@@ -2685,8 +2707,8 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   padding: 1px; pointer-events: none; z-index: 3; opacity: 0.9;
   background: linear-gradient(
     145deg,
-    rgba(52, 199, 123, 0.5) 0%,
-    rgba(52, 199, 123, 0.05) 38%,
+    hsl(var(--h) var(--s) var(--l) / 0.5) 0%,
+    hsl(var(--h) var(--s) var(--l) / 0.05) 38%,
     rgba(255, 255, 255, 0.1) 100%
   );
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -2700,7 +2722,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .prod::after {
   content: ""; position: absolute; top: -50%; left: -100%;
   width: 100%; height: 200%; pointer-events: none; z-index: 2;
-  background: linear-gradient(to right, transparent, rgba(52, 199, 123, 0.12), transparent);
+  background: linear-gradient(to right, transparent, hsl(var(--h) var(--s) var(--l) / 0.12), transparent);
   transform: rotate(30deg); transition: none;
 }
 .prod:active::after { left: 150%; transition: all 0.6s ease-in-out; }
@@ -2740,12 +2762,12 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   font-size: 14px; font-weight: 800; box-sizing: border-box;
   margin-top: auto; z-index: 5;
-  box-shadow: 0 4px 15px rgba(52, 199, 123, 0.3);
+  box-shadow: 0 4px 15px hsl(var(--h) var(--s) var(--l) / 0.3);
   transition: transform 0.2s var(--spring), box-shadow 0.2s ease;
 }
 .prod-add:active {
   transform: scale(0.95);
-  box-shadow: 0 2px 5px rgba(52, 199, 123, 0.2);
+  box-shadow: 0 2px 5px hsl(var(--h) var(--s) var(--l) / 0.2);
 }
 .prod-add .prod-add-ico { font-size: 16px; }
 .prod-add.out {
@@ -2774,7 +2796,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   background: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0.04) 25%,
-    rgba(52, 199, 123, 0.1) 50%,
+    hsl(var(--h) var(--s) var(--l) / 0.1) 50%,
     rgba(255, 255, 255, 0.04) 75%
   );
   background-size: 400% 100%;
@@ -2818,7 +2840,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   background: rgba(255, 255, 255, 0.1); color: var(--muted);
 }
 .bk-step span { font-size: 11.5px; font-weight: 600; color: var(--muted); }
-.bk-step.on { background: var(--accent-soft); border-color: rgba(52, 199, 123, 0.35); }
+.bk-step.on { background: var(--accent-soft); border-color: hsl(var(--h) var(--s) var(--l) / 0.35); }
 .bk-step.on i { background: var(--accent-grad); color: #fff; }
 .bk-step.on span { color: #fff; }
 .bk-step.done { cursor: pointer; }
@@ -2949,7 +2971,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   position: absolute;
   top: 0; left: 50%;
   width: 1px; height: 45vh;
-  background: linear-gradient(180deg, rgba(52, 199, 123, 0.35), transparent);
+  background: linear-gradient(180deg, hsl(var(--h) var(--s) var(--l) / 0.35), transparent);
   transform: translateX(-50%);
   pointer-events: none;
 }
@@ -2980,7 +3002,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   transform: scale(0.92);
 }
 .nav-btn.active {
-  box-shadow: 0 0 20px rgba(52, 199, 123, 0.15);
+  box-shadow: 0 0 20px hsl(var(--h) var(--s) var(--l) / 0.15);
 }
 
 @keyframes ctaGlow {
@@ -2999,7 +3021,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 
 /* #10 — Story halqasiga yangi gradient border */
 .story-ring {
-  background: conic-gradient(from 210deg, var(--accent), #a8ecc6, var(--mint), var(--accent-2), var(--accent));
+  background: conic-gradient(from 210deg, var(--accent), var(--accent-pale), var(--mint), var(--accent-2), var(--accent));
 }
 
 /* #11 — Chip tugmalarga ripple effekt */
@@ -3010,7 +3032,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .chip::after {
   content: "";
   position: absolute; inset: 0;
-  background: radial-gradient(circle at var(--x, 50%) var(--y, 50%), rgba(52, 199, 123,0.2) 0%, transparent 60%);
+  background: radial-gradient(circle at var(--x, 50%) var(--y, 50%), hsl(var(--h) var(--s) var(--l) / 0.2) 0%, transparent 60%);
   opacity: 0;
   transition: opacity 0.3s;
   pointer-events: none;
@@ -3051,7 +3073,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   content: "";
   position: absolute; inset: 0; border-radius: inherit;
   padding: 1px; pointer-events: none;
-  background: linear-gradient(135deg, rgba(52, 199, 123,0.4), transparent 40%, rgba(52, 199, 123,0.2));
+  background: linear-gradient(135deg, hsl(var(--h) var(--s) var(--l) / 0.4), transparent 40%, hsl(var(--h) var(--s) var(--l) / 0.2));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -3071,7 +3093,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   transition: opacity 0.25s ease;
 }
 .sheet-body {
-  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.6), 0 -4px 16px rgba(52, 199, 123, 0.08);
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.6), 0 -4px 16px hsl(var(--h) var(--s) var(--l) / 0.08);
 }
 
 /* #17 — Toast xabarlarga progress bar */
@@ -3143,7 +3165,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .car-card::after {
   content: "";
   position: absolute; inset: 0; border-radius: inherit;
-  background: radial-gradient(ellipse at 80% 50%, rgba(52, 199, 123,0.08), transparent 70%);
+  background: radial-gradient(ellipse at 80% 50%, hsl(var(--h) var(--s) var(--l) / 0.08), transparent 70%);
   opacity: 0;
   transition: opacity 0.3s;
   pointer-events: none;
@@ -3167,7 +3189,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 
 /* #23 — Rang (swatch) tanlanganda pulsing border */
 .swatch.selected {
-  box-shadow: 0 0 0 2px var(--accent), 0 8px 24px rgba(52, 199, 123, 0.2);
+  box-shadow: 0 0 0 2px var(--accent), 0 8px 24px hsl(var(--h) var(--s) var(--l) / 0.2);
   transition: border-color 0.18s, transform 0.14s var(--spring), box-shadow 0.3s;
 }
 
@@ -3187,13 +3209,13 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 
 /* #26 — Navbat kunlari: tanlangan kun effekti */
 .bk-day.on {
-  box-shadow: 0 4px 16px rgba(52, 199, 123, 0.25);
+  box-shadow: 0 4px 16px hsl(var(--h) var(--s) var(--l) / 0.25);
   transform: scale(1.02);
 }
 
 /* #27 — Navbat vaqtlari: neon glow */
 .bk-time.on {
-  text-shadow: 0 0 8px rgba(52, 199, 123, 0.5);
+  text-shadow: 0 0 8px hsl(var(--h) var(--s) var(--l) / 0.5);
 }
 
 /* #28 — Admin plitka: yangi gradient va hover */
@@ -3204,7 +3226,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .adm-tile::after {
   content: "";
   position: absolute; inset: 0;
-  background: radial-gradient(circle at 50% 0%, rgba(52, 199, 123,0.1), transparent 70%);
+  background: radial-gradient(circle at 50% 0%, hsl(var(--h) var(--s) var(--l) / 0.1), transparent 70%);
   opacity: 0;
   transition: opacity 0.3s;
   pointer-events: none;
@@ -3213,7 +3235,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 
 /* #29 — Admin figure: raqamlar kattaroq va yorqin */
 .adm-figure b {
-  text-shadow: 0 2px 12px rgba(52, 199, 123, 0.2);
+  text-shadow: 0 2px 12px hsl(var(--h) var(--s) var(--l) / 0.2);
 }
 
 /* #30 — Karta to'lov: chip shimmer effekt (yangi `.pz-card-chip`) */
@@ -3282,7 +3304,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .field input:focus, .field textarea:focus,
 .ap-input:focus, .inv-search:focus,
 .addr-name-input:focus {
-  box-shadow: 0 0 0 3px rgba(52, 199, 123, 0.12);
+  box-shadow: 0 0 0 3px hsl(var(--h) var(--s) var(--l) / 0.12);
 }
 
 /* #36 — Dot indikatorlar: silliq o'tish */
@@ -3962,7 +3984,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 }
 
 .fomo-trend {
-  background: linear-gradient(135deg, var(--mint), #4fbf86);
+  background: linear-gradient(135deg, var(--mint), var(--accent-2));
 }
 
 .fomo-low {
@@ -4246,7 +4268,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
    AKSIYA BLOKI — «eski narx» yoziladi, chegirma o'zi hisoblanadi
    ========================================================================== */
 .apx-sale { border-color: rgba(255, 69, 58,0.22) !important; background: rgba(255, 69, 58,0.04); }
-.apx-ic-red { color: var(--accent) !important; background: rgba(52, 199, 123,0.10) !important; }
+.apx-ic-red { color: var(--accent) !important; background: hsl(var(--h) var(--s) var(--l) / 0.10) !important; }
 .apx-ic-blue { color: #0a84ff !important; background: rgba(10,132,255,0.10) !important; }
 .apx-ic-gold { color: var(--mint) !important; background: var(--mint-soft) !important; }
 .apx-sale-note {
@@ -4302,7 +4324,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .lp-was { color: var(--muted); font-size: 11.5px; font-weight: 600; margin-left: 4px; }
 .lp-badge {
   align-self: flex-start; flex-shrink: 0;
-  background: var(--mint); color: #04210f; border-radius: 7px;
+  background: var(--mint); color: var(--accent-night); border-radius: 7px;
   padding: 3px 7px; font-size: 9.5px; font-weight: 800;
 }
 
@@ -4324,7 +4346,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .shop-thumbs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .img-thumb-wrap { position: relative; width: 78px; height: 78px; border-radius: 13px; overflow: hidden; border: 1px solid var(--line); background: var(--surface-2); }
 .img-thumb-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.img-main-badge { position: absolute; bottom: 0; left: 0; right: 0; text-align: center; font-size: 8.5px; font-weight: 800; padding: 2px; color: #04210f; background: var(--mint); display: none; }
+.img-main-badge { position: absolute; bottom: 0; left: 0; right: 0; text-align: center; font-size: 8.5px; font-weight: 800; padding: 2px; color: var(--accent-night); background: var(--mint); display: none; }
 /* «Asosiy» belgisi faqat BIRINCHI tayyor eskizda */
 .up-slot.is-main .img-main-badge { display: block; }
 .img-del { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border: none; border-radius: 50%; background: rgba(0,0,0,0.7); color: #fff; font-size: 11px; line-height: 1; cursor: pointer; z-index: 4; padding: 0; }
@@ -4335,7 +4357,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   width: 20px; height: 20px; padding: 0; border: none; border-radius: 50%;
   background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; line-height: 1; cursor: pointer;
 }
-.img-star.on { background: var(--mint); color: #04210f; }
+.img-star.on { background: var(--mint); color: var(--accent-night); }
 .img-move-row {
   position: absolute; bottom: 3px; left: 0; right: 0; z-index: 4;
   display: flex; justify-content: center; gap: 4px;
@@ -4505,7 +4527,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .inv-flag-out { color: #d63b30; background: rgba(255,69,58,0.16); }
 .inv-input { width: 52px; height: 36px; text-align: center; border-radius: 11px; font-size: 14px; font-weight: 700; background: var(--surface-2); color: var(--text); border: 1px solid var(--line); outline: none; }
 .inv-input:focus { border-color: var(--mint); }
-.inv-btn { padding: 9px 13px; border-radius: 11px; border: none; background: var(--mint); color: #04210f; font-weight: 800; cursor: pointer; }
+.inv-btn { padding: 9px 13px; border-radius: 11px; border: none; background: var(--mint); color: var(--accent-night); font-weight: 800; cursor: pointer; }
 .inv-btn:active { transform: scale(0.93); }
 
 
@@ -4539,7 +4561,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   overflow: hidden;
 }
 /* Yangi buyurtma ko'zga tashlanib turadi — admin uni o'tkazib yubormaydi */
-.ord.is-new { border-color: rgba(52, 199, 123, 0.3); background: linear-gradient(180deg, rgba(52, 199, 123, 0.05), transparent 60%), var(--surface); }
+.ord.is-new { border-color: hsl(var(--h) var(--s) var(--l) / 0.3); background: linear-gradient(180deg, hsl(var(--h) var(--s) var(--l) / 0.05), transparent 60%), var(--surface); }
 .ord.is-cancelled { opacity: 0.55; }
 .ord.is-delivered { opacity: 0.82; }
 
@@ -4553,10 +4575,10 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   flex-shrink: 0; border-radius: 999px; padding: 5px 10px;
   font-size: 10.5px; font-weight: 800; white-space: nowrap; letter-spacing: 0.1px;
 }
-.ord-pill.is-new { background: rgba(52, 199, 123, 0.15); color: #5fdc9c; }
+.ord-pill.is-new { background: hsl(var(--h) var(--s) var(--l) / 0.15); color: var(--accent-l1); }
 .ord-pill.is-accepted { background: rgba(47, 212, 95, 0.14); color: var(--green); }
 .ord-pill.is-delivering { background: rgba(255, 176, 32, 0.15); color: var(--amber); }
-.ord-pill.is-delivered { background: rgba(126, 220, 168, 0.15); color: var(--mint); }
+.ord-pill.is-delivered { background: hsl(var(--h) var(--s2) var(--l2) / 0.15); color: var(--mint); }
 .ord-pill.is-cancelled { background: rgba(255, 255, 255, 0.07); color: var(--muted); }
 
 /* ---- mijoz ---- */
@@ -4621,7 +4643,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 }
 .ord-stat b { display: block; font-size: 21px; font-weight: 800; color: var(--text); line-height: 1.1; }
 .ord-stat span { display: block; font-size: 10.5px; color: var(--muted); margin-top: 3px; font-weight: 600; }
-.ord-stat.is-new b { color: #5fdc9c; }
+.ord-stat.is-new b { color: var(--accent-l1); }
 .ord-stat.is-run b { color: var(--amber); }
 
 
@@ -4638,7 +4660,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   min-width: 21px; height: 21px; padding: 0 6px; border-radius: 999px;
   background: var(--accent); color: #fff;
   font-size: 11.5px; font-weight: 800; line-height: 21px; text-align: center;
-  box-shadow: 0 2px 10px rgba(52, 199, 123, 0.5);
+  box-shadow: 0 2px 10px hsl(var(--h) var(--s) var(--l) / 0.5);
 }
 /* Ikkita plitka bir qatorda (Yangi tovar · Ombor) */
 .shop-hero-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -4668,7 +4690,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .ord-fchip.selected {
   background: var(--mint-soft); border-color: var(--mint-glow); color: var(--mint);
 }
-.ord-fchip.selected i { background: rgba(126, 220, 168, 0.22); color: var(--mint); }
+.ord-fchip.selected i { background: hsl(var(--h) var(--s2) var(--l2) / 0.22); color: var(--mint); }
 .ord-fchip:active { transform: scale(0.96); }
 
 
@@ -4733,7 +4755,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   width: 260px;
   height: 260px;
   transform: translateX(-50%);
-  background: radial-gradient(circle, rgba(126, 220, 168, 0.16), transparent 68%);
+  background: radial-gradient(circle, hsl(var(--h) var(--s2) var(--l2) / 0.16), transparent 68%);
   pointer-events: none;
 }
 .crm-hero-lb {
@@ -4802,7 +4824,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .crm-kpi.is-green b { color: var(--green); }
 .crm-kpi.is-gold b { color: var(--mint); }
 .crm-kpi.is-green { border-color: rgba(47, 212, 95, 0.22); }
-.crm-kpi.is-gold { border-color: rgba(126, 220, 168, 0.22); }
+.crm-kpi.is-gold { border-color: hsl(var(--h) var(--s2) var(--l2) / 0.22); }
 
 /* --------------------------------------------------- bitta qatorli raqam */
 .crm-strip {
@@ -4969,7 +4991,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   height: var(--h, 0%);
   min-height: 2px;
   border-radius: 5px 5px 2px 2px;
-  background: linear-gradient(180deg, rgba(126, 220, 168, 0.75), rgba(126, 220, 168, 0.14));
+  background: linear-gradient(180deg, hsl(var(--h) var(--s2) var(--l2) / 0.75), hsl(var(--h) var(--s2) var(--l2) / 0.14));
   transform-origin: bottom;
   animation: crmBar 0.5s var(--silk) both;
 }
@@ -4985,13 +5007,13 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 }
 /* Eng yaxshi davr — to'liq gold va yumshoq nur */
 .crm-bar.is-best i {
-  background: linear-gradient(180deg, var(--mint), rgba(126, 220, 168, 0.3));
-  box-shadow: 0 0 12px rgba(126, 220, 168, 0.4);
+  background: linear-gradient(180deg, var(--mint), hsl(var(--h) var(--s2) var(--l2) / 0.3));
+  box-shadow: 0 0 12px hsl(var(--h) var(--s2) var(--l2) / 0.4);
 }
 .crm-bar.is-best span { color: var(--mint); font-weight: 700; }
 /* Admin bosgan ustun — qizil aksent, gold bilan aralashmaydi */
 .crm-bar.on i {
-  background: linear-gradient(180deg, var(--accent), rgba(52, 199, 123, 0.25));
+  background: linear-gradient(180deg, var(--accent), hsl(var(--h) var(--s) var(--l) / 0.25));
   box-shadow: 0 0 12px var(--accent-glow);
 }
 .crm-bar.on span { color: var(--accent); font-weight: 700; }
@@ -5088,7 +5110,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   color: var(--muted);
   letter-spacing: 0.3px;
 }
-.crm-sum-b.is-gold { border-color: rgba(126, 220, 168, 0.22); }
+.crm-sum-b.is-gold { border-color: hsl(var(--h) var(--s2) var(--l2) / 0.22); }
 .crm-sum-b.is-gold b { color: var(--mint); font-size: 11.5px; }
 
 /* ----------------------------------------------------------- saralash */
@@ -5147,7 +5169,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   animation: crmIn 0.34s var(--silk) both;
 }
 .crm-cust:active { transform: scale(0.985); }
-.crm-cust.is-vip { border-color: rgba(126, 220, 168, 0.3); background: var(--surface-2); }
+.crm-cust.is-vip { border-color: hsl(var(--h) var(--s2) var(--l2) / 0.3); background: var(--surface-2); }
 .crm-cust.is-cold { opacity: 0.72; }
 
 .crm-ava {
@@ -5164,12 +5186,12 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   font-weight: 800;
 }
 .crm-cust.is-buyer .crm-ava {
-  background: linear-gradient(140deg, rgba(76, 214, 143, 0.2), rgba(19, 107, 69, 0.06));
-  color: #8fe3b6;
+  background: linear-gradient(140deg, hsl(var(--h) var(--s) var(--l1) / 0.2), hsl(var(--h) var(--s) var(--l3) / 0.06));
+  color: var(--accent-pale);
 }
 .crm-cust.is-vip .crm-ava,
 .crm-profile.is-vip .crm-ava {
-  background: linear-gradient(140deg, rgba(126, 220, 168, 0.32), rgba(126, 220, 168, 0.07));
+  background: linear-gradient(140deg, hsl(var(--h) var(--s2) var(--l2) / 0.32), hsl(var(--h) var(--s2) var(--l2) / 0.07));
   color: var(--mint);
   box-shadow: 0 0 0 1px var(--mint-glow);
 }
@@ -5296,7 +5318,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   border: 1px solid var(--line);
   animation: crmIn 0.4s var(--silk) both;
 }
-.crm-profile.is-vip { border-color: rgba(126, 220, 168, 0.3); }
+.crm-profile.is-vip { border-color: hsl(var(--h) var(--s2) var(--l2) / 0.3); }
 .crm-profile > b {
   margin-top: 13px;
   font-size: 18px;
@@ -5453,7 +5475,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   background: var(--accent-grad);
   border-color: transparent;
   color: #fff;
-  box-shadow: 0 0 0 4px rgba(52, 199, 123, 0.14);
+  box-shadow: 0 0 0 4px hsl(var(--h) var(--s) var(--l) / 0.14);
 }
 .co-node.is-now span { color: var(--text); }
 /* bajarilgan qadam — yashil, bosiladi */
@@ -5564,7 +5586,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   width: 240px;
   height: 240px;
   transform: translateX(-50%);
-  background: radial-gradient(circle, rgba(126, 220, 168, 0.15), transparent 68%);
+  background: radial-gradient(circle, hsl(var(--h) var(--s2) var(--l2) / 0.15), transparent 68%);
   pointer-events: none;
 }
 .inv-hero-lb {
@@ -5791,7 +5813,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .inv-card.is-picked .inv-pick {
   background: var(--mint);
   border-color: transparent;
-  color: #04210f;
+  color: var(--accent-night);
 }
 .inv-pick:active { transform: scale(0.88); }
 
@@ -5921,7 +5943,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
-.inv-step input:focus { outline: none; background: rgba(126, 220, 168, 0.09); }
+.inv-step input:focus { outline: none; background: hsl(var(--h) var(--s2) var(--l2) / 0.09); }
 /* Raqam o'zgarganda sezilarli "sakrash" */
 .inv-step input.pop { animation: invPop 0.32s var(--spring); }
 
@@ -5940,7 +5962,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 /* Ko'z — yashirilgan tovarda xira, tahrirlash — gold ishorasi bilan */
 .inv-eye { color: var(--muted); }
 .inv-card.is-off .inv-eye { color: var(--amber); }
-.inv-edit { border-color: rgba(126, 220, 168, 0.28); }
+.inv-edit { border-color: hsl(var(--h) var(--s2) var(--l2) / 0.28); }
 
 /* --------------------------------------------- ro'yxat oxiri / bo'shligi */
 .inv-more,
@@ -6067,7 +6089,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   border-radius: 10px;
   border: none;
   background: var(--mint);
-  color: #04210f;
+  color: var(--accent-night);
   font-family: inherit;
   font-size: 11.5px;
   font-weight: 800;
@@ -6247,10 +6269,10 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 }
 .chip.on {
   background: var(--accent-soft);
-  border-color: rgba(76, 214, 143, 0.4);
+  border-color: hsl(var(--h) var(--s) var(--l1) / 0.4);
   color: #fff;
 }
-.chip.on i { background: rgba(76, 214, 143, 0.28); color: #c9f4dc; }
+.chip.on i { background: hsl(var(--h) var(--s) var(--l1) / 0.28); color: var(--accent-pale); }
 .chip:active { transform: scale(0.95); }
 
 /* ================================================== TOVAR KARTOCHKASI */
@@ -6278,7 +6300,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 }
 .prod:active {
   transform: scale(0.97);
-  border-color: rgba(76, 214, 143, 0.35);
+  border-color: hsl(var(--h) var(--s) var(--l1) / 0.35);
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
 }
 /* Eski qatlamlardagi qizil hairline va diagonal yaltirash olib tashlanadi —
@@ -6552,7 +6574,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   font-size: 12.5px;
   font-weight: 800;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(52, 199, 123, 0.28);
+  box-shadow: 0 4px 14px hsl(var(--h) var(--s) var(--l) / 0.28);
   transition: transform 0.16s var(--spring), background 0.25s;
 }
 .prod-add-ico { font-size: 13px; line-height: 1; }
@@ -6884,7 +6906,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 /* Instagram uslubidagi halqa: ko'rilmaganda rangli, ko'rilganda xira.
    Rang doirasi brend rangida (gold -> qizil). */
 .story-ring {
-  background: conic-gradient(from 200deg, var(--mint), var(--accent), #136b45, var(--mint));
+  background: conic-gradient(from 200deg, var(--mint), var(--accent), var(--accent-3), var(--mint));
   padding: 2.5px;
   transition: transform 0.18s var(--spring);
 }
@@ -7133,7 +7155,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 }
 .story-react:active { transform: scale(0.85); }
 .story-react.on {
-  background: rgba(52, 199, 123, 0.32);
+  background: hsl(var(--h) var(--s) var(--l) / 0.32);
   transform: scale(1.1);
   box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.45);
 }
@@ -7174,7 +7196,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   color: #fff;
   font-size: 15px;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(52, 199, 123, 0.4);
+  box-shadow: 0 4px 14px hsl(var(--h) var(--s) var(--l) / 0.4);
 }
 .story-send:active { transform: scale(0.9); }
 .story-send:disabled { opacity: 0.55; }
@@ -7262,7 +7284,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   margin-bottom: 14px;
   border-radius: var(--r-md);
   background: var(--surface-2);
-  border: 1px solid rgba(76, 214, 143, 0.3);
+  border: 1px solid hsl(var(--h) var(--s) var(--l1) / 0.3);
   color: var(--text);
   font-family: inherit;
   font-size: 13px;
@@ -7353,8 +7375,8 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   padding: 2px 8px;
 }
 .st-chip.is-hot {
-  background: rgba(52, 199, 123, 0.16);
-  color: #8fe3b6;
+  background: hsl(var(--h) var(--s) var(--l) / 0.16);
+  color: var(--accent-pale);
   cursor: pointer;
 }
 .st-chip.is-off { background: rgba(255, 255, 255, 0.05); color: var(--dim); }
@@ -7603,10 +7625,10 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .mo-tile::after {
   content: ""; position: absolute; top: -60%; right: -12%;
   width: 130px; height: 130px; pointer-events: none;
-  background: radial-gradient(circle, rgba(52, 199, 123, 0.10), transparent 70%);
+  background: radial-gradient(circle, hsl(var(--h) var(--s) var(--l) / 0.10), transparent 70%);
 }
 #mo-open-booking::after { background: radial-gradient(circle, rgba(125, 184, 255, 0.10), transparent 70%); }
-#mo-open-order::after { background: radial-gradient(circle, rgba(126, 220, 168, 0.11), transparent 70%); }
+#mo-open-order::after { background: radial-gradient(circle, hsl(var(--h) var(--s2) var(--l2) / 0.11), transparent 70%); }
 
 .mo-tile-ic {
   flex-shrink: 0; width: 44px; height: 44px; border-radius: 14px;
@@ -7625,7 +7647,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 }
 /* Oxirgi holatning rangli nuqtasi */
 .mo-dot { flex-shrink: 0; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); }
-.mo-dot.is-new { background: #5fdc9c; }
+.mo-dot.is-new { background: var(--accent-l1); }
 .mo-dot.is-accepted { background: var(--green); }
 .mo-dot.is-delivering { background: var(--amber); }
 .mo-dot.is-delivered { background: var(--mint); }
@@ -7693,7 +7715,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
   transition: border-color 0.2s;
 }
-.mo-search:focus-within { border-color: rgba(126, 220, 168, 0.45); }
+.mo-search:focus-within { border-color: hsl(var(--h) var(--s2) var(--l2) / 0.45); }
 .mo-search-ic { font-size: 14px; opacity: 0.65; flex-shrink: 0; }
 .mo-search input {
   flex: 1; min-width: 0; height: 100%;
@@ -7732,7 +7754,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   transition: border-color 0.24s, transform 0.16s var(--silk);
 }
 .mo-card:active { transform: scale(0.995); }
-.mo-card.is-open { border-color: rgba(126, 220, 168, 0.34); }
+.mo-card.is-open { border-color: hsl(var(--h) var(--s2) var(--l2) / 0.34); }
 
 @keyframes moCardIn {
   from { opacity: 0; transform: translateY(12px); }
@@ -7808,7 +7830,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .mo-tr-step.is-now b {
   background: var(--accent-grad); border-color: transparent; color: #fff;
   font-size: 11px;
-  box-shadow: 0 0 0 4px rgba(52, 199, 123, 0.14);
+  box-shadow: 0 0 0 4px hsl(var(--h) var(--s) var(--l) / 0.14);
   animation: moNowPulse 2.2s ease-in-out infinite;
   animation-delay: 0.7s;
 }
@@ -7819,8 +7841,8 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   to   { opacity: 1; transform: none; }
 }
 @keyframes moNowPulse {
-  0%, 100% { box-shadow: 0 0 0 4px rgba(52, 199, 123, 0.14); }
-  50%      { box-shadow: 0 0 0 8px rgba(52, 199, 123, 0.05); }
+  0%, 100% { box-shadow: 0 0 0 4px hsl(var(--h) var(--s) var(--l) / 0.14); }
+  50%      { box-shadow: 0 0 0 8px hsl(var(--h) var(--s) var(--l) / 0.05); }
 }
 
 /* --------------------------------------------------------------------------
@@ -7857,10 +7879,10 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   font-size: 12.5px; line-height: 1.5; font-weight: 600;
   background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
 }
-.mo-hint.is-new { background: rgba(52, 199, 123, 0.07); border-color: rgba(52, 199, 123, 0.22); color: #a8ecc6; }
+.mo-hint.is-new { background: hsl(var(--h) var(--s) var(--l) / 0.07); border-color: hsl(var(--h) var(--s) var(--l) / 0.22); color: var(--accent-pale); }
 .mo-hint.is-accepted { background: rgba(47, 212, 95, 0.07); border-color: rgba(47, 212, 95, 0.22); color: #a8ecbe; }
 .mo-hint.is-delivering { background: rgba(255, 176, 32, 0.07); border-color: rgba(255, 176, 32, 0.24); color: #ffd792; }
-.mo-hint.is-delivered { background: rgba(126, 220, 168, 0.08); border-color: rgba(126, 220, 168, 0.26); color: #a8ecc6; }
+.mo-hint.is-delivered { background: hsl(var(--h) var(--s2) var(--l2) / 0.08); border-color: hsl(var(--h) var(--s2) var(--l2) / 0.26); color: var(--accent-pale); }
 
 /* Amal tugmalari: yon-yonma, kichik ekranda o'raladi */
 .mo-acts { flex-wrap: wrap; }
@@ -7894,7 +7916,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .mo-about-copy {
   flex-shrink: 0; cursor: pointer; font-family: inherit;
   padding: 7px 11px; border-radius: 10px; font-size: 11.5px; font-weight: 700;
-  background: rgba(126, 220, 168, 0.16); border: 1px solid var(--mint-glow); color: var(--mint);
+  background: hsl(var(--h) var(--s2) var(--l2) / 0.16); border: 1px solid var(--mint-glow); color: var(--mint);
 }
 .mo-about-copy:active { transform: scale(0.94); }
 
@@ -7905,7 +7927,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   display: flex; align-items: center; gap: 13px; width: 100%;
   padding: 15px 16px; margin-bottom: 16px; text-align: left; cursor: pointer;
   background: linear-gradient(145deg, var(--accent-soft), rgba(0, 0, 0, 0.35));
-  border: 1px solid rgba(52, 199, 123, 0.26); border-radius: 18px;
+  border: 1px solid hsl(var(--h) var(--s) var(--l) / 0.26); border-radius: 18px;
   color: var(--text); font-family: inherit;
   transition: transform 0.16s var(--silk);
   animation: moTileIn 0.42s var(--spring) both;
@@ -7914,7 +7936,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .ad-add-ic {
   flex-shrink: 0; width: 44px; height: 44px; border-radius: 14px;
   display: flex; align-items: center; justify-content: center; font-size: 21px;
-  background: rgba(52, 199, 123, 0.13); border: 1px solid rgba(52, 199, 123, 0.28);
+  background: hsl(var(--h) var(--s) var(--l) / 0.13); border: 1px solid hsl(var(--h) var(--s) var(--l) / 0.28);
 }
 .ad-add-tx { flex: 1; min-width: 0; }
 .ad-add-tx b {
@@ -7943,8 +7965,8 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 }
 /* «Asosiy» manzil ajralib turadi — mijoz qaysi biri tanlanishini biladi */
 .ad-item.is-def {
-  border-color: rgba(126, 220, 168, 0.36);
-  background: linear-gradient(180deg, rgba(126, 220, 168, 0.06), transparent 55%), var(--surface);
+  border-color: hsl(var(--h) var(--s2) var(--l2) / 0.36);
+  background: linear-gradient(180deg, hsl(var(--h) var(--s2) var(--l2) / 0.06), transparent 55%), var(--surface);
 }
 
 .ad-row { display: flex; align-items: flex-start; gap: 12px; }
@@ -8063,13 +8085,13 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
    qizil bo'lib chiqardi. */
 .svt, .sd-hero, .sd-block, .sd-cta, .svt-skel {
   --sv: var(--accent);
-  --sv-soft: rgba(52, 199, 123, 0.10);
-  --sv-line: rgba(52, 199, 123, 0.26);
-  --sv-sh: rgba(52, 199, 123, 0.22);
+  --sv-soft: hsl(var(--h) var(--s) var(--l) / 0.10);
+  --sv-line: hsl(var(--h) var(--s) var(--l) / 0.26);
+  --sv-sh: hsl(var(--h) var(--s) var(--l) / 0.22);
 }
-.sv-a-gold   { --sv: var(--mint);  --sv-soft: rgba(126, 220, 168, 0.10); --sv-line: rgba(126, 220, 168, 0.30); --sv-sh: rgba(126, 220, 168, 0.22); }
+.sv-a-gold   { --sv: var(--mint);  --sv-soft: hsl(var(--h) var(--s2) var(--l2) / 0.10); --sv-line: hsl(var(--h) var(--s2) var(--l2) / 0.30); --sv-sh: hsl(var(--h) var(--s2) var(--l2) / 0.22); }
 /* «red» kaliti saqlanadi (app.js dagi SERVICE_THEMES), rangi esa brend yashili */
-.sv-a-red    { --sv: var(--accent); --sv-soft: rgba(52, 199, 123, 0.11); --sv-line: rgba(52, 199, 123, 0.32); --sv-sh: rgba(52, 199, 123, 0.24); }
+.sv-a-red    { --sv: var(--accent); --sv-soft: hsl(var(--h) var(--s) var(--l) / 0.11); --sv-line: hsl(var(--h) var(--s) var(--l) / 0.32); --sv-sh: hsl(var(--h) var(--s) var(--l) / 0.24); }
 .sv-a-cyan   { --sv: #2fd6e4;      --sv-soft: rgba(47, 214, 228, 0.10); --sv-line: rgba(47, 214, 228, 0.26); --sv-sh: rgba(47, 214, 228, 0.20); }
 .sv-a-blue   { --sv: #4ba3ff;      --sv-soft: rgba(75, 163, 255, 0.10); --sv-line: rgba(75, 163, 255, 0.26); --sv-sh: rgba(75, 163, 255, 0.20); }
 .sv-a-teal   { --sv: #40c8b4;      --sv-soft: rgba(64, 200, 180, 0.10); --sv-line: rgba(64, 200, 180, 0.26); --sv-sh: rgba(64, 200, 180, 0.20); }
@@ -8953,8 +8975,8 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   display: grid;
   place-items: center;
   font-size: 34px;
-  background: radial-gradient(circle at 50% 35%, rgba(126, 220, 168, 0.28), rgba(0, 0, 0, 0.5) 70%);
-  border: 1px solid rgba(126, 220, 168, 0.35);
+  background: radial-gradient(circle at 50% 35%, hsl(var(--h) var(--s2) var(--l2) / 0.28), rgba(0, 0, 0, 0.5) 70%);
+  border: 1px solid hsl(var(--h) var(--s2) var(--l2) / 0.35);
 }
 /* Bir martalik e'tibor: halqa uch marta uriladi va to'xtaydi.
    Cheksiz qilinmadi — fayl boshidagi qoida (1 ta cheksiz animatsiya). */
@@ -9018,7 +9040,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 }
 .sg-topic:active {
   transform: scale(0.95);
-  border-color: rgba(126, 220, 168, 0.4);
+  border-color: hsl(var(--h) var(--s2) var(--l2) / 0.4);
 }
 @keyframes sgIn {
   from { opacity: 0; transform: translateY(8px); }
@@ -9052,8 +9074,8 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   display: grid;
   place-items: center;
   font-size: 14px;
-  background: rgba(126, 220, 168, 0.14);
-  border: 1px solid rgba(126, 220, 168, 0.28);
+  background: hsl(var(--h) var(--s2) var(--l2) / 0.14);
+  border: 1px solid hsl(var(--h) var(--s2) var(--l2) / 0.28);
 }
 .sg-msg {
   max-width: 82%;
@@ -9105,7 +9127,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   transition: transform 0.15s var(--spring), border-color 0.2s;
 }
 .sg-card:active { transform: scale(0.98); }
-.sg-card-svc { border-color: rgba(126, 220, 168, 0.3); }
+.sg-card-svc { border-color: hsl(var(--h) var(--s2) var(--l2) / 0.3); }
 .sg-card-ic {
   width: 34px;
   height: 34px;
@@ -9195,7 +9217,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   padding: 7px 12px;
   border-radius: 999px;
   background: transparent;
-  border: 1px dashed rgba(126, 220, 168, 0.45);
+  border: 1px dashed hsl(var(--h) var(--s2) var(--l2) / 0.45);
   color: var(--mint);
   font-size: 11.5px;
   font-weight: 600;
@@ -9245,7 +9267,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 #sg-in::placeholder { color: var(--dim); }
 #sg-in:focus {
   outline: none;
-  border-color: rgba(126, 220, 168, 0.5);
+  border-color: hsl(var(--h) var(--s2) var(--l2) / 0.5);
 }
 #sg-in:disabled { opacity: 0.6; }
 .sg-send {
@@ -9261,7 +9283,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   background: var(--accent-grad);
   color: #fff;
   font-size: 15px;
-  box-shadow: 0 4px 14px rgba(52, 199, 123, 0.35);
+  box-shadow: 0 4px 14px hsl(var(--h) var(--s) var(--l) / 0.35);
   transition: transform 0.15s var(--spring), opacity 0.2s;
 }
 .sg-send:active { transform: scale(0.9); }
@@ -9578,7 +9600,7 @@ textarea:focus-visible,
 
 /* Navbat holati belgilari (ro'yxatda ham, doskada ham ishlatiladi) */
 .ord-pill.is-confirmed { background: rgba(47, 212, 95, 0.14); color: var(--green); }
-.ord-pill.is-done { background: rgba(126, 220, 168, 0.16); color: var(--mint); }
+.ord-pill.is-done { background: hsl(var(--h) var(--s2) var(--l2) / 0.16); color: var(--mint); }
 
 /* ---- TIZIM TANLAGICH (segment) ---- */
 .bkb-seg {
@@ -9606,15 +9628,15 @@ textarea:focus-visible,
   position: absolute; top: 8px; right: 9px;
   min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px;
   background: var(--accent); color: #fff; font-size: 11px; font-weight: 800;
-  line-height: 19px; text-align: center; box-shadow: 0 2px 8px rgba(52, 199, 123, 0.5);
+  line-height: 19px; text-align: center; box-shadow: 0 2px 8px hsl(var(--h) var(--s) var(--l) / 0.5);
 }
 .bkb-seg-btn.is-on {
-  background: linear-gradient(160deg, rgba(52, 199, 123, 0.14), rgba(52, 199, 123, 0.03));
+  background: linear-gradient(160deg, hsl(var(--h) var(--s) var(--l) / 0.14), hsl(var(--h) var(--s) var(--l) / 0.03));
   border-color: var(--accent-glow);
-  box-shadow: 0 6px 22px rgba(52, 199, 123, 0.14), inset 0 0 0 1px rgba(52, 199, 123, 0.12);
+  box-shadow: 0 6px 22px hsl(var(--h) var(--s) var(--l) / 0.14), inset 0 0 0 1px hsl(var(--h) var(--s) var(--l) / 0.12);
 }
 .bkb-seg-btn.is-on .bkb-seg-ic { filter: none; }
-.bkb-seg-btn.is-on .bkb-seg-tx b { color: #5fdc9c; }
+.bkb-seg-btn.is-on .bkb-seg-tx b { color: var(--accent-l1); }
 
 .bkb-filters { margin-bottom: 6px; }
 
@@ -9647,7 +9669,7 @@ textarea:focus-visible,
   animation: bkbDotPop 0.4s var(--bounce) both; animation-delay: var(--d, 0ms);
 }
 .bkb-dot.is-new {
-  background: var(--accent); box-shadow: 0 0 0 4px var(--bg), 0 0 0 6px rgba(52, 199, 123, 0.18);
+  background: var(--accent); box-shadow: 0 0 0 4px var(--bg), 0 0 0 6px hsl(var(--h) var(--s) var(--l) / 0.18);
   animation: bkbDotPop 0.4s var(--bounce) both, bkbPulse 2.4s ease-in-out infinite 0.6s;
 }
 .bkb-dot.is-confirmed {
@@ -9686,7 +9708,7 @@ textarea:focus-visible,
 }
 .bkb-act:active { transform: scale(0.97); }
 .bkb-act:not(.is-danger) {
-  background: var(--accent-soft); border-color: var(--accent-glow); color: #5fdc9c;
+  background: var(--accent-soft); border-color: var(--accent-glow); color: var(--accent-l1);
 }
 .bkb-act.is-danger { background: var(--surface-2); color: var(--muted); }
 
@@ -9712,8 +9734,8 @@ textarea:focus-visible,
   100% { transform: scale(1); }
 }
 @keyframes bkbPulse {
-  0%, 100% { box-shadow: 0 0 0 4px var(--bg), 0 0 0 6px rgba(52, 199, 123, 0.18); }
-  50% { box-shadow: 0 0 0 4px var(--bg), 0 0 0 9px rgba(52, 199, 123, 0.02); }
+  0%, 100% { box-shadow: 0 0 0 4px var(--bg), 0 0 0 6px hsl(var(--h) var(--s) var(--l) / 0.18); }
+  50% { box-shadow: 0 0 0 4px var(--bg), 0 0 0 9px hsl(var(--h) var(--s) var(--l) / 0.02); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -9758,9 +9780,9 @@ textarea:focus-visible,
 .fx-grid, .fx::after { display: none; }
 .fx {
   background:
-    radial-gradient(70vw 34vh at 50% -8%, rgba(52, 199, 123, 0.13), transparent 70%),
-    radial-gradient(50vw 36vh at 100% 22%, rgba(47, 180, 160, 0.07), transparent 70%),
-    radial-gradient(70vw 46vh at 20% 70%, rgba(52, 199, 123, 0.045), transparent 72%),
+    radial-gradient(70vw 34vh at 50% -8%, hsl(var(--h) var(--s) var(--l) / 0.13), transparent 70%),
+    radial-gradient(50vw 36vh at 100% 22%, hsl(var(--h) var(--s) var(--l) / 0.07), transparent 70%),
+    radial-gradient(70vw 46vh at 20% 70%, hsl(var(--h) var(--s) var(--l) / 0.045), transparent 72%),
     var(--bg);
 }
 .fx-beam { display: none; }
@@ -9792,7 +9814,7 @@ h1, h2, h3, h4, .step-title, .sec-title, .topbar-title { letter-spacing: -0.02em
   box-shadow: 0 6px 18px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 @keyframes brandIn { from { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.96); } }
-.hello-name { text-shadow: 0 3px 26px rgba(52, 199, 123, 0.45); }
+.hello-name { text-shadow: 0 3px 26px hsl(var(--h) var(--s) var(--l) / 0.45); }
 
 /* ============================================================== brend */
 .brand-mark {
@@ -9864,11 +9886,11 @@ html:not(.lite) .nav {
 .nav-pill {
   position: absolute; top: 6px; bottom: 6px; left: 0; width: 0;
   border-radius: 26px; pointer-events: none; z-index: 0; opacity: 0;
-  background: linear-gradient(180deg, rgba(76, 214, 143, 0.24), rgba(52, 199, 123, 0.13));
+  background: linear-gradient(180deg, hsl(var(--h) var(--s) var(--l1) / 0.24), hsl(var(--h) var(--s) var(--l) / 0.13));
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    inset 0 0 0 0.5px rgba(126, 220, 168, 0.32),
-    0 4px 14px rgba(52, 199, 123, 0.16);
+    inset 0 0 0 0.5px hsl(var(--h) var(--s2) var(--l2) / 0.32),
+    0 4px 14px hsl(var(--h) var(--s) var(--l) / 0.16);
   will-change: transform;
 }
 .nav-pill.ready {
@@ -9898,7 +9920,7 @@ html:not(.lite) .nav {
 .btn:active { transform: scale(0.96); }
 .btn-primary {
   background: var(--accent-grad); color: var(--accent-ink);
-  box-shadow: 0 8px 22px rgba(52, 199, 123, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  box-shadow: 0 8px 22px hsl(var(--h) var(--s) var(--l) / 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.32);
 }
 .btn-primary:disabled { box-shadow: none; }
 .btn-ghost {
@@ -9911,9 +9933,9 @@ html:not(.lite) .nav {
 }
 .prod-add {
   background: var(--accent-grad); color: var(--accent-ink); border-radius: 13px;
-  box-shadow: 0 4px 14px rgba(52, 199, 123, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 14px hsl(var(--h) var(--s) var(--l) / 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
-.prod-add.added { background: linear-gradient(135deg, #5ad69a, #30d158); color: var(--accent-ink); }
+.prod-add.added { background: linear-gradient(135deg, var(--accent-l1), #30d158); color: var(--accent-ink); }
 .prod-add.out { color: var(--dim); box-shadow: none; }
 .sd-cta { color: var(--accent-ink); }
 
@@ -9933,7 +9955,7 @@ html:not(.lite) .nav {
 .hdr-btn, .music-btn, .offline-badge { width: 34px; height: 34px; }
 .hdr-btn .ic, .music-btn .ic, .offline-badge .ic { width: 18px; height: 18px; }
 .hdr-btn .ic { stroke: #ff6b81; }
-.music-btn.on { color: var(--accent); background: rgba(52, 199, 123, 0.14); border-color: rgba(52, 199, 123, 0.35); }
+.music-btn.on { color: var(--accent); background: hsl(var(--h) var(--s) var(--l) / 0.14); border-color: hsl(var(--h) var(--s) var(--l) / 0.35); }
 .offline-badge { color: #ffd60a; }
 .car-chip { padding: 8px 12px; gap: 6px; }
 .car-chip i { display: grid; place-items: center; color: var(--accent); }
@@ -9964,7 +9986,7 @@ html:not(.lite) .story-ico {
 }
 .chip.on {
   background: var(--accent-soft);
-  border-color: rgba(52, 199, 123, 0.5);
+  border-color: hsl(var(--h) var(--s) var(--l) / 0.5);
   color: #fff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
@@ -9979,8 +10001,8 @@ html:not(.lite) .chip { -webkit-backdrop-filter: var(--glass-blur-sm); backdrop-
 }
 .shop-search input:focus, .field input:focus, .field textarea:focus, #sg-in:focus {
   background-color: rgba(118, 118, 128, 0.26);
-  border-color: rgba(52, 199, 123, 0.6);
-  box-shadow: 0 0 0 4px rgba(52, 199, 123, 0.14);
+  border-color: hsl(var(--h) var(--s) var(--l) / 0.6);
+  box-shadow: 0 0 0 4px hsl(var(--h) var(--s) var(--l) / 0.14);
 }
 .shop-search-i, .mo-search-ic { display: grid; place-items: center; color: var(--muted); opacity: 1; }
 .shop-search-i .ic, .mo-search-ic .ic { width: 17px; height: 17px; stroke-width: 2; }
@@ -10044,13 +10066,13 @@ html:not(.lite) .prod { box-shadow: var(--glass-hi), 0 10px 26px rgba(0, 0, 0, 0
 
 /* Tanlangan holat — yashil shisha */
 .car-card.selected, .opt.selected, .swatch.selected, .slot.on, .bk-day.on, .bk-time.on {
-  border-color: rgba(52, 199, 123, 0.7);
+  border-color: hsl(var(--h) var(--s) var(--l) / 0.7);
 }
 html:not(.lite) .car-card.selected,
 html:not(.lite) .opt.selected,
 html:not(.lite) .swatch.selected,
 html:not(.lite) .slot.on {
-  background-color: rgba(52, 199, 123, 0.14);
+  background-color: hsl(var(--h) var(--s) var(--l) / 0.14);
 }
 
 /* Bosilganda: iOS «press» — kichrayish + yorqinlashish */
@@ -10067,7 +10089,7 @@ html:not(.lite) .sg-topic:active {
 
 /* Profil kartasi — qizil hairline o'rniga yashil nur */
 .pf-card::before {
-  background: linear-gradient(135deg, rgba(126, 220, 168, 0.45), transparent 42%, rgba(52, 199, 123, 0.18));
+  background: linear-gradient(135deg, hsl(var(--h) var(--s2) var(--l2) / 0.45), transparent 42%, hsl(var(--h) var(--s) var(--l) / 0.18));
 }
 
 /* ======================================== iOS «Sozlamalar» rangli ikonlari */
@@ -10078,7 +10100,7 @@ html:not(.lite) .sg-topic:active {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 .ios-ic .ic { width: 18px; height: 18px; stroke-width: 2; }
-.ios-ic.is-green { background: linear-gradient(180deg, #4cd68f, #28a865); }
+.ios-ic.is-green { background: linear-gradient(180deg, var(--accent-l1), var(--accent-2)); }
 .ios-ic.is-teal  { background: linear-gradient(180deg, #40c8b4, #23998a); }
 .ios-ic.is-blue  { background: linear-gradient(180deg, #4ba3ff, #0a7cff); }
 .ios-ic.is-amber { background: linear-gradient(180deg, #ffb340, #ff8c00); }
@@ -10140,7 +10162,7 @@ html:not(.lite) .toast {
 
 /* ===================================================== stories halqalari */
 .story-ring {
-  background: conic-gradient(from 210deg, #34c77b, #7edca8, #2fb4a0, #239a5c, #34c77b);
+  background: conic-gradient(from 210deg, var(--accent), var(--mint), #2fb4a0, var(--accent-2), var(--accent));
 }
 .story.seen .story-ring { background: rgba(255, 255, 255, 0.16); }
 .story-label { color: var(--muted); }
@@ -10154,9 +10176,9 @@ html:not(.lite) .toast {
 /* ================================================= Shogird (FAB, yuborish) */
 .sg-fab {
   background: rgba(28, 28, 30, 0.94);
-  border: 0.5px solid rgba(126, 220, 168, 0.35);
+  border: 0.5px solid hsl(var(--h) var(--s2) var(--l2) / 0.35);
   color: var(--accent);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(52, 199, 123, 0.08), var(--glass-hi);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45), 0 0 0 1px hsl(var(--h) var(--s) var(--l) / 0.08), var(--glass-hi);
 }
 html:not(.lite) .sg-fab {
   background: rgba(28, 28, 30, 0.6);
@@ -10164,7 +10186,7 @@ html:not(.lite) .sg-fab {
 }
 .sg-fab-ic { filter: none; }
 .sg-fab-ic .ic { width: 26px; height: 26px; stroke-width: 1.8; }
-.sg-fab-glow { box-shadow: 0 0 0 0 rgba(52, 199, 123, 0.45); }
+.sg-fab-glow { box-shadow: 0 0 0 0 hsl(var(--h) var(--s) var(--l) / 0.45); }
 .sg-send, .story-send {
   background: var(--accent-grad); color: var(--accent-ink);
   display: grid; place-items: center;
@@ -10201,17 +10223,17 @@ html:not(.lite) .sg-fab {
 /* ============================================================== splash */
 .splash {
   background:
-    radial-gradient(60vmax 46vmax at 50% 40%, rgba(52, 199, 123, 0.12), transparent 60%),
+    radial-gradient(60vmax 46vmax at 50% 40%, hsl(var(--h) var(--s) var(--l) / 0.12), transparent 60%),
     #000;
 }
 .splash-brand { gap: 8px; }
 .splash-brand b {
   font-size: 34px; font-weight: 800; letter-spacing: -0.04em; color: #fff;
-  text-shadow: 0 6px 30px rgba(52, 199, 123, 0.28);
+  text-shadow: 0 6px 30px hsl(var(--h) var(--s) var(--l) / 0.28);
 }
 .splash-tick {
   width: 28px; height: 28px; flex: none; color: var(--accent);
-  filter: drop-shadow(0 3px 10px rgba(52, 199, 123, 0.45));
+  filter: drop-shadow(0 3px 10px hsl(var(--h) var(--s) var(--l) / 0.45));
   animation: tickPop 0.6s var(--spring) 0.35s both;
 }
 .splash-mark { display: none; }
@@ -10240,7 +10262,7 @@ html:not(.lite) .sg-fab {
 }
 .hh-tick {
   width: 20px; height: 20px; flex: none; color: var(--accent);
-  filter: drop-shadow(0 2px 8px rgba(52, 199, 123, 0.42));
+  filter: drop-shadow(0 2px 8px hsl(var(--h) var(--s) var(--l) / 0.42));
   animation: tickPop 0.55s var(--spring) 0.2s both;
 }
 @keyframes hhIn { from { opacity: 0; transform: translate3d(0, -4px, 0); } }
@@ -10277,59 +10299,28 @@ html:not(.lite) .sg-fab {
 }
 /* Ko'rilmagan: yashil gradient halqa sekin aylanadi (faqat ::before —
    muqova o'zi qimirlamaydi). */
-.story:not(.seen):not(.story-add) .story-ring::before {
+.story:not(.seen):not(.story-theme) .story-ring::before {
   content: ""; position: absolute; inset: 0; border-radius: 50%; z-index: -1;
-  background: conic-gradient(from 0deg, #b8f5d3, #34c77b 22%, #1f8f55 45%, rgba(52, 199, 123, 0.18) 62%, #34c77b 82%, #b8f5d3);
+  background: conic-gradient(from 0deg, var(--accent-pale), var(--accent) 22%, var(--accent-2) 45%, hsl(var(--h) var(--s) var(--l) / 0.18) 62%, var(--accent) 82%, var(--accent-pale));
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
           mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
   animation: ringSpin 6s linear infinite;
 }
-.story:not(.seen):not(.story-add) .story-ring::after {
+.story:not(.seen):not(.story-theme) .story-ring::after {
   content: ""; position: absolute; inset: -2px; border-radius: 50%; z-index: -2;
-  box-shadow: 0 0 14px rgba(52, 199, 123, 0.28);
+  box-shadow: 0 0 14px hsl(var(--h) var(--s) var(--l) / 0.28);
   pointer-events: none;
 }
 .story.seen .story-ring { background: transparent; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.12); }
 .story-face {
   border: 2.5px solid var(--bg);
-  background: #0e2c1e;
+  background: var(--accent-deep3);
 }
 .story-face img { width: 100%; height: 100%; object-fit: cover; }
 .story-label { font-size: 11.5px; font-weight: 500; color: rgba(235, 235, 245, 0.78); letter-spacing: -0.01em; }
 .story.seen .story-label { color: var(--dim); }
 .story:active .story-ring { transform: scale(0.92); }
 @keyframes ringSpin { to { transform: rotate(360deg); } }
-
-/* «+» — yangi story (admin) */
-.story-add-ring { padding: 3.5px; }
-.story-add-orbit {
-  position: absolute; inset: 0; border-radius: 50%; z-index: -1;
-  background: conic-gradient(from 0deg, #d4fbe6, #34c77b 20%, #17804a 40%, rgba(52, 199, 123, 0.1) 58%, #2cb46b 80%, #d4fbe6);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
-          mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
-  animation: ringSpin 3.2s linear infinite;
-}
-.story-add-ring::after {
-  content: ""; position: absolute; inset: 0; border-radius: 50%; z-index: -2; pointer-events: none;
-  animation: addRipple 2.8s var(--silk) infinite;
-}
-.story-add-face {
-  display: grid; place-items: center;
-  background: radial-gradient(circle at 50% 35%, #1c1c1e, #0b0b0c);
-  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
-}
-.story-add-plus {
-  width: 36px; height: 36px; border-radius: 50%;
-  display: grid; place-items: center;
-  background: var(--accent-grad);
-  box-shadow: 0 6px 16px rgba(31, 143, 85, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35);
-}
-.story-add-plus svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2.8; stroke-linecap: round; }
-.story-add .story-label { color: var(--accent); font-weight: 650; }
-@keyframes addRipple {
-  0%       { box-shadow: 0 0 0 0 rgba(52, 199, 123, 0.42); }
-  70%, 100% { box-shadow: 0 0 0 10px rgba(52, 199, 123, 0); }
-}
 
 /* Story ko'ruvchisidagi avatar — muqova rasmi */
 .story-ava { overflow: hidden; }
@@ -10393,10 +10384,10 @@ html:not(.lite) .banner-tag {
 .chip.cat-chip::after { display: none; }
 .chip.cat-chip i { display: none; }
 .chip.cat-chip.on {
-  background: linear-gradient(135deg, #1f6b46 0%, #145035 60%, #0f3d29 100%);
-  border-color: rgba(52, 199, 123, 0.45);
+  background: linear-gradient(135deg, var(--accent-deep1) 0%, var(--accent-deep2) 60%, var(--accent-deep3) 100%);
+  border-color: hsl(var(--h) var(--s) var(--l) / 0.45);
   color: #fff;
-  box-shadow: 0 6px 18px -6px rgba(31, 143, 85, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow: 0 6px 18px -6px hsl(var(--h) var(--s) var(--l3) / 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   animation: chipIn 0.45s var(--spring) both, chipOn 0.4s var(--spring);
   animation-delay: calc(var(--i, 0) * 45ms), 0s;
 }
@@ -10413,12 +10404,168 @@ html:not(.lite) .banner-tag {
 
 /* ========================================================= lite / kamaytirish */
 html.lite .story-ring::before,
-html.lite .story-add-orbit { animation: none !important; }
-html.lite .story-add-ring::after { animation: none; }
+html.lite .story-theme-orbit { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
-  .story-ring::before, .story-add-orbit, .story-add-ring::after,
+  .story-ring::before, .story-theme-orbit,
   .hh-brand, .hh-tick, .splash-tick, .chip.cat-chip { animation: none !important; }
 }
 /* Birinchi chizishdan keyin chiplar qayta «kirib kelmaydi» — faqat tanlangani sakraydi */
 .chips.chips-ready .chip.cat-chip { animation: none; }
 .chips.chips-ready .chip.cat-chip.on { animation: chipOn 0.4s var(--spring); }
+
+/* ##########################################################################
+   UZBROVV — 3-BOSQICH: RANG GENERATORI VA «KAMROQ RANG»
+
+   Mahsulot qarori: brend rangi «hamma joyni bosib ketmasin». Shu sababli
+   rang faqat MUHIM joylarda qoladi (asosiy tugmalar, faol tab ikoni,
+   tasdiq belgisi, stories halqasi). Navigatsiya «pufagi», kategoriya
+   chiplari, fon va yordamchi tugma — NEYTRAL (iOS kulrang/oq).
+   Brend rangining o'zini admin «Rang» generatori bilan tanlaydi.
+   ########################################################################## */
+
+/* ---- fon: rangli dog'lar o'rniga deyarli toza qora, tepada juda yengil nur */
+.fx {
+  background:
+    radial-gradient(80vw 30vh at 50% -10%, hsl(var(--h) var(--s) var(--l) / 0.07), transparent 70%),
+    var(--bg);
+}
+.splash {
+  background:
+    radial-gradient(60vmax 46vmax at 50% 40%, hsl(var(--h) var(--s) var(--l) / 0.08), transparent 60%),
+    #000;
+}
+.splash-brand b, .hello-name { text-shadow: none; }
+
+/* ---- pastki menyu: neytral shisha «pufak», faol ikon — brend rangida */
+.nav-pill {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.07));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 0 0 0.5px rgba(255, 255, 255, 0.12),
+    0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.nav-btn { font-size: 10px; }
+.nav-btn .ic { width: 24px; height: 24px; }
+/* Oltita tugma (admin) ham sig'sin */
+.nav-btn span { letter-spacing: -0.02em; }
+
+/* ---- kategoriya chiplari: tanlangani iOS uslubida OQ (rangsiz) */
+.chip.cat-chip.on {
+  background: #f5f5f7;
+  border-color: #f5f5f7;
+  color: #0b0b0c;
+  box-shadow: 0 6px 18px -8px rgba(255, 255, 255, 0.35);
+}
+
+/* ---- yordamchi tugma (Shogird): neytral shisha, oq ikon */
+.sg-fab { color: #f5f5f7; border-color: rgba(255, 255, 255, 0.14); }
+.sg-fab-glow { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.25); }
+
+/* ---- stories: muqovalar o'z rangida; halqa — brend rangida, nozikroq */
+.story:not(.seen):not(.story-theme) .story-ring::after { box-shadow: none; }
+.story-face { background: #1c1c1e; }
+
+/* ==================================================== «RANG» tugmasi (admin) */
+.story-theme-ring { padding: 3.5px; }
+.story-theme-orbit {
+  position: absolute; inset: 0; border-radius: 50%; z-index: -1;
+  background: conic-gradient(#ff453a, #ff9f0a, #ffd60a, #30d158, #64d2ff, #0a84ff, #bf5af2, #ff375f, #ff453a);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  animation: ringSpin 7s linear infinite;
+}
+.story-theme-face {
+  display: grid; place-items: center;
+  background: radial-gradient(circle at 50% 35%, #1c1c1e, #0b0b0c);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+}
+.story-theme-dot {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent-grad);
+  box-shadow: 0 6px 16px hsl(var(--h) var(--s) var(--l3) / 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: background 0.3s ease;
+}
+.story-theme-dot svg { width: 21px; height: 21px; fill: var(--accent-ink); }
+.story-theme-dot svg circle { fill: hsl(var(--h) var(--s) var(--l3)); }
+.story-theme .story-label { color: var(--text); font-weight: 650; }
+
+/* ==================================================== RANG GENERATORI oynasi */
+.tg { display: grid; gap: 16px; padding-bottom: 4px; }
+
+.tg-pv {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px; border-radius: 18px;
+  background: #161618; border: 0.5px solid var(--glass-line);
+}
+.tg-pv-sw {
+  width: 46px; height: 46px; border-radius: 14px; flex: none;
+  background: var(--accent-grad);
+  box-shadow: 0 8px 20px hsl(var(--h) var(--s) var(--l3) / 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.tg-pv-tx { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.tg-pv-tx b { font-size: 17px; font-weight: 750; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+.tg-pv-tx small { font-size: 12.5px; color: var(--muted); }
+.tg-pv-btn {
+  flex: none; padding: 9px 14px; border-radius: 12px;
+  background: var(--accent-grad); color: var(--accent-ink);
+  font-size: 13px; font-weight: 700;
+}
+
+.tg-presets {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px 6px;
+}
+.tg-preset {
+  display: grid; justify-items: center; gap: 5px;
+  background: none; border: 0; padding: 0; color: var(--muted);
+  font: inherit; font-size: 10px; font-weight: 600; cursor: pointer;
+}
+.tg-preset i {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--c);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 4px 10px rgba(0, 0, 0, 0.35);
+  transition: transform 0.25s var(--spring), box-shadow 0.25s ease;
+}
+.tg-preset span { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-preset:active i { transform: scale(0.88); }
+.tg-preset.on i { box-shadow: 0 0 0 2.5px var(--bg-2), 0 0 0 4.5px #f5f5f7; transform: scale(1.04); }
+.tg-preset.on { color: var(--text); }
+
+.tg-ctl { display: grid; gap: 8px; }
+.tg-lbl { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); font-weight: 600; margin-top: 4px; }
+.tg-lbl b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.tg-range {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 30px; margin: 0; border-radius: 15px;
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+  outline: none; cursor: pointer;
+}
+.tg-hue {
+  background: linear-gradient(90deg,
+    hsl(0 90% 55%), hsl(60 90% 55%), hsl(120 90% 45%), hsl(180 90% 45%),
+    hsl(240 90% 60%), hsl(300 90% 55%), hsl(360 90% 55%));
+}
+.tg-sat {
+  background: linear-gradient(90deg, hsl(var(--h) 0% var(--l)), hsl(var(--h) 100% var(--l)));
+}
+.tg-light {
+  background: linear-gradient(90deg, hsl(var(--h) var(--s) 18%), hsl(var(--h) var(--s) 50%), hsl(var(--h) var(--s) 82%));
+}
+.tg-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: #fff; border: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 0 0.5px rgba(0, 0, 0, 0.1);
+}
+.tg-range::-moz-range-thumb {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: #fff; border: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+.tg-range::-moz-range-track { background: transparent; }
+
+.tg-acts { display: grid; grid-template-columns: 1fr 1.6fr; gap: 10px; }
+.tg-note { margin: -4px 0 0; text-align: center; font-size: 12px; color: var(--dim); }
+
+@media (prefers-reduced-motion: reduce) {
+  .story-theme-orbit { animation: none; }
+}

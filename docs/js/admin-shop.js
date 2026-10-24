@@ -100,8 +100,7 @@ window.ZimmerShop = (function () {
     invTyping: null, // qidiruv debounce taymeri
     invIO: null, // IntersectionObserver (cheksiz skroll)
     orders: [],
-    // Bosh sahifa boshqaruvi: fon musiqasi va bannerlar ro'yxati
-    music: [], // [{key, id, title, sort, is_active, ...}]
+    // Bosh sahifa boshqaruvi: bannerlar ro'yxati
     banners: [], // [{key, id, title, subtitle, tag, photo_url, sort, ...}]
     // Mashinalar boshqaruvi (Katalog -> Mashinalar). `S.cars` dan ATAYLAB
     // alohida: u tovarga biriktirish uchun ixcham ro'yxat, bu esa panel
@@ -357,14 +356,11 @@ window.ZimmerShop = (function () {
       ) +
       "</div>" +
       /* --- bosh sahifa ko'rinishi
-         Ilgari bannerlar va fon musiqasi panelda UMUMAN yo'q edi: banner
-         faqat Telegram boti orqali, musiqa esa faqat `/musiqa_del_12`
-         degan buyruq bilan boshqarilardi. Tartibini almashtirish imkoni
-         esa hech qayerda yo'q edi. */
+         Ilgari bannerlar panelda UMUMAN yo'q edi (faqat Telegram boti
+         orqali boshqarilardi). Fon musiqasi butunlay olib tashlandi. */
       '<div class="apx-sub">Bosh sahifa</div>' +
       '<div class="shop-hero shop-hero-2">' +
       tile("shop-banners", "shop-hero-ban", "🖼", "Bannerlar", "Rasm, tartib, o'chirish") +
-      tile("shop-music", "shop-hero-music", "🎵", "Fon musiqasi", "Tartib va o'chirish") +
       "</div>";
 
     const bind = (id, fn) => {
@@ -417,7 +413,6 @@ window.ZimmerShop = (function () {
     });
 
     bind("shop-banners", openBanners);
-    bind("shop-music", openMusic);
 
     // Sanoqchilar FONDA yuklanadi — menyu darhol ochiladi.
     refreshBadges();
@@ -4050,235 +4045,6 @@ window.ZimmerShop = (function () {
   }
 
   /* ==================================================================
-     FON MUSIQASI — TARTIB VA O'CHIRISH
-
-     NEGA PANELGA KO'CHIRILDI
-     Ilgari musiqani boshqarishning YAKKA yo'li Telegram boti edi:
-     `/musiqa` ro'yxatni chiqarardi, o'chirish uchun esa `/musiqa_del_12`
-     degan buyruqni QO'LDA yozish kerak edi. Tartibni o'zgartirish imkoni
-     UMUMAN yo'q edi — trek qo'shilgan ketma-ketligida qolib ketardi va
-     birinchi eshitiladigan qo'shiqni almashtirish uchun hammasini
-     o'chirib, yangi tartibda qaytadan tashlash kerak bo'lardi.
-
-     TREK QO'SHISH BOTDA QOLADI — bu ataylab. Audio faylni Telegram
-     allaqachon o'zida saqlaydi va bot uni bir bosishda qabul qiladi;
-     brauzerdan 5-10 MB audio yuklash esa sekin va ishonchsiz.
-
-     MANBA — FIREBASE (`catalog/music`), tovar va stories bilan bir xil
-     model: panel brauzerdan to'g'ridan yozadi, mijoz tomoni shu holatni
-     o'qiydi (`app.js: fetchMusicTracks`).
-     ================================================================== */
-
-  const MUSIC_P = "catalog/music";
-
-  /** Bulutdagi treklar — panel uchun XOM ro'yxat (o'chirilganlar chiqmaydi,
-   *  YASHIRILGANLAR esa chiqadi: adminga ularni qaytarish imkoni kerak). */
-  async function loadMusicRows() {
-    const node = await fb().get(MUSIC_P);
-    const out = [];
-    if (node && typeof node === "object") {
-      Object.keys(node).forEach((k) => {
-        const r = node[k];
-        if (!r || typeof r !== "object" || r.deleted) return;
-        out.push({
-          key: k, // RTDB kaliti — yozish yo'li shu bo'yicha quriladi
-          id: r.id == null ? k : r.id,
-          title: String(r.title || "Fon musiqasi"),
-          duration: Number(r.duration) || 0,
-          sort: Number(r.sort) || 0,
-          audio_url: String(r.audio_url || ""),
-          audio_id: String(r.audio_id || ""),
-          is_active: r.is_active !== 0 && r.is_active !== false,
-        });
-      });
-    }
-    // Ekrandagi tartib mijoz eshitadigan tartib bilan BIR XIL bo'lishi shart
-    out.sort((a, b) => a.sort - b.sort || Number(a.id) - Number(b.id));
-    return out;
-  }
-
-  async function openMusic() {
-    S.view = "music";
-    setHead("🎵 Fon musiqasi", "Yuklanmoqda...");
-    body().innerHTML = '<div class="inv-skel"></div><div class="inv-skel"></div>';
-    try {
-      S.music = await loadMusicRows();
-      renderMusic();
-    } catch (err) {
-      fail(err, openMusic);
-    }
-  }
-
-  const mmss = (sec) => {
-    const s = Math.max(0, Math.round(Number(sec) || 0));
-    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
-  };
-
-  function renderMusic() {
-    const list = S.music || [];
-    setHead("🎵 Fon musiqasi", list.length ? list.length + " ta trek" : "Trek yo'q");
-
-    if (!list.length) {
-      body().innerHTML =
-        '<div class="adm-hint-block">' +
-        "<b>Hali trek qo'shilmagan.</b><br><br>" +
-        "Qo'shish uchun botga audio faylni yuboring — u o'zi ro'yxatga " +
-        "tushadi. Keyin bu yerda tartibini o'zgartirishingiz va " +
-        "o'chirishingiz mumkin.<br><br>" +
-        "Trek yo'q bo'lsa mijozda 🔇 tugmasi UMUMAN ko'rinmaydi." +
-        "</div>";
-      return;
-    }
-
-    body().innerHTML =
-      '<div class="adm-hint-block">' +
-      "Mijoz treklarni SHU TARTIBDA eshitadi. Yangi trek qo'shish — " +
-      "botga audio yuborish orqali." +
-      "</div>" +
-      '<div class="mus-list" id="mus-list">' +
-      list.map(musCard).join("") +
-      "</div>";
-
-    bindMusic();
-  }
-
-  function musCard(t, i) {
-    const list = S.music || [];
-    /* Brauzerda ochilmaydigan trek — bot orqali qo'shilgan va Firebase
-       Storage o'chiq bo'lgan holat: bunda faqat Telegram `file_id` bor.
-       Render uyg'oq bo'lsa u proksi bilan eshittiradi, uxlagan bo'lsa esa
-       trek jimgina o'tkazib yuboriladi. Admin buni BILISHI kerak. */
-    const proxied = !/^https?:\/\//i.test(t.audio_url);
-    return (
-      '<div class="mus-card' + (t.is_active ? "" : " is-off") + '" data-key="' + esc(t.key) + '">' +
-      '<span class="mus-num">' + (i + 1) + "</span>" +
-      '<div class="mus-mid">' +
-      "<b>" + esc(t.title) + "</b>" +
-      '<div class="mus-meta">' +
-      (t.duration ? "<span>⏱ " + mmss(t.duration) + "</span>" : "") +
-      (proxied ? '<span class="mus-warn">☁️ server orqali</span>' : "<span>🔗 to'g'ridan</span>") +
-      (t.is_active ? "" : '<span class="mus-warn">🙈 yashirin</span>') +
-      "</div></div>" +
-      '<div class="mus-acts">' +
-      '<button class="mus-btn" data-mv="up" data-key="' + esc(t.key) + '"' +
-      (i === 0 ? " disabled" : "") + ' aria-label="Yuqoriga">↑</button>' +
-      '<button class="mus-btn" data-mv="down" data-key="' + esc(t.key) + '"' +
-      (i === list.length - 1 ? " disabled" : "") + ' aria-label="Pastga">↓</button>' +
-      '<button class="mus-btn" data-eye="' + esc(t.key) + '" aria-label="Yashirish">' +
-      (t.is_active ? "👁" : "🙈") + "</button>" +
-      '<button class="mus-btn mus-del" data-del="' + esc(t.key) + '" aria-label="O\'chirish">🗑</button>' +
-      "</div>" +
-      "</div>"
-    );
-  }
-
-  function bindMusic() {
-    document.querySelectorAll("#mus-list [data-mv]").forEach((btn) => {
-      btn.onclick = () => moveTrack(btn.dataset.key, btn.dataset.mv === "up" ? -1 : 1);
-    });
-    document.querySelectorAll("#mus-list [data-eye]").forEach((btn) => {
-      btn.onclick = () => toggleTrack(btn.dataset.eye);
-    });
-    document.querySelectorAll("#mus-list [data-del]").forEach((btn) => {
-      btn.onclick = () => deleteTrack(btn.dataset.del);
-    });
-  }
-
-  /** Mijoz tomonidagi ro'yxatni ham yangilaydi (tugma holati bilan). */
-  function freshenMusic() {
-    if (app().reloadMusic) app().reloadMusic();
-  }
-
-  /* Tartibni o'zgartirish: ikki trekni almashtirib, `sort` ni QAYTADAN
-     raqamlaymiz (0, 10, 20...). Nega qayta raqamlash: bulutdagi eski
-     yozuvlarda `sort` ning hammasi 0 bo'lishi mumkin — o'sha holatda
-     joyini almashtirish HECH NARSA o'zgartirmasdi. Bo'sh oraliq (10)
-     kelajakda oraga qo'shish uchun joy qoldiradi. */
-  async function moveTrack(key, delta) {
-    if (S.busy) return;
-    const list = S.music || [];
-    const at = list.findIndex((t) => t.key === key);
-    const to = at + delta;
-    if (at === -1 || to < 0 || to >= list.length) return;
-
-    haptic("light");
-    const next = list.slice();
-    next[at] = list[to];
-    next[to] = list[at];
-
-    // Ekranda DARHOL ko'rinadi — tarmoq javobini kutib turmaydi
-    const before = list.slice();
-    next.forEach((t, i) => (t.sort = i * 10));
-    S.music = next;
-    renderMusic();
-
-    S.busy = true;
-    try {
-      // Faqat `sort` haqiqatan o'zgargan yozuvlar yoziladi
-      const writes = next
-        .map((t, i) => ({ t: t, sort: i * 10 }))
-        .filter((w) => {
-          const old = before.find((b) => b.key === w.t.key);
-          return !old || old.sort !== w.sort;
-        });
-      for (const w of writes) {
-        await fb().patch(MUSIC_P + "/" + w.t.key, { sort: w.sort });
-      }
-      freshenMusic();
-    } catch (err) {
-      // Yozilmadi — ekranni ESKI holatga qaytaramiz, aks holda admin
-      // tartib saqlangan deb o'ylab qolardi.
-      S.music = before;
-      renderMusic();
-      toast((err && err.message) || "Tartib saqlanmadi");
-    } finally {
-      S.busy = false;
-    }
-  }
-
-  /** 👁 — trekni vaqtincha o'chiradi (yozuv qoladi, keyin qaytarish mumkin). */
-  async function toggleTrack(key) {
-    const t = (S.music || []).find((x) => x.key === key);
-    if (!t || S.busy) return;
-    const next = !t.is_active;
-    haptic();
-    S.busy = true;
-    try {
-      await fb().patch(MUSIC_P + "/" + key, { is_active: next ? 1 : 0 });
-      t.is_active = next;
-      renderMusic();
-      freshenMusic();
-      toast(next ? "✅ Yoqildi" : "🙈 Yashirildi");
-    } catch (err) {
-      toast((err && err.message) || "Saqlanmadi");
-    } finally {
-      S.busy = false;
-    }
-  }
-
-  /** 🗑 — «o'chirilgan» belgisi qo'yiladi (yozuv qoladi, tarix buzilmaydi).
-   *  Tovarlar bilan bir xil mantiq: `deleted: true`. */
-  async function deleteTrack(key) {
-    const t = (S.music || []).find((x) => x.key === key);
-    if (!t || S.busy) return;
-    const ok = await ask("«" + t.title + "» o'chirilsinmi?");
-    if (!ok) return;
-    S.busy = true;
-    try {
-      await fb().patch(MUSIC_P + "/" + key, { deleted: true });
-      S.music = (S.music || []).filter((x) => x.key !== key);
-      haptic("success");
-      renderMusic();
-      freshenMusic();
-      toast("🗑 O'chirildi");
-    } catch (err) {
-      toast((err && err.message) || "O'chirilmadi");
-    } finally {
-      S.busy = false;
-    }
-  }
-
-  /* ==================================================================
      TASHQI INTERFEYS (app.js va admin.js ko'prigi)
      ================================================================== */
   const crm = () => window.ZimmerCRM;
@@ -4810,7 +4576,6 @@ window.ZimmerShop = (function () {
       S.view === "inventory" ||
       S.view === "orders" ||
       S.view === "board" ||
-      S.view === "music" ||
       S.view === "banners" ||
       S.view === "banner-form" ||
       S.view === "cars" ||
@@ -4831,7 +4596,6 @@ window.ZimmerShop = (function () {
     // do'kon buyurtmalariga qaytarib yuborardi).
     if (S.view === "orders") return openKind(S.ordKind || "order");
     if (S.view === "board") return openBookingsBoard();
-    if (S.view === "music") return openMusic();
     if (S.view === "banners" || S.view === "banner-form") return openBanners();
     if (S.view === "cars" || S.view === "car-form") return openCars();
     if (S.view === "add") return openAdd();
