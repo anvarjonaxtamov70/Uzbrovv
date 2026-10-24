@@ -879,8 +879,22 @@
     // Skeletonni tozalaymiz (panelning o'zi ham qayta chizadi)
     if (body) body.innerHTML = "";
 
-    if (window.ZimmerShop) window.ZimmerShop.open();
-    else if (window.ZimmerAdmin) window.ZimmerAdmin.open();
+    const intent = S.adminIntent;
+    S.adminIntent = null;
+    if (window.ZimmerShop) {
+      const opened = window.ZimmerShop.open();
+      // Bosh sahifadagi «+» dan kelgan bo'lsa — darhol «Yangi story» oynasi
+      if (intent === "story-add" && window.ZimmerStories) {
+        try {
+          await opened;
+          if (S.page !== "admin") return;
+          await window.ZimmerStories.open();
+          if (S.page === "admin") window.ZimmerStories.openAdd();
+        } catch (err) {
+          console.error("[admin] story oynasi ochilmadi:", err);
+        }
+      }
+    } else if (window.ZimmerAdmin) window.ZimmerAdmin.open();
     else if (body) {
       body.append(
         el("p", "empty", "Boshqaruv paneli topilmadi. Ilovani yangilab ko'ring.")
@@ -2190,6 +2204,19 @@
 
   /* ------------------------------------------------------- halqalar qatori */
 
+  /** Tayyor muqovasi bor bo'limlar (`docs/img/stories/*.svg`). */
+  const STORY_COVER_KEYS = [
+    "aksiyalar", "bugun", "mijozlar", "natijalar", "kafolat", "lokatsiya", "tolov", "aloqa",
+  ];
+
+  /** «+» halqasi: admin panelini ochib, to'g'ridan «Yangi story» oynasiga
+      o'tadi (`openAdminPanel` dagi `S.adminIntent`). */
+  function openStoryComposer() {
+    haptic("medium");
+    S.adminIntent = "story-add";
+    show("admin");
+  }
+
   /** HALQALAR (bo'limlar): bitta doira ichida bir nechta element.
       Hammasi ko'rilgan bo'lsa halqa xiralashadi (Instagram kabi). */
   function renderStories() {
@@ -2202,22 +2229,41 @@
       const items = ring.items || [];
       const allSeen = items.length > 0 && items.every((it) => seen.includes(it.id));
       const node = el("button", "story" + (allSeen ? " seen" : ""));
-      // Halqa yuzida birinchi elementning rasmi (bo'lsa), aks holda emoji
-      const cover = abs((items[0] && items[0].photo_url) || null);
+      /* MUQOVA — Uzbrovv uslubidagi tayyor rasm (`img/stories/{key}.svg`).
+         Instagram «highlights» kabi: halqa yuzi har doim bir xil va
+         chiroyli, ichidagi birinchi suratga bog'liq emas (u ko'pincha
+         tasodifiy kadr bo'lardi). Muqovani almashtirish — faylni
+         almashtirish kifoya. Noma'lum bo'lim -> `default.svg`. */
+      const coverKey = STORY_COVER_KEYS.includes(ring.key) ? ring.key : "default";
       node.innerHTML = `
         <div class="story-ring">
-          <div class="story-face" style="background:${gradientOf(
-            ring.color_from,
-            ring.color_to
-          )}">${cover ? img(cover) : esc(ring.emoji)}</div>
-          ${items.length > 1 ? `<i class="story-count">${items.length}</i>` : ""}
+          <div class="story-face"><img src="img/stories/${coverKey}.svg" alt="" loading="lazy" decoding="async"></div>
         </div>
         <span class="story-label">${esc(ring.title)}</span>`;
       node.onclick = () => openStory(i);
       box.append(node);
     });
-    // Birorta ham story bo'lmasa — qator umuman ko'rinmaydi (toza ko'rinish)
-    box.classList.toggle("hidden", !S.rings.length);
+
+    /* «+» — YANGI STORY (faqat adminga, Avto_A1 dagi kabi qator boshida).
+       Bosilganda boshqaruv panelining story qo'shish oynasi ochiladi. */
+    const isAdmin = !!(S.me && S.me.is_admin);
+    if (isAdmin) {
+      const add = el("button", "story story-add");
+      add.type = "button";
+      add.setAttribute("aria-label", "Yangi story qo'shish");
+      add.innerHTML = `
+        <div class="story-ring story-add-ring">
+          <i class="story-add-orbit" aria-hidden="true"></i>
+          <div class="story-face story-add-face">
+            <b class="story-add-plus" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></b>
+          </div>
+        </div>
+        <span class="story-label">Qo'shish</span>`;
+      add.onclick = openStoryComposer;
+      box.prepend(add);
+    }
+    // Birorta ham story bo'lmasa — qator umuman ko'rinmaydi (adminga «+» uchun ko'rinadi)
+    box.classList.toggle("hidden", !S.rings.length && !isAdmin);
     // Bosqichma-bosqich chiqish (bir martalik)
     if (S.rings.length) {
       box.classList.remove("enter");
@@ -2480,11 +2526,10 @@
     const ring = S.rings[S.ringIndex] || {};
     const ava = $("story-ava");
     if (ava) {
-      ava.textContent = ring.emoji || "📸";
-      ava.style.background = `linear-gradient(150deg,${safeColor(
-        ring.color_from,
-        "#4cd68f"
-      )},${safeColor(ring.color_to, "#123524")})`;
+      // Halqadagi bilan BIR XIL muqova — mijoz qaysi bo'limda ekanini taniydi
+      const key = STORY_COVER_KEYS.includes(ring.key) ? ring.key : "default";
+      ava.innerHTML = `<img src="img/stories/${key}.svg" alt="">`;
+      ava.style.background = "#0e2c1e";
     }
     const nameEl = $("story-who-name");
     if (nameEl) {
@@ -2901,8 +2946,13 @@
 
     list.forEach((b, i) => {
       const node = el("div", "banner");
-      node.style.background = gradientOf(b.color_from, b.color_to);
       const photo = abs(b.photo_url);
+      /* Rasmli bannerda fon — neytral to'q (ilgari bazadagi rang, ko'pincha
+         eski qizil, yumaloq burchaklardan chiziq bo'lib ko'rinardi).
+         Rasmsiz bannerda — brend yashil gradienti. */
+      node.style.background = photo
+        ? "#0b0b0c"
+        : "linear-gradient(135deg, #1f6b46 0%, #0f3524 55%, #08160f 100%)";
       node.innerHTML = `
         ${img(photo, "banner-bg")}
         ${photo ? '<div class="banner-shade"></div>' : ""}
@@ -3968,18 +4018,21 @@
     /* `aria-pressed` — chip BOSILGAN holatini bildiradi. Ilgari tanlangan
        chip faqat `.on` klassi bilan ajratilardi, ya'ni skrinreader qaysi
        turkum tanlanganini AYTMASDI. */
+    /* Chipda SON YO'Q (mahsulot qarori): «Lampalar 5» emas, oddiy
+       «Lampalar». `--i` — kirish animatsiyasidagi navbat (CSS). */
+    let chipIdx = 0;
     const chip = (key, label, n, on) =>
-      '<button class="chip' +
+      '<button class="chip cat-chip' +
       (on ? " on" : "") +
+      '" style="--i:' +
+      chipIdx++ +
       '" aria-pressed="' +
       (on ? "true" : "false") +
       '" data-cat="' +
       esc(key) +
       '">' +
       esc(label) +
-      " <i>" +
-      n +
-      "</i></button>";
+      "</button>";
 
     /* TARTIB: bo'limning `sort` raqami bo'yicha, keyin nomi bo'yicha.
        Ilgari faqat alifbo bo'yicha edi — natijada «Aksesuarlar»
@@ -3993,6 +4046,12 @@
       chip("", "Barchasi", all.length, !S.shopCat) +
       names.map((k) => chip(k, k, count.get(k), S.shopCat === k)).join("");
     box.classList.remove("hidden");
+    /* Kirish animatsiyasi FAQAT birinchi chizishda. Keyin (chip bosilganda
+       qator qayta chiziladi) faqat tanlangan chip «sakraydi». */
+    if (!box.dataset.shown) {
+      box.dataset.shown = "1";
+      setTimeout(() => box.classList.add("chips-ready"), 900);
+    }
 
     box.querySelectorAll(".chip").forEach((b) => {
       b.onclick = () => {
@@ -8085,7 +8144,7 @@
         .getPropertyValue("--bg")
         .trim();
     } catch (_) {}
-    if (!/^#[0-9a-fA-F]{3,8}$/.test(bg)) bg = "#1c1c1e"; // zaxira
+    if (!/^#[0-9a-fA-F]{3,8}$/.test(bg)) bg = "#0b0b0c"; // zaxira
 
     try {
       if (tg.setHeaderColor) tg.setHeaderColor(bg);

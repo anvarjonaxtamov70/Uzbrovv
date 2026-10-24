@@ -31,14 +31,15 @@
      ======================================================================== */
   color-scheme: dark;
 
-  /* ---- fon va sirtlar (iOS dark: systemGray6 → systemGray4) ---- */
-  --bg: #1c1c1e;
-  --bg-2: #202022;
-  --surface: #2c2c2e;
-  --surface-2: #323234;
-  --surface-3: #3a3a3c;
-  --line: rgba(255, 255, 255, 0.07);
-  --line-2: rgba(255, 255, 255, 0.13);
+  /* ---- fon va sirtlar (iOS dark: systemBackground → secondarySystemBackground)
+     Fon deyarli qora — kartochkalar undan aniq ajraladi (iOS qoidasi). ---- */
+  --bg: #0b0b0c;
+  --bg-2: #111113;
+  --surface: #1c1c1e;
+  --surface-2: #232326;
+  --surface-3: #2c2c2e;
+  --line: rgba(255, 255, 255, 0.06);
+  --line-2: rgba(255, 255, 255, 0.10);
 
   /* ---- matn (iOS label / secondaryLabel / tertiaryLabel) ---- */
   --text: #f5f5f7;
@@ -47,10 +48,11 @@
 
   /* ---- ASOSIY AKSENT — shalfey yashil (brend) ---- */
   --accent: #34c77b;
-  --accent-2: #239a5c;
-  --accent-ink: #04210f;               /* yashil ustidagi to'q matn */
-  --accent-glow: rgba(52, 199, 123, 0.38);
-  --accent-grad: linear-gradient(135deg, #5ad69a 0%, #34c77b 50%, #24a865 100%);
+  --accent-2: #1f8f55;
+  --accent-ink: #ffffff;               /* to'q yashil tugma ustidagi matn */
+  --accent-glow: rgba(52, 199, 123, 0.30);
+  /* Tugmalar uchun TO'QROQ yashil (ko'zni charchatmaydi, matn oq) */
+  --accent-grad: linear-gradient(135deg, #2cb46b 0%, #219a5b 55%, #17804a 100%);
   --accent-soft: linear-gradient(135deg, rgba(76, 214, 143, 0.17), rgba(19, 107, 69, 0.06));
 
   /* ---- ikkinchi aksent — yalpiz (ilgari «tilla» edi: narx, premium) ---- */
@@ -89,13 +91,13 @@
   --shadow-lifted: 0 18px 46px rgba(0, 0, 0, 0.45), 0 4px 14px rgba(52, 199, 123, 0.10);
 
   /* ---- LIQUID GLASS materiali (fayl oxiridagi blokda ishlatiladi) ---- */
-  --glass: rgba(58, 58, 62, 0.42);
-  --glass-strong: rgba(40, 40, 43, 0.66);
-  --glass-solid: #2c2c2e;              /* lite rejim / blur yo'q zaxira */
-  --glass-solid-strong: #252527;
+  --glass: rgba(30, 30, 32, 0.62);
+  --glass-strong: rgba(18, 18, 20, 0.72);
+  --glass-solid: #1c1c1e;              /* lite rejim / blur yo'q zaxira */
+  --glass-solid-strong: #151517;
   --glass-blur: blur(24px) saturate(185%);
   --glass-blur-sm: blur(14px) saturate(170%);
-  --glass-line: rgba(255, 255, 255, 0.11);
+  --glass-line: rgba(255, 255, 255, 0.08);
   --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(255, 255, 255, 0.03);
 
   /* ---- harakat egriliklari (iOS spring) ---- */
@@ -277,7 +279,7 @@ img, video { display: block; max-width: 100%; }
   /* backdrop-filter OLIB TASHLANDI: telefonlarda skroll paytida qotish va
      qizishning asosiy sababi shu edi. Qora temada to'q fon deyarli bir xil
      ko'rinadi, lekin GPU uchun bepul. */
-  background: #1c1c1e;
+  background: #0b0b0c;
   border-bottom: 1px solid var(--line);
 }
 .topbar.static { position: relative; }
@@ -311,14 +313,14 @@ img, video { display: block; max-width: 100%; }
   top: 64px;
   z-index: 25;
   padding: 8px 12px 10px;
-  background: linear-gradient(180deg, var(--bg) 68%, rgba(28, 28, 30, 0.92) 100%);
+  background: linear-gradient(180deg, var(--bg) 68%, rgba(11, 11, 12, 0.92) 100%);
 }
 
 .preview-stage {
   position: relative;
   border-radius: var(--r-lg);
   border: 1px solid var(--line);
-  background: linear-gradient(180deg, var(--surface) 0%, #1a1a1c 100%);
+  background: linear-gradient(180deg, var(--surface) 0%, #0b0b0c 100%);
   overflow: hidden;
 }
 
@@ -549,7 +551,7 @@ img, video { display: block; max-width: 100%; }
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
   display: flex; align-items: center; gap: 12px;
   padding: 11px 16px calc(11px + var(--safe-b));
-  background: rgba(28, 28, 30, 0.94);
+  background: rgba(11, 11, 12, 0.94);
   border-top: 1px solid var(--line);
 }
 .cta-total { flex: none; }
@@ -583,7 +585,7 @@ img, video { display: block; max-width: 100%; }
   /* backdrop-filter OLIB TASHLANDI: telefonlarda skroll paytida qotish va
      qizishning asosiy sababi shu edi. Qora temada to'q fon deyarli bir xil
      ko'rinadi, lekin GPU uchun bepul. */
-  background: #1c1c1e;
+  background: #0b0b0c;
   border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 10px; }
@@ -648,7 +650,7 @@ img, video { display: block; max-width: 100%; }
   border-radius: 999px;
   background: var(--danger); color: #fff;
   font-size: 9px; font-weight: 800; line-height: 1;
-  border: 1.5px solid #1c1c1e; /* header foni — doira «kesib» turadi */
+  border: 1.5px solid #0b0b0c; /* header foni — doira «kesib» turadi */
 }
 
 /* Juda tor ekran (320-360px): brand yozuvi eng avval qurbon bo'ladi —
@@ -840,7 +842,7 @@ img, video { display: block; max-width: 100%; }
   position: fixed; left: 12px; right: 12px; bottom: calc(10px + var(--safe-b));
   z-index: 45;
   display: flex;
-  background: #2a2a2c;   /* blur o'rniga qattiq fon — silliq va tejamkor */
+  background: #1a1a1c;   /* blur o'rniga qattiq fon — silliq va tejamkor */
   border: 1px solid var(--line-2);
   border-radius: 22px;
   padding: 6px;
@@ -987,7 +989,7 @@ img, video { display: block; max-width: 100%; }
   align-items: center;
   gap: 10px;
   overflow: hidden;
-  background: rgba(44, 44, 46, 0.97);
+  background: rgba(28, 28, 30, 0.97);
   border: 1px solid var(--line-2);
   border-left: 3px solid var(--accent);
   color: #fff;
@@ -2356,7 +2358,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   position: fixed; left: 0; right: 0; z-index: 42;
   bottom: calc(76px + var(--safe-b));
   padding: 12px 16px 14px;
-  background: rgba(28, 28, 30, 0.97);
+  background: rgba(11, 11, 12, 0.97);
   border-top: 1px solid var(--line);
   border-radius: 22px 22px 0 0;
   box-shadow: 0 -14px 34px rgba(0, 0, 0, 0.5);
@@ -2661,7 +2663,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 
 .prod {
   position: relative;
-  background: #2c2c2e;                 /* Avto_A1: #1c1c1e — Uzbrovv'ga moslangan */
+  background: #1c1c1e;                 /* Avto_A1: #0b0b0c — Uzbrovv'ga moslangan */
   border: none;
   border-radius: 20px;
   padding: 10px;
@@ -2988,7 +2990,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 
 /* #9 — Banner kartalariga glassmorphism effekt (blur ishlatilmaydi) */
 .banner {
-  background: linear-gradient(145deg, rgba(44, 44, 46, 0.9), rgba(28, 28, 30, 0.95));
+  background: linear-gradient(145deg, rgba(28, 28, 30, 0.9), rgba(11, 11, 12, 0.95));
   transition: transform 0.25s var(--silk);
 }
 .banner:active {
@@ -3293,7 +3295,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 
 /* #37 — Topbar ga nozik gradient */
 .topbar, .home-header {
-  background: linear-gradient(180deg, #1e1e20 0%, #1c1c1e 100%);
+  background: linear-gradient(180deg, #111113 0%, #0b0b0c 100%);
 }
 
 /* #38 — Gate (ro'yxatdan o'tish) sahifasi: yangi animatsiya */
@@ -3394,7 +3396,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   display: flex;
   justify-content: space-between;
   padding: calc(var(--safe-t) + 12px) 16px 12px;
-  background: rgba(28, 28, 30, 0.85);
+  background: rgba(11, 11, 12, 0.85);
   backdrop-filter: blur(6px) saturate(140%);
   -webkit-backdrop-filter: blur(6px) saturate(140%);
   border-bottom: 1px solid var(--line);
@@ -3681,7 +3683,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   align-items: center;
   padding: 16px;
   padding-bottom: calc(16px + var(--safe-b));
-  background: rgba(28, 28, 30, 0.95);
+  background: rgba(11, 11, 12, 0.95);
   backdrop-filter: blur(10px) saturate(150%);
   -webkit-backdrop-filter: blur(10px) saturate(150%);
   border-top: 1px solid var(--line);
@@ -3832,7 +3834,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: rgba(44, 44, 46, 0.85);
+  background: rgba(28, 28, 30, 0.85);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6343,7 +6345,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
        2) `fit` klassi qo'yilgan cho'ziq surat chetlarida.
      Ikkisida ham qorong'i rang to'g'ri: yorug' fon yuklanish paytida
      «chaqnab» ketardi va qorong'i kartochkada begona ko'rinardi. */
-  background: linear-gradient(158deg, #2e2e30 0%, #1f1f21 100%);
+  background: linear-gradient(158deg, #1e1e20 0%, #111113 100%);
 }
 /* Chegara SURAT USTIDAN chiziladi (`::after`), `box-shadow: inset`
    bilan emas: rasm — `position: absolute` bo'lgan BOLA element,
@@ -6427,7 +6429,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .prod-badge {
   top: 8px;
   left: 8px;
-  background: rgba(28, 28, 30, 0.82);
+  background: rgba(11, 11, 12, 0.82);
   color: #fff;
 }
 .prod-off ~ .prod-badge { top: 34px; }
@@ -6438,7 +6440,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(28, 28, 30, 0.86);
+  background: rgba(11, 11, 12, 0.86);
   color: #fff;
   font-size: 11px;
   padding: 5px 12px;
@@ -6458,7 +6460,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: rgba(28, 28, 30, 0.7);
+  background: rgba(11, 11, 12, 0.7);
   color: #fff;
   font-size: 9px;
 }
@@ -6584,12 +6586,12 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
    (skroll paytida qotish va qizishning asosiy sababi). O'rniga qattiq
    gradient — ko'rinishi deyarli bir xil, ishlashi beqiyos yengil. */
 .pm-header {
-  background: linear-gradient(180deg, rgba(28, 28, 30, 0.98), rgba(28, 28, 30, 0.9));
+  background: linear-gradient(180deg, rgba(11, 11, 12, 0.98), rgba(11, 11, 12, 0.9));
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 .pm-footer {
-  background: linear-gradient(0deg, rgba(28, 28, 30, 0.99), rgba(28, 28, 30, 0.94));
+  background: linear-gradient(0deg, rgba(11, 11, 12, 0.99), rgba(11, 11, 12, 0.94));
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -6664,7 +6666,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: rgba(28, 28, 30, 0.28);
+  background: rgba(11, 11, 12, 0.28);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
   transition: width 0.3s var(--spring), background 0.3s;
 }
@@ -6687,7 +6689,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   padding: 6px 11px;
   border: none;
   border-radius: 999px;
-  background: rgba(28, 28, 30, 0.72);
+  background: rgba(11, 11, 12, 0.72);
   color: #fff;
   font-family: inherit;
   font-size: 10.5px;
@@ -6716,7 +6718,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   z-index: 12000;
   display: flex;
   flex-direction: column;
-  background: #111113;
+  background: #070708;
   animation: ivIn 0.24s var(--silk);
   touch-action: none;
   overscroll-behavior: contain;
@@ -7070,7 +7072,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   border: none;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.94);
-  color: #2a2a2c;
+  color: #1a1a1c;
   font-family: inherit;
   font-size: 12.5px;
   font-weight: 800;
@@ -7316,7 +7318,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: rgba(28, 28, 30, 0.72);
+  background: rgba(11, 11, 12, 0.72);
   color: #fff;
   font-size: 7px;
   font-style: normal;
@@ -9214,7 +9216,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   gap: 8px;
   padding: 9px 14px calc(10px + var(--safe-b));
   /* Qattiq fon (blur emas): yozishma ostidan o'tib ketmasin */
-  background: linear-gradient(180deg, rgba(28, 28, 30, 0.75), var(--bg) 45%);
+  background: linear-gradient(180deg, rgba(11, 11, 12, 0.75), var(--bg) 45%);
   border-top: 1px solid var(--line);
 }
 #sg-in {
@@ -9492,7 +9494,7 @@ textarea:focus-visible,
      Qorong'i to'q fon (katalog rasmlarini to'smasin) + ko'kish tus va
      chegara. Oltin gradient OLIB TASHLANDI: foydalanuvchi eski, xotirjam
      ko'rinishni afzal ko'rdi. */
-  background: #323234;
+  background: #232326;
   border: 1px solid rgba(120, 160, 255, 0.32);
   color: #cdd9ff;
   box-shadow:
@@ -9756,10 +9758,9 @@ textarea:focus-visible,
 .fx-grid, .fx::after { display: none; }
 .fx {
   background:
-    radial-gradient(60vw 42vh at 8% -4%, rgba(52, 199, 123, 0.20), transparent 70%),
-    radial-gradient(55vw 40vh at 100% 18%, rgba(47, 180, 160, 0.13), transparent 70%),
-    radial-gradient(70vw 46vh at 30% 62%, rgba(52, 199, 123, 0.07), transparent 72%),
-    radial-gradient(60vw 40vh at 92% 96%, rgba(126, 220, 168, 0.08), transparent 70%),
+    radial-gradient(70vw 34vh at 50% -8%, rgba(52, 199, 123, 0.13), transparent 70%),
+    radial-gradient(50vw 36vh at 100% 22%, rgba(47, 180, 160, 0.07), transparent 70%),
+    radial-gradient(70vw 46vh at 20% 70%, rgba(52, 199, 123, 0.045), transparent 72%),
     var(--bg);
 }
 .fx-beam { display: none; }
@@ -9814,7 +9815,7 @@ h1, h2, h3, h4, .step-title, .sec-title, .topbar-title { letter-spacing: -0.02em
 /* ===================================================== panellar (chrome)
    Sarlavha, pastki panellar, modal sarlavhasi/pastki qismi. */
 .topbar, .home-header {
-  background: rgba(28, 28, 30, 0.86);
+  background: rgba(11, 11, 12, 0.88);
   border-bottom: 0.5px solid var(--glass-line);
 }
 .topbar.static { background: transparent; border-bottom-color: transparent; }
@@ -9824,12 +9825,12 @@ h1, h2, h3, h4, .step-title, .sec-title, .topbar-title { letter-spacing: -0.02em
   border-top: 0.5px solid var(--glass-line);
   box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.28);
 }
-.pm-header { background: rgba(28, 28, 30, 0.9); }
+.pm-header { background: rgba(11, 11, 12, 0.9); }
 .sg-bar { background: linear-gradient(180deg, rgba(28, 28, 30, 0), var(--bg) 40%); }
 
 html:not(.lite) .home-header,
 html:not(.lite) .topbar:not(.static) {
-  background: rgba(28, 28, 30, 0.58);
+  background: rgba(11, 11, 12, 0.62);
   -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
 }
 html:not(.lite) .sticky-cta,
@@ -9842,7 +9843,7 @@ html:not(.lite) .map-picker-bar {
   -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
 }
 html:not(.lite) .sg-bar {
-  background: rgba(28, 28, 30, 0.55);
+  background: rgba(11, 11, 12, 0.6);
   -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
   border-top: 0.5px solid var(--glass-line);
 }
@@ -9857,7 +9858,7 @@ html:not(.lite) .sg-bar {
   box-shadow: 0 14px 38px rgba(0, 0, 0, 0.45), var(--glass-hi);
 }
 html:not(.lite) .nav {
-  background: rgba(40, 40, 43, 0.5);
+  background: rgba(24, 24, 26, 0.62);
   -webkit-backdrop-filter: blur(28px) saturate(190%); backdrop-filter: blur(28px) saturate(190%);
 }
 .nav-pill {
@@ -9889,7 +9890,7 @@ html:not(.lite) .nav {
 .nav-btn .badge {
   top: 2px; right: calc(50% - 22px);
   background: var(--danger); color: #fff;
-  box-shadow: 0 0 0 2px rgba(40, 40, 43, 0.9);
+  box-shadow: 0 0 0 2px #151517;
 }
 
 /* ============================================================== tugmalar */
@@ -10061,7 +10062,7 @@ html:not(.lite) .pf-menu-item:active,
 html:not(.lite) .mo-tile:active,
 html:not(.lite) .opt:active,
 html:not(.lite) .sg-topic:active {
-  background-color: rgba(80, 80, 86, 0.5);
+  background-color: rgba(58, 58, 62, 0.55);
 }
 
 /* Profil kartasi — qizil hairline o'rniga yashil nur */
@@ -10094,7 +10095,7 @@ html:not(.lite) .sg-topic:active {
    iOS 26: pastdan chiqadigan shisha oyna, kattaroq burchak, prujinali. */
 .sheet-backdrop { background: rgba(0, 0, 0, 0.45); }
 .sheet-body, .addr-name-sheet {
-  background: #242426;
+  background: #1c1c1e;
   border-top: 0.5px solid var(--glass-line);
   border-top-left-radius: 32px; border-top-right-radius: 32px;
   box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.5), var(--glass-hi);
@@ -10103,7 +10104,7 @@ html:not(.lite) .sg-topic:active {
 @keyframes sheetUpIOS { from { transform: translate3d(0, 100%, 0); } }
 html:not(.lite) .sheet-body,
 html:not(.lite) .addr-name-sheet {
-  background: rgba(36, 36, 38, 0.74);
+  background: rgba(28, 28, 30, 0.78);
   -webkit-backdrop-filter: blur(30px) saturate(190%); backdrop-filter: blur(30px) saturate(190%);
 }
 .sheet-body::before { width: 38px; height: 5px; background: rgba(255, 255, 255, 0.22); }
@@ -10111,7 +10112,7 @@ html:not(.lite) .addr-name-sheet {
 /* ============================================================== toast */
 .toast {
   left: 16px; right: 16px;
-  background: #2c2c2e;
+  background: #1c1c1e;
   border: 0.5px solid var(--glass-line);
   border-left: 0.5px solid var(--glass-line);
   border-radius: 20px;
@@ -10120,7 +10121,7 @@ html:not(.lite) .addr-name-sheet {
 }
 @keyframes toastInIOS { from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.96); } }
 html:not(.lite) .toast {
-  background: rgba(44, 44, 46, 0.72);
+  background: rgba(28, 28, 30, 0.76);
   -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
 }
 
@@ -10152,13 +10153,13 @@ html:not(.lite) .toast {
 
 /* ================================================= Shogird (FAB, yuborish) */
 .sg-fab {
-  background: rgba(44, 44, 46, 0.92);
+  background: rgba(28, 28, 30, 0.94);
   border: 0.5px solid rgba(126, 220, 168, 0.35);
   color: var(--accent);
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(52, 199, 123, 0.08), var(--glass-hi);
 }
 html:not(.lite) .sg-fab {
-  background: rgba(44, 44, 46, 0.55);
+  background: rgba(28, 28, 30, 0.6);
   -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
 }
 .sg-fab-ic { filter: none; }
@@ -10178,3 +10179,246 @@ html:not(.lite) .sg-fab {
   .nav-pill.ready { transition: none; }
   .page, .sheet-body, .addr-name-sheet, .toast, .splash-brand { animation: none; }
 }
+
+/* ##########################################################################
+   UZBROVV — BOSH SAHIFA (2-bosqich)
+
+   Nima o'zgardi va nega:
+     • Sarlavha: «Uzbrovv» + tasdiq belgisi O'RTADA (Avto_A1 modeli), brendga
+       urg'u. Chapdagi «U» belgisi va yozuvlar olib tashlandi.
+     • Stories: kattaroq halqalar, Uzbrovv muqovalari, adminga «+».
+     • Bannerlar: eski qizil rang chetdan ko'rinmaydi, yumshoq hoshiya.
+     • Kategoriya chiplari: to'qroq, sonsiz, animatsiyali.
+     • Filtrlar va «13 ta» yozuvi olib tashlandi (index.html).
+   Hammasi transform/opacity — telefon qizimaydi; lite rejimda harakat to'xtaydi.
+   ########################################################################## */
+
+.sr-only {
+  position: absolute !important; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+/* ============================================================== splash */
+.splash {
+  background:
+    radial-gradient(60vmax 46vmax at 50% 40%, rgba(52, 199, 123, 0.12), transparent 60%),
+    #000;
+}
+.splash-brand { gap: 8px; }
+.splash-brand b {
+  font-size: 34px; font-weight: 800; letter-spacing: -0.04em; color: #fff;
+  text-shadow: 0 6px 30px rgba(52, 199, 123, 0.28);
+}
+.splash-tick {
+  width: 28px; height: 28px; flex: none; color: var(--accent);
+  filter: drop-shadow(0 3px 10px rgba(52, 199, 123, 0.45));
+  animation: tickPop 0.6s var(--spring) 0.35s both;
+}
+.splash-mark { display: none; }
+.hello-line { color: rgba(255, 255, 255, 0.86); }
+
+/* ===================================================== sarlavha (header) */
+.home-header.hh {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: calc(var(--safe-t) + 10px) 14px 10px;
+  border-bottom-color: transparent;
+}
+.home-header.hh .hh-car { justify-self: start; }
+.home-header.hh .home-acts { justify-self: end; margin-left: 0; }
+
+.hh-brand {
+  display: flex; align-items: center; gap: 6px;
+  pointer-events: none;
+  animation: hhIn 0.5s var(--silk) both;
+}
+.hh-brand b {
+  font-size: 23px; font-weight: 800; letter-spacing: -0.035em; line-height: 1;
+  color: #fff;
+}
+.hh-tick {
+  width: 20px; height: 20px; flex: none; color: var(--accent);
+  filter: drop-shadow(0 2px 8px rgba(52, 199, 123, 0.42));
+  animation: tickPop 0.55s var(--spring) 0.2s both;
+}
+@keyframes hhIn { from { opacity: 0; transform: translate3d(0, -4px, 0); } }
+@keyframes tickPop {
+  0%   { opacity: 0; transform: scale(0.3) rotate(-30deg); }
+  70%  { opacity: 1; transform: scale(1.12) rotate(4deg); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* Mashina — faqat ikon (dumaloq shisha tugma). Nom skrinreader uchun qoladi. */
+.car-chip.hh-car {
+  width: 36px; height: 36px; padding: 0; border-radius: 50%;
+  display: grid; place-items: center; min-width: 0; flex: none;
+}
+.car-chip.hh-car i { display: grid; place-items: center; }
+.car-chip.hh-car .ic { width: 19px; height: 19px; }
+.hdr-btn, .music-btn, .offline-badge { width: 36px; height: 36px; }
+
+@media (max-width: 340px) {
+  .hh-brand b { font-size: 20px; }
+}
+
+/* ============================================================== stories */
+.stories {
+  gap: 14px;
+  padding: 14px 16px 10px;
+  scroll-padding-left: 16px;
+}
+.story { width: 72px; color: var(--muted); }
+.story-ring {
+  position: relative; isolation: isolate;
+  width: 72px; height: 72px; padding: 3px; margin-bottom: 7px;
+  background: transparent;
+}
+/* Ko'rilmagan: yashil gradient halqa sekin aylanadi (faqat ::before —
+   muqova o'zi qimirlamaydi). */
+.story:not(.seen):not(.story-add) .story-ring::before {
+  content: ""; position: absolute; inset: 0; border-radius: 50%; z-index: -1;
+  background: conic-gradient(from 0deg, #b8f5d3, #34c77b 22%, #1f8f55 45%, rgba(52, 199, 123, 0.18) 62%, #34c77b 82%, #b8f5d3);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  animation: ringSpin 6s linear infinite;
+}
+.story:not(.seen):not(.story-add) .story-ring::after {
+  content: ""; position: absolute; inset: -2px; border-radius: 50%; z-index: -2;
+  box-shadow: 0 0 14px rgba(52, 199, 123, 0.28);
+  pointer-events: none;
+}
+.story.seen .story-ring { background: transparent; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.12); }
+.story-face {
+  border: 2.5px solid var(--bg);
+  background: #0e2c1e;
+}
+.story-face img { width: 100%; height: 100%; object-fit: cover; }
+.story-label { font-size: 11.5px; font-weight: 500; color: rgba(235, 235, 245, 0.78); letter-spacing: -0.01em; }
+.story.seen .story-label { color: var(--dim); }
+.story:active .story-ring { transform: scale(0.92); }
+@keyframes ringSpin { to { transform: rotate(360deg); } }
+
+/* «+» — yangi story (admin) */
+.story-add-ring { padding: 3.5px; }
+.story-add-orbit {
+  position: absolute; inset: 0; border-radius: 50%; z-index: -1;
+  background: conic-gradient(from 0deg, #d4fbe6, #34c77b 20%, #17804a 40%, rgba(52, 199, 123, 0.1) 58%, #2cb46b 80%, #d4fbe6);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  animation: ringSpin 3.2s linear infinite;
+}
+.story-add-ring::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%; z-index: -2; pointer-events: none;
+  animation: addRipple 2.8s var(--silk) infinite;
+}
+.story-add-face {
+  display: grid; place-items: center;
+  background: radial-gradient(circle at 50% 35%, #1c1c1e, #0b0b0c);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+}
+.story-add-plus {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent-grad);
+  box-shadow: 0 6px 16px rgba(31, 143, 85, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.story-add-plus svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2.8; stroke-linecap: round; }
+.story-add .story-label { color: var(--accent); font-weight: 650; }
+@keyframes addRipple {
+  0%       { box-shadow: 0 0 0 0 rgba(52, 199, 123, 0.42); }
+  70%, 100% { box-shadow: 0 0 0 10px rgba(52, 199, 123, 0); }
+}
+
+/* Story ko'ruvchisidagi avatar — muqova rasmi */
+.story-ava { overflow: hidden; }
+.story-ava img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ============================================================== bannerlar */
+.banner-wrap { margin-top: 2px; }
+.banners { gap: 12px; padding: 4px 16px 12px; scroll-padding: 0 16px; }
+.banner {
+  width: calc(100vw - 32px);
+  min-height: 150px;
+  border-radius: 24px;
+  border: 0.5px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 16px 34px -18px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  /* `overflow: hidden` + radius Safari'da ba'zan chetda 1px fon chiqaradi —
+     maska bilan qirqamiz (rang chizig'i umuman ko'rinmaydi). */
+  -webkit-mask-image: -webkit-radial-gradient(white, black);
+  transition: transform 0.3s var(--spring);
+}
+.banner:active { transform: scale(0.98); }
+.banner-shade { background: linear-gradient(180deg, rgba(0, 0, 0, 0.05) 30%, rgba(0, 0, 0, 0.78)); }
+.banner-tag {
+  background: rgba(11, 11, 12, 0.5);
+  border: 0.5px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px; font-weight: 700; letter-spacing: 0.02em;
+}
+html:not(.lite) .banner-tag {
+  -webkit-backdrop-filter: blur(12px) saturate(160%); backdrop-filter: blur(12px) saturate(160%);
+}
+.banner-title { font-size: 21px; font-weight: 800; letter-spacing: -0.03em; }
+.dots { gap: 5px; padding-bottom: 4px; }
+.dots i { width: 6px; height: 6px; background: rgba(255, 255, 255, 0.2); }
+.dots i.on { width: 20px; border-radius: 3px; background: var(--accent); }
+
+/* ===================================================== bo'lim sarlavhasi */
+.sec-title::after { display: none; }
+#catalog-sec .sec-title { font-size: 22px; font-weight: 800; padding-bottom: 0; }
+.sec-count { display: none; }
+
+/* ============================================ qidiruv (iOS search field) */
+.shop-tools { margin-bottom: 4px; }
+.shop-search input { height: 42px; border-radius: 13px; background-color: rgba(118, 118, 128, 0.16); }
+
+/* ===================================================== kategoriya chiplari */
+.chips { gap: 8px; padding: 2px 0 14px; }
+.chip.cat-chip {
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: #161618;
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  color: #d1d1d6;
+  font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  transition: transform 0.25s var(--spring), background 0.25s ease, color 0.2s ease,
+    border-color 0.25s ease, box-shadow 0.25s ease;
+  animation: chipIn 0.45s var(--spring) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+.chip.cat-chip::after { display: none; }
+.chip.cat-chip i { display: none; }
+.chip.cat-chip.on {
+  background: linear-gradient(135deg, #1f6b46 0%, #145035 60%, #0f3d29 100%);
+  border-color: rgba(52, 199, 123, 0.45);
+  color: #fff;
+  box-shadow: 0 6px 18px -6px rgba(31, 143, 85, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  animation: chipIn 0.45s var(--spring) both, chipOn 0.4s var(--spring);
+  animation-delay: calc(var(--i, 0) * 45ms), 0s;
+}
+.chip.cat-chip:active { transform: scale(0.93); }
+@keyframes chipIn {
+  from { opacity: 0; transform: translate3d(12px, 0, 0) scale(0.92); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes chipOn {
+  0%   { transform: scale(0.94); }
+  60%  { transform: scale(1.05); }
+  100% { transform: none; }
+}
+
+/* ========================================================= lite / kamaytirish */
+html.lite .story-ring::before,
+html.lite .story-add-orbit { animation: none !important; }
+html.lite .story-add-ring::after { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .story-ring::before, .story-add-orbit, .story-add-ring::after,
+  .hh-brand, .hh-tick, .splash-tick, .chip.cat-chip { animation: none !important; }
+}
+/* Birinchi chizishdan keyin chiplar qayta «kirib kelmaydi» — faqat tanlangani sakraydi */
+.chips.chips-ready .chip.cat-chip { animation: none; }
+.chips.chips-ready .chip.cat-chip.on { animation: chipOn 0.4s var(--spring); }
