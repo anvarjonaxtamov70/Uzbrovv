@@ -18,7 +18,7 @@ from keyboards.inline import (
     admin_new_booking_kb,
     admin_new_order_kb,
 )
-from services import identity, shogird, sync
+from services import blocked, identity, shogird, sync
 from services import orders as order_flow
 from utils.helpers import (
     available_dates,
@@ -81,6 +81,11 @@ async def _current_user(request: web.Request, require_phone: bool = False):
 
     tg_user = verified["user"]
     user_id = int(tg_user["id"])
+
+    # Admin bloklagan mijoz ilovadan foydalana olmaydi (Mini App «Kirish
+    # cheklangan» oynasini ko'rsatadi — app.js: showBlocked).
+    if await blocked.is_blocked(user_id):
+        raise ApiError(403, "blocked", "Hisobingiz administrator tomonidan bloklangan.")
 
     # Ilovaga kirgan mijoz ham HAR SAFAR eslab qolinadi: bazada bo'lmasa
     # Firebase'dan tiklanadi, bo'lsa — profili bulutga yozib turiladi.

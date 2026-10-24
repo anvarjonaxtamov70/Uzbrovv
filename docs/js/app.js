@@ -1723,9 +1723,31 @@
         return res.me;
       }
     } catch (err) {
+      if (err && err.code === "blocked") S.blocked = true;
       console.warn("[offline] /me olinmadi:", err && err.message);
     }
     return null;
+  }
+
+  /** ⛔ Admin bloklagan mijoz — ilova yopiladi (Avto_A1 dagi «Kirish
+   *  cheklangan» oynasi). Server (Render va Worker) 403 `blocked` qaytaradi. */
+  function showBlocked() {
+    S.blocked = true;
+    ["splash", "gate", "nav", "sg-fab"].forEach((id) => {
+      const n = $(id);
+      if (n) n.classList.add("hidden");
+    });
+    document.querySelectorAll("section.page").forEach((p) => p.classList.add("hidden"));
+    if ($("blockedScreen")) return;
+    const o = el("div", "");
+    o.id = "blockedScreen";
+    o.setAttribute("role", "alertdialog");
+    o.innerHTML =
+      '<div><div class="bk-ic"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM4 12a8 8 0 0 1 12.9-6.3L5.7 16.9A7.9 7.9 0 0 1 4 12zm8 8a7.9 7.9 0 0 1-4.9-1.7L18.3 7.1A8 8 0 0 1 12 20z"/></svg></div>' +
+      "<h2>Kirish cheklangan</h2><p>Hisobingiz administrator tomonidan bloklangan. Ilova va botdan foydalanib bo\u2018lmaydi.</p></div>";
+    document.body.appendChild(o);
+    document.body.classList.add("is-blocked");
+    haptic("error");
   }
 
   function offlineMe() {
@@ -2120,7 +2142,7 @@
      yuklanadi: takror chaqiruv o'sha Promise'ni qaytaradi.
      ==================================================================== */
 
-  const SCRIPT_VERSION = "68"; // index.html dagi `?v=` bilan bir xil bo'lsin
+  const SCRIPT_VERSION = "73"; // index.html dagi `?v=` bilan bir xil bo'lsin
   const _scripts = new Map();
 
   function loadScript(src) {
@@ -8714,6 +8736,7 @@
         //  zaxira ham yordam bermaydi, mijoz ilovani qayta ochishi kerak.
         // ============================================================
         if (err && err.code === "invalid_init_data") return onError(err);
+        if (err && err.code === "blocked") return showBlocked();
         // TO'SIQ EKRANI ENDI CHIQMAYDI.
         //
         // Ilgari zaxira zanjiri yiqilsa `gate()` chaqirilardi va mijoz
@@ -8732,6 +8755,7 @@
         // Avval Worker'dan so'raymiz (haqiqiy profil + buyurtma tarixi),
         // bo'lmasa mahalliy keshdan.
         me = (await offlineMeFromWorker()) || offlineMe();
+        if (S.blocked) return showBlocked();
       }
 
       S.currency = cfg.currency || "so'm";

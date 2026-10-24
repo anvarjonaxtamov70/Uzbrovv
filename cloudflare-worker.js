@@ -61,7 +61,7 @@ const DEFAULT_MAX_AGE = 86400; // 24 soat
 // berishga to'g'ri keladi).
 // Har deploy'da ko'tariladi — `/health` dagi bu raqam Cloudflare'da
 // YANGI nusxa turganini tasdiqlashning eng oson yo'li.
-const VERSION = "1.9.0";
+const VERSION = "1.10.0";
 const FEATURES = [
   "order",
   /* Razmerli tovarlar: buyurtma qatorida `size` bo'ladi va qoldiq AYNAN
@@ -101,6 +101,11 @@ const FEATURES = [
   "catalog_write_validated",
   // 1.9.0 — bosh sahifadagi rang generatori: `catalog/settings/theme`
   "theme",
+  // 1.10.0 — Mijozlar oynasi (Avto_A1 modeli): bloklash, qo'lda VIP, xabar
+  "admin_block",
+  "admin_vip",
+  "admin_message",
+  "blocked_enforced",
 ];
 
 /** Mini App'dan yuklanadigan fayl chegarasi.
@@ -168,6 +173,9 @@ export default {
       if (path === "/admin/upload") return handleAdminUpload(request, env);
       if (path === "/admin/orders") return handleAdminOrders(request, env);
       if (path === "/admin/users") return handleAdminUsers(request, env);
+      if (path === "/admin/block") return handleAdminBlock(request, env);
+      if (path === "/admin/vip") return handleAdminVip(request, env);
+      if (path === "/admin/message") return handleAdminMessage(request, env);
       if (path === "/admin/order-status") return handleAdminOrderStatus(request, env);
 
       return json({ ok: false, error: "Bunday manzil yo'q" }, 404);
@@ -289,7 +297,7 @@ async function handleHealth(env, deep) {
 async function handleAuth(request, env) {
   const body = await readJson(request);
   const verified = await verifyInitData(body.initData, env);
-  if (!verified.ok) return json({ ok: false, error: verified.error }, 401);
+  if (!verified.ok) return json({ ok: false, error: verified.error, blocked: !!verified.blocked }, verified.status || 401);
 
   const uid = String(verified.user.id);
   const token = await createCustomToken(uid, env);
@@ -320,7 +328,7 @@ async function handleMe(request, env) {
 
   const body = await readJson(request);
   const verified = await verifyInitData(body.initData, env);
-  if (!verified.ok) return json({ ok: false, error: verified.error }, 401);
+  if (!verified.ok) return json({ ok: false, error: verified.error, blocked: !!verified.blocked }, verified.status || 401);
 
   const uid = String(verified.user.id);
   const user = verified.user;
@@ -409,7 +417,7 @@ async function handleProfile(request, env) {
 
   const body = await readJson(request);
   const verified = await verifyInitData(body.initData, env);
-  if (!verified.ok) return json({ ok: false, error: verified.error }, 401);
+  if (!verified.ok) return json({ ok: false, error: verified.error, blocked: !!verified.blocked }, verified.status || 401);
 
   const uid = String(verified.user.id);
   const user = verified.user;
@@ -489,7 +497,7 @@ async function handleOrder(request, env) {
 
   const body = await readJson(request);
   const verified = await verifyInitData(body.initData, env);
-  if (!verified.ok) return json({ ok: false, error: verified.error }, 401);
+  if (!verified.ok) return json({ ok: false, error: verified.error, blocked: !!verified.blocked }, verified.status || 401);
 
   const uid = String(verified.user.id);
   const rawItems = Array.isArray(body.items) ? body.items : [];
@@ -787,7 +795,7 @@ async function handleOrderLegacy(request, env) {
 
   const body = await readJson(request);
   const verified = await verifyInitData(body.initData, env);
-  if (!verified.ok) return json({ ok: false, error: verified.error }, 401);
+  if (!verified.ok) return json({ ok: false, error: verified.error, blocked: !!verified.blocked }, verified.status || 401);
 
   const uid = String(verified.user.id);
   const user = verified.user;
@@ -1069,7 +1077,7 @@ async function handleBooking(request, env) {
   const c = cfg(env);
   const body = await readJson(request);
   const verified = await verifyInitData(body.initData, env);
-  if (!verified.ok) return json({ ok: false, error: verified.error }, 401);
+  if (!verified.ok) return json({ ok: false, error: verified.error, blocked: !!verified.blocked }, verified.status || 401);
   if (!c.dbUrl) return json({ ok: false, error: "FIREBASE_DB_URL sozlanmagan" }, 500);
 
   const uid = String(verified.user.id);
@@ -1192,7 +1200,7 @@ async function handleBiledOrder(request, env) {
   const c = cfg(env);
   const body = await readJson(request);
   const verified = await verifyInitData(body.initData, env);
-  if (!verified.ok) return json({ ok: false, error: verified.error }, 401);
+  if (!verified.ok) return json({ ok: false, error: verified.error, blocked: !!verified.blocked }, verified.status || 401);
   if (!c.dbUrl) return json({ ok: false, error: "FIREBASE_DB_URL sozlanmagan" }, 500);
   const phone = normalizePhone(body.phone);
   if (!phone) return json({ ok: false, error: "Telefon raqam noto'g'ri" }, 400);
@@ -1299,7 +1307,7 @@ async function requireAdmin(request, env) {
   }
   const body = await readJson(request);
   const verified = await verifyInitData(body.initData, env);
-  if (!verified.ok) return { error: json({ ok: false, error: verified.error }, 401) };
+  if (!verified.ok) return { error: json({ ok: false, error: verified.error, blocked: !!verified.blocked }, verified.status || 401) };
 
   const uid = String(verified.user.id);
   // uid HMAC imzosidan olinadi — mijoz yuborgan qiymatga ISHONILMAYDI.
@@ -1909,8 +1917,13 @@ async function handleAdminUsers(request, env) {
   if (gate.error) return gate.error;
   const { c } = gate;
   const token = await accessToken(env);
-  const node = await rtdbGet(c.dbUrl, `${c.root}/users`, token);
-  return json({ ok: true, users: node && typeof node === "object" ? node : {} });
+  const [node, blockedNode, vipNode] = await Promise.all([
+    rtdbGet(c.dbUrl, `${c.root}/users`, token),
+    rtdbGet(c.dbUrl, `${c.root}/blocked_users`, token).catch(() => null),
+    rtdbGet(c.dbUrl, `${c.root}/crm_vip`, token).catch(() => null),
+  ]);
+  const obj = (v) => (v && typeof v === "object" ? v : {});
+  return json({ ok: true, users: obj(node), blocked: obj(blockedNode), vip: obj(vipNode) });
 }
 
 // ---------------------------------------------------------------------
@@ -2288,7 +2301,7 @@ async function handleAdminUpload(request, env) {
   }
 
   const verified = await verifyInitData(form.get("initData"), env);
-  if (!verified.ok) return json({ ok: false, error: verified.error }, 401);
+  if (!verified.ok) return json({ ok: false, error: verified.error, blocked: !!verified.blocked }, verified.status || 401);
   const uid = String(verified.user.id);
   if (!c.admins.includes(uid)) {
     return json({ ok: false, error: "forbidden", message: "Bu amal faqat admin uchun" }, 403);
@@ -2384,7 +2397,7 @@ async function handleStoryReply(request, env) {
   const c = cfg(env);
   const body = await readJson(request);
   const verified = await verifyInitData(body.initData, env);
-  if (!verified.ok) return json({ ok: false, error: verified.error }, 401);
+  if (!verified.ok) return json({ ok: false, error: verified.error, blocked: !!verified.blocked }, verified.status || 401);
 
   const user = verified.user;
   const uid = String(user.id);
@@ -2664,7 +2677,115 @@ async function verifyInitData(initData, env) {
   }
   if (!user || !user.id) return { ok: false, error: "user yo'q" };
 
+  // ⛔ Admin bloklagan mijoz — hech qanday imzolangan amalni bajara olmaydi
+  if (await isBlockedUid(String(user.id), env)) {
+    return { ok: false, error: "blocked", blocked: true, status: 403 };
+  }
+
   return { ok: true, user };
+}
+
+// =====================================================================
+//  ⛔ BLOKLANGAN MIJOZLAR (Avto_A1 modeli)
+//
+//  Admin «Mijozlar» oynasida bloklasa `{root}/blocked_users/{uid}` yoziladi
+//  (`/admin/block`). Har bir imzolangan so'rov `verifyInitData` orqali
+//  o'tadi, ya'ni buyurtma, navbat, profil va /me — hammasi rad etiladi.
+//  Adminlar hech qachon bloklanmaydi. 30 soniyalik kesh; baza javob
+//  bermasa «fail-open» (hamma mijoz to'xtab qolmasin).
+// =====================================================================
+const blockedCache = new Map();
+
+async function isBlockedUid(uid, env) {
+  const c = cfg(env);
+  if (!/^\d+$/.test(uid) || c.admins.includes(uid) || !c.dbUrl) return false;
+  const now = Date.now();
+  const hit = blockedCache.get(uid);
+  if (hit && hit.exp > now) return hit.v;
+  let v;
+  try {
+    const token = await accessToken(env);
+    v = !!(await rtdbGet(c.dbUrl, `${c.root}/blocked_users/${uid}`, token));
+  } catch (_) {
+    return false;
+  }
+  if (blockedCache.size > 5000) blockedCache.clear();
+  blockedCache.set(uid, { v, exp: now + 30000 });
+  return v;
+}
+
+/** `uid` — maqsad mijoz (raqam), admin emas. */
+function targetUid(value, c) {
+  const uid = clean(value, 24);
+  if (!/^[1-9]\d{0,19}$/.test(uid)) return { error: json({ ok: false, error: "uid noto'g'ri" }, 400) };
+  return { uid, isAdmin: c.admins.includes(uid) };
+}
+
+// ---------------------------------------------------------------------
+//  POST /admin/block — { uid, block: true|false, name?, phone? }
+// ---------------------------------------------------------------------
+async function handleAdminBlock(request, env) {
+  const gate = await requireAdmin(request, env);
+  if (gate.error) return gate.error;
+  const { c, body, uid: by } = gate;
+  const t = targetUid(body.uid, c);
+  if (t.error) return t.error;
+  const block = body.block === true;
+  if (block && t.isAdmin) return json({ ok: false, error: "admin", message: "Adminni bloklab bo'lmaydi" }, 400);
+  const token = await accessToken(env);
+  const path = `${c.root}/blocked_users/${t.uid}`;
+  const res = block
+    ? await rtdbPut(c.dbUrl, path, {
+        name: clean(body.name, 80),
+        phone: clean(body.phone, 30),
+        at: Date.now(),
+        by: String(by),
+      }, token)
+    : await rtdbDelete(c.dbUrl, path, token);
+  await ensureOk(res, "Saqlanmadi");
+  blockedCache.delete(t.uid);
+  return json({ ok: true, uid: t.uid, blocked: block });
+}
+
+// ---------------------------------------------------------------------
+//  POST /admin/vip — { uid, vip: true|false } — qo'lda VIP (`crm_vip/{uid}`)
+//  Alohida tugun: bot `users/{uid}/profile` ni to'liq qayta yozadi va
+//  profil ichidagi belgi o'chib ketardi.
+// ---------------------------------------------------------------------
+async function handleAdminVip(request, env) {
+  const gate = await requireAdmin(request, env);
+  if (gate.error) return gate.error;
+  const { c, body, uid: by } = gate;
+  const t = targetUid(body.uid, c);
+  if (t.error) return t.error;
+  const vip = body.vip === true;
+  const token = await accessToken(env);
+  const path = `${c.root}/crm_vip/${t.uid}`;
+  const res = vip
+    ? await rtdbPut(c.dbUrl, path, { at: Date.now(), by: String(by) }, token)
+    : await rtdbDelete(c.dbUrl, path, token);
+  await ensureOk(res, "Saqlanmadi");
+  return json({ ok: true, uid: t.uid, vip });
+}
+
+// ---------------------------------------------------------------------
+//  POST /admin/message — { uid, text } — bot orqali mijozga xabar
+// ---------------------------------------------------------------------
+async function handleAdminMessage(request, env) {
+  const gate = await requireAdmin(request, env);
+  if (gate.error) return gate.error;
+  const { c, body } = gate;
+  const t = targetUid(body.uid, c);
+  if (t.error) return t.error;
+  const text = String(body.text == null ? "" : body.text).trim();
+  if (text.length < 2 || text.length > 900) {
+    return json({ ok: false, error: "text", message: "Xabar 2–900 belgi bo'lsin" }, 400);
+  }
+  const ok = await sendMessage(env, t.uid, "💬 <b>Uzbrovv</b>\n\n" + escHtml(text));
+  if (!ok) {
+    return json({ ok: false, error: "telegram", message: "Yuborilmadi — mijoz botni bloklagan bo'lishi mumkin" }, 502);
+  }
+  return json({ ok: true });
 }
 
 function constantTimeEqual(a, b) {
