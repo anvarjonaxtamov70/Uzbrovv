@@ -51,7 +51,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=74">
+  <link rel="stylesheet" href="styles.css?v=75">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- Zoom jestlarini to'xtatish. `touch-action: manipulation` (CSS)
        double-tap zoom'ni o'chiradi va BOSISHNI buzmaydi; quyidagi JS esa
@@ -63,10 +63,30 @@
       ["gesturestart", "gesturechange", "gestureend"].forEach(function (ev) {
         document.addEventListener(ev, function (e) { e.preventDefault(); }, { passive: false });
       });
-      // Boshqa WebView'lar: ikki (yoki ko'p) barmoqli tegishni bloklaymiz
-      document.addEventListener("touchmove", function (e) {
-        if (e.touches && e.touches.length > 1) e.preventDefault();
-      }, { passive: false });
+      // Boshqa WebView'lar: ikki (yoki ko'p) barmoqli tegishni bloklaymiz.
+      //
+      // SKROLL TEZLIGI: ilgari `touchmove` tinglovchisi DOIM `passive:false`
+      // edi. Bunday tinglovchi borligida brauzer HAR BIR skroll kadrida JS
+      // tugashini kutadi (skroll asosiy oqimga bog'lanib qoladi) — qotish va
+      // «30 fps» hissining asosiy sababi shu edi. Endi bir barmoqli skroll
+      // butunlay passiv: blokirovka faqat ikkinchi barmoq tekkanda yoqiladi
+      // va barmoqlar ko'tarilishi bilan olib tashlanadi.
+      var pinchBlock = function (e) { if (e.touches && e.touches.length > 1) e.preventDefault(); };
+      var pinchOn = false;
+      document.addEventListener("touchstart", function (e) {
+        if (e.touches && e.touches.length > 1 && !pinchOn) {
+          pinchOn = true;
+          document.addEventListener("touchmove", pinchBlock, { passive: false });
+        }
+      }, { passive: true });
+      var pinchOff = function (e) {
+        if (pinchOn && (!e.touches || e.touches.length < 2)) {
+          pinchOn = false;
+          document.removeEventListener("touchmove", pinchBlock, { passive: false });
+        }
+      };
+      document.addEventListener("touchend", pinchOff, { passive: true });
+      document.addEventListener("touchcancel", pinchOff, { passive: true });
       // Desktop: Ctrl + g'ildirak va Ctrl +/-/0 bilan zoom
       document.addEventListener("wheel", function (e) {
         if (e.ctrlKey) e.preventDefault();
@@ -1019,16 +1039,16 @@
         pochta filiallari). U faqat rasmiylashtirishda «BTS Pochta»
         tanlanganda kerak, lekin har ochilishda o'qilardi.
      ========================================================================== -->
-<script defer src="config.js?v=74"></script>
+<script defer src="config.js?v=75"></script>
 <!-- Brauzerdan bazaga to'g'ridan yozish (Avto_A1 modeli) -->
-<script defer src="js/fb.js?v=74"></script>
+<script defer src="js/fb.js?v=75"></script>
 <!-- Telefon galereyasidan rasm yuklash (siqish + EXIF burilishi) -->
-<script defer src="js/upload.js?v=74"></script>
+<script defer src="js/upload.js?v=75"></script>
 <!-- Zaxira rejim: Render o'chganda katalogni Firebase'dan o'qiydi.
      app.js dan OLDIN yuklanishi kerak — u `window.ZimmerOffline` ni ishlatadi. -->
-<script defer src="js/offline.js?v=74"></script>
-<script defer src="js/headlight.js?v=74"></script>
-<script defer src="js/cars.js?v=74"></script>
-<script defer src="js/app.js?v=74"></script>
+<script defer src="js/offline.js?v=75"></script>
+<script defer src="js/headlight.js?v=75"></script>
+<script defer src="js/cars.js?v=75"></script>
+<script defer src="js/app.js?v=75"></script>
 </body>
 </html>
