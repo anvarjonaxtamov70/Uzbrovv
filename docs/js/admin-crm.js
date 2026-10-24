@@ -248,11 +248,16 @@ window.ZimmerCRM = (function () {
        eski bo'lsa profillar o'qilmaydi, lekin ro'yxat baribir buyurtmalardan
        tuziladi (pastda ogohlantiriladi). */
     let usersFailed = null;
+    let flags = { blocked: {}, vip: {} };
     const usersP =
       off() && off().adminUsers
         ? off()
             .adminUsers()
-            .then((res) => (res && res.users) || null)
+            .then((res) => {
+              // Worker 1.10.0+: bloklanganlar va qo'lda VIP xaritalari ham keladi
+              flags = { blocked: (res && res.blocked) || {}, vip: (res && res.vip) || {} };
+              return (res && res.users) || null;
+            })
             .catch((err) => {
               usersFailed = err;
               return null;
@@ -275,7 +280,7 @@ window.ZimmerCRM = (function () {
     if (!usersNode && !orders.length && usersFailed) throw usersFailed;
 
     const data = {
-      customers: buildCustomers(usersNode, orders),
+      customers: buildCustomers(usersNode, orders, flags),
       orders: orders,
       usersFailed: usersFailed,
     };
@@ -300,8 +305,10 @@ window.ZimmerCRM = (function () {
        2) buyurtmalar — `uid` bo'yicha. Profil o'qilmagan yoki mijoz bazadan
           o'chib ketgan bo'lsa ham buyurtma egasi ro'yxatda qoladi.
      ==================================================================== */
-  function buildCustomers(usersNode, orders) {
+  function buildCustomers(usersNode, orders, flags) {
     const map = {};
+    const blockedMap = (flags && flags.blocked) || {};
+    const vipMap = (flags && flags.vip) || {};
 
     const touch = (uid) => {
       const k = String(uid);
@@ -372,7 +379,10 @@ window.ZimmerCRM = (function () {
     const arr = Object.keys(map).map((k) => {
       const c = map[k];
       if (!c.name) c.name = "Nomsiz mijoz";
-      c.vip = c.done >= VIP_ORDERS || c.spent >= VIP_SPENT;
+      c.manual = !!vipMap[c.uid];
+      c.blocked = !!blockedMap[c.uid];
+      c.autoVip = c.done >= VIP_ORDERS || c.spent >= VIP_SPENT;
+      c.vip = c.autoVip || c.manual;
       c.avg = c.done ? Math.round(c.spent / c.done) : 0;
       return c;
     });
@@ -745,37 +755,102 @@ window.ZimmerCRM = (function () {
   }
 
   /* ====================================================================
-     MIJOZLAR RO'YXATI
+     MIJOZLAR — AVTO_A1 BILAN 1:1 (2026)
+
+     Tuzilish (Avto_A1 `index.html` → «5. MIJOZLAR» bilan bir xil):
+       ro'yxat  — qidiruv + aylanma saralash tugmasi, 7 ta segment (soni
+                  bilan), «N ta mijoz», iOS guruhlangan qatorlar (avatar,
+                  ism, 👑, «Bloklangan», telefon, ›), 20 tadan cheksiz skroll;
+       tafsilot — hero (avatar, ism, telefon, belgilar), 4 ta tezkor amal
+                  (Qo'ng'iroq · Telegram · Xabar · Buyurtmalar), ichki xabar
+                  maydoni, bo'limlar: Statistika · Ma'lumot · Daraja · Oxirgi
+                  buyurtmalar · Boshqaruv (qo'lda VIP, Bloklash).
+
+     Zimmer farqlari: yozuvlar BRAUZERDAN emas, imzolangan Worker orqali
+     (`/admin/block`, `/admin/vip`, `/admin/message`) — `users` va
+     `blocked_users` tugunlari yopiq. Bloklash bot, Render API va Worker
+     tomonida tekshiriladi (services/blocked.py, verifyInitData).
      ==================================================================== */
 
-  const FILTERS = [
-    ["all", "Hammasi"],
-    ["vip", "👑 VIP"],
-    ["buyer", "🛍 Xaridor"],
-    ["run", "⏳ Jarayonda"],
-    ["cold", "🆕 Buyurtmasiz"],
+  const DAY = 86400000;
+
+  const SEGS = [
+    ["all", "👥", "Hammasi"],
+    ["vip", "👑", "VIP"],
+    ["active", "🔥", "Faol"],
+    ["new", "🆕", "Yangi"],
+    ["sleeping", "💤", "Uxlagan"],
+    ["noorder", "👤", "Xaridsiz"],
+    ["blocked", "⛔", "Bloklangan"],
   ];
 
-  const TESTS = {
-    all: () => true,
-    vip: (c) => c.vip,
-    buyer: (c) => c.done > 0,
-    run: (c) => c.active > 0,
-    cold: (c) => c.orders === 0,
-  };
+  function segMatch(c, seg) {
+    const now = Date.now();
+    switch (seg) {
+      case "vip": return c.vip;
+      case "active": return c.last > 0 && now - c.last <= 30 * DAY;
+      case "new": return c.first > 0 && now - c.first <= 14 * DAY;
+      case "sleeping": return c.orders > 0 && c.last > 0 && now - c.last > 60 * DAY;
+      case "noorder": return c.orders === 0;
+      case "blocked": return !!c.blocked;
+      default: return true;
+    }
+  }
+
+  const SORT_LIST = [
+    ["spent", "Eng ko'p sarflagan"],
+    ["orders", "Eng ko'p buyurtma"],
+    ["recent", "Oxirgi xaridi yangi"],
+    ["name", "Ism bo'yicha (A-Z)"],
+  ];
 
   const SORTS = {
-    spent: (a, b) => b.spent - a.spent || b.orders - a.orders || b.last - a.last,
+    spent: (a, b) => b.spent - a.spent || b.orders - a.orders,
     orders: (a, b) => b.orders - a.orders || b.spent - a.spent,
     recent: (a, b) => b.last - a.last || b.spent - a.spent,
+    name: (a, b) => a.name.localeCompare(b.name, "uz"),
   };
+
+  /** "3 kun oldin" (Avto_A1: agoLabel). */
+  function ago(ms) {
+    ms = Number(ms) || 0;
+    if (!ms) return "—";
+    const d = Math.max(0, Date.now() - ms);
+    const min = Math.floor(d / 60000);
+    if (min < 1) return "hozir";
+    if (min < 60) return min + " daqiqa oldin";
+    const h = Math.floor(min / 60);
+    if (h < 24) return h + " soat oldin";
+    const day = Math.floor(h / 24);
+    if (day === 1) return "kecha";
+    if (day < 30) return day + " kun oldin";
+    const mo = Math.floor(day / 30);
+    if (mo < 12) return mo + " oy oldin";
+    return Math.floor(mo / 12) + " yil oldin";
+  }
+
+  const tierOf = (c) =>
+    c.vip ? { icon: "💎", name: "VIP mijoz" } : { icon: "🛒", name: "Oddiy mijoz" };
+
+  /** Qidiruv — ism / ID / telefon / @username. */
+  function matches(c, q) {
+    if (!q) return true;
+    return (
+      c.name.toLowerCase().indexOf(q) !== -1 ||
+      c.uid.indexOf(q) !== -1 ||
+      (c.phone || "").toLowerCase().replace(/\s/g, "").indexOf(q.replace(/\s/g, "")) !== -1 ||
+      (c.username || "").toLowerCase().indexOf(q.replace(/^@/, "")) !== -1
+    );
+  }
+
+  /* ------------------------------------------------------------ ro'yxat */
 
   async function openCustomers(force) {
     S.view = "customers";
     S.uid = null;
     S.limit = PAGE;
     stopScroll();
-    setHead("👥 Mijozlar", "Foydalanuvchilar bazasi");
+    setHead("Mijozlar", "Foydalanuvchilar bazasi");
     loading("Mijozlar o'qilmoqda...");
     let data;
     try {
@@ -785,209 +860,181 @@ window.ZimmerCRM = (function () {
       return false;
     }
     S.data = data;
-    setHead("👥 Mijozlar", data.customers.length + " ta mijoz");
-    renderCustomersShell();
-    paintCustomers();
+    showCustomers(true);
     return true;
   }
 
-  /** Qidiruv maydoni va filtrlar BIR MARTA chiziladi.
-   *  Sabab: har harfda butun panelni qayta chizsak, input fokusdan chiqib
-   *  telefon klaviaturasi yopilardi. Shuning uchun faqat ro'yxat qismi
-   *  yangilanadi. */
-  function renderCustomersShell() {
+  /** Ro'yxat oynasini (keshdagi ma'lumotdan) chizadi. */
+  function showCustomers(animate) {
+    S.view = "customers";
+    S.uid = null;
+    stopScroll();
+    const all = (S.data && S.data.customers) || [];
+    setHead("Mijozlar", all.length + " ta mijoz");
+    const sortLabel = (SORT_LIST.filter((x) => x[0] === S.sort)[0] || SORT_LIST[0])[1];
+
     body().innerHTML =
       profileWarning() +
-      '<div class="crm-search">' +
-      '<span class="crm-search-ic">🔍</span>' +
-      '<input type="text" id="crm-q" class="crm-search-in" ' +
-      'placeholder="Ism, telefon yoki ID..." autocomplete="off" value="' + esc(S.query) + '">' +
-      '<button class="crm-search-x hidden" id="crm-qx" aria-label="Tozalash">✕</button>' +
+      '<div class="cst-wrap">' +
+      '<div class="cst-tools">' +
+      '<label class="cst-search' + (S.query ? " has-text" : "") + '" id="cst-search">' +
+      '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.3-4.3"/></svg>' +
+      '<input type="text" id="cst-q" placeholder="Ism, telefon yoki ID..." autocomplete="off" inputmode="search" value="' +
+      esc(S.query) + '">' +
+      '<button type="button" class="cst-search-x" id="cst-q-x" aria-label="Tozalash">✕</button>' +
+      "</label>" +
+      '<button type="button" class="cst-sort" id="cst-sort" aria-label="' + esc(sortLabel) + '" title="' + esc(sortLabel) + '">' +
+      '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h12M4 12h9M4 17h6"/><path d="m17 14 3 3-3 3M20 17V8"/></svg>' +
+      "</button>" +
       "</div>" +
-      '<div class="crm-sum" id="crm-sum"></div>' +
-      '<div class="ord-filters" id="crm-chips"></div>' +
-      '<div class="crm-sortbar">' +
-      '<span>Saralash</span>' +
-      '<button class="crm-sort" data-s="spent">💰 Summa</button>' +
-      '<button class="crm-sort" data-s="orders">🛍 Xaridlar</button>' +
-      '<button class="crm-sort" data-s="recent">🕐 Oxirgi</button>' +
-      "</div>" +
-      '<div id="crm-list"></div>' +
-      '<div id="crm-more"></div>';
+      '<div class="cst-segs" id="cst-segs"></div>' +
+      '<div id="cst-list"></div>' +
+      '<div id="crm-more"></div>' +
+      "</div>";
 
-    const input = $("crm-q");
-    if (input) {
+    const input = $("cst-q");
+    if (input)
       input.oninput = () => {
         clearTimeout(S.typing);
         S.typing = setTimeout(() => {
-          S.query = input.value;
-          S.limit = PAGE; // yangi qidiruv — birinchi sahifadan
-          paintCustomers();
-        }, 130);
+          S.query = input.value || "";
+          $("cst-search").classList.toggle("has-text", !!S.query);
+          S.limit = PAGE;
+          paintCustomers(false);
+        }, 120);
       };
-    }
-    if ($("crm-qx"))
-      $("crm-qx").onclick = () => {
-        haptic();
-        S.query = "";
-        S.limit = PAGE;
-        if ($("crm-q")) $("crm-q").value = "";
-        paintCustomers();
-      };
-
-    document.querySelectorAll(".crm-sort").forEach((b) => {
-      b.onclick = () => {
-        haptic();
-        S.sort = b.dataset.s;
-        S.limit = PAGE;
-        paintCustomers();
-      };
-    });
+    $("cst-q-x").onclick = () => {
+      haptic("light");
+      S.query = "";
+      if (input) {
+        input.value = "";
+        input.focus();
+      }
+      $("cst-search").classList.remove("has-text");
+      S.limit = PAGE;
+      paintCustomers(false);
+    };
+    $("cst-sort").onclick = () => {
+      const ids = SORT_LIST.map((x) => x[0]);
+      const next = SORT_LIST[(ids.indexOf(S.sort) + 1) % SORT_LIST.length];
+      S.sort = next[0];
+      haptic("selection");
+      $("cst-sort").title = next[1];
+      $("cst-sort").setAttribute("aria-label", next[1]);
+      toast(next[1]);
+      S.limit = PAGE;
+      paintCustomers(true);
+    };
+    $("cst-segs").onclick = (e) => {
+      const b = e.target.closest(".cst-seg");
+      if (!b) return;
+      haptic("selection");
+      S.filter = b.dataset.seg;
+      S.limit = PAGE;
+      paintCustomers(true);
+    };
+    $("cst-list").onclick = (e) => {
+      const row = e.target.closest(".cx-row");
+      if (!row) return;
+      haptic("light");
+      openCustomer(row.dataset.uid);
+    };
+    paintCustomers(animate);
   }
 
-  /** Qidiruv — Avto_A1 dagi kabi ism / ID / telefon, ustiga @username. */
-  function matches(c, q) {
-    if (!q) return true;
-    return (
-      c.name.toLowerCase().indexOf(q) !== -1 ||
-      c.uid.indexOf(q) !== -1 ||
-      (c.phone && c.phone.replace(/\s/g, "").indexOf(q.replace(/\s/g, "")) !== -1) ||
-      (c.username && c.username.toLowerCase().indexOf(q) !== -1) ||
-      (c.car && c.car.toLowerCase().indexOf(q) !== -1)
-    );
-  }
-
-  function paintCustomers() {
+  function paintCustomers(animate) {
     const all = (S.data && S.data.customers) || [];
-    const q = S.query.trim().toLowerCase();
+    if (!SEGS.some((x) => x[0] === S.filter)) S.filter = "all";
 
-    // ---- filtr chiplari (har birida soni)
-    const chips = FILTERS.map(([key, label]) => {
-      const n = all.filter(TESTS[key]).length;
-      if (key !== "all" && !n) return "";
-      return (
-        '<button class="ord-fchip' + (S.filter === key ? " selected" : "") +
-        '" data-f="' + key + '">' + esc(label) + " <i>" + n + "</i></button>"
-      );
-    }).join("");
-    $("crm-chips").innerHTML = chips;
-    document.querySelectorAll("#crm-chips .ord-fchip").forEach((b) => {
-      b.onclick = () => {
-        haptic();
-        S.filter = b.dataset.f;
-        S.limit = PAGE;
-        paintCustomers();
-      };
-    });
+    $("cst-segs").innerHTML = SEGS.map(
+      (sg) =>
+        '<button type="button" class="cst-seg' + (S.filter === sg[0] ? " on" : "") + '" data-seg="' + sg[0] + '">' +
+        sg[1] + " " + esc(sg[2]) + "<em>" + all.filter((c) => segMatch(c, sg[0])).length + "</em></button>"
+    ).join("");
 
-    // ---- yuqoridagi xulosa
-    const spent = all.reduce((s, c) => s + c.spent, 0);
-    const buyers = all.filter((c) => c.done > 0).length;
-    $("crm-sum").innerHTML =
-      '<div class="crm-sum-b"><b>' + all.length + "</b><span>mijoz</span></div>" +
-      '<div class="crm-sum-b"><b>' + buyers + "</b><span>xaridor</span></div>" +
-      '<div class="crm-sum-b is-gold"><b>' + esc(money(spent)) + "</b><span>umumiy tushum</span></div>";
-
-    document.querySelectorAll(".crm-sort").forEach((b) =>
-      b.classList.toggle("on", b.dataset.s === S.sort)
-    );
-    if ($("crm-qx")) $("crm-qx").classList.toggle("hidden", !S.query);
-
-    // ---- ro'yxat
-    const list = all.filter(TESTS[S.filter] || TESTS.all).filter((c) => matches(c, q));
+    const q = (S.query || "").toLowerCase().trim();
+    const list = all.filter((c) => segMatch(c, S.filter) && matches(c, q));
     list.sort(SORTS[S.sort] || SORTS.spent);
 
+    const box = $("cst-list");
     if (!list.length) {
-      $("crm-list").innerHTML =
-        '<div class="crm-empty"><div class="crm-empty-ic">🔍</div><b>Mijoz topilmadi</b>' +
-        "<p>" + (q ? "Boshqa ism, telefon yoki ID bilan urinib ko'ring." :
-          "Bu filtrga mos mijoz yo'q.") + "</p></div>";
+      box.innerHTML =
+        '<div class="cst-empty"><span class="ic">🔍</span><b>Natija yo\'q</b><p>' +
+        (q
+          ? "«" + esc(S.query) + "» bo'yicha mijoz topilmadi. Boshqa ism yoki telefon raqami bilan urinib ko'ring."
+          : "Bu segmentda mijoz yo'q. Boshqa segmentni tanlab ko'ring.") +
+        "</p></div>";
       $("crm-more").innerHTML = "";
       stopScroll();
       return;
     }
 
     const shown = list.slice(0, S.limit);
-    $("crm-list").innerHTML = shown.map(customerCard).join("");
-    document.querySelectorAll("#crm-list .crm-cust").forEach((card) => {
-      card.onclick = (ev) => {
-        // Telefon tugmasi bosilsa kartani ochmaymiz.
-        if (ev.target.closest(".crm-cust-tel")) return;
-        haptic();
-        openCustomer(card.dataset.uid);
-      };
-    });
-    document.querySelectorAll("#crm-list .crm-cust-tel").forEach((btn) => {
-      btn.onclick = (ev) => {
-        ev.stopPropagation();
-        callPhone(btn.dataset.tel);
-      };
-    });
+    box.innerHTML =
+      '<p class="cx-count">' + list.length + " ta mijoz</p>" +
+      '<div class="ig cx-group' + (animate ? " is-anim" : "") + '">' + shown.map(rowHTML).join("") + "</div>";
 
-    // ---- «pastga tushganda yana yuklanadi» (Avto_A1 mantiqi)
     const rest = list.length - shown.length;
     if (rest > 0) {
       $("crm-more").innerHTML =
-        '<div class="crm-more" id="crm-sentinel">Yana ' + rest + " ta mijoz · pastga tushiring</div>";
+        '<div class="crm-more" id="crm-sentinel">Yana ' + rest + " ta mijoz · pastga suring</div>";
       watchScroll(() => {
         S.limit += PAGE;
-        paintCustomers();
+        paintCustomers(false);
       });
     } else {
-      $("crm-more").innerHTML =
-        list.length > PAGE ? '<div class="crm-end">Ro\'yxat tugadi · ' + list.length + " ta</div>" : "";
+      $("crm-more").innerHTML = "";
       stopScroll();
     }
   }
 
-  /** Mijoz kartochkasi — avatar, VIP toji, summa va xarid soni. */
-  function customerCard(c) {
+  function rowHTML(c, i) {
     const initial = (c.name || "?").trim().charAt(0).toUpperCase() || "?";
-    const tone = c.vip ? "is-vip" : c.done ? "is-buyer" : "is-cold";
-    const sub = [];
-    if (c.username) sub.push("@" + c.username);
-    sub.push("ID " + c.uid);
-
     return (
-      '<div class="crm-cust ' + tone + '" data-uid="' + esc(c.uid) + '">' +
-      '<span class="crm-ava">' + esc(initial) +
-      (c.vip ? '<i class="crm-ava-crown">👑</i>' : "") + "</span>" +
-      '<span class="crm-cust-mid">' +
-      '<b>' + esc(c.name) + "</b>" +
-      '<span class="crm-cust-sub">' + esc(sub.join(" · ")) + "</span>" +
-      (c.phone
-        ? '<button class="crm-cust-tel" data-tel="' + esc(c.phone) + '">📞 ' + esc(c.phone) + "</button>"
-        : '<span class="crm-cust-sub is-dim">Telefon kiritilmagan</span>') +
-      (c.car ? '<span class="crm-cust-car">🚗 ' + esc(c.car) + "</span>" : "") +
-      "</span>" +
-      '<span class="crm-cust-right">' +
-      "<b>" + esc(c.spent ? money(c.spent) : "—") + "</b>" +
-      '<em class="crm-tag' + (c.done ? " is-done" : "") + '">' + c.done + " xarid</em>" +
-      (c.active ? '<em class="crm-tag is-run">' + c.active + " jarayonda</em>" : "") +
-      (c.last ? '<span class="crm-cust-when">' + esc(timeLabel(c.last)) + "</span>" : "") +
-      "</span>" +
-      "</div>"
+      '<button type="button" class="ig-row cx-row' + (c.blocked ? " is-blocked" : "") + (c.vip ? " is-vip" : "") +
+      '" data-uid="' + esc(c.uid) + '" style="--i:' + Math.min(i, 12) + '">' +
+      '<span class="cx-av">' + esc(initial) + "</span>" +
+      '<span class="ig-tx"><b class="cx-name"><span class="t">' + esc(c.name) + "</span>" +
+      (c.vip ? '<span class="cx-vip" title="VIP">👑</span>' : "") +
+      (c.blocked ? '<span class="cx-blk">Bloklangan</span>' : "") +
+      "</b><small>" + esc(c.phone || "Telefon yo'q") + "</small></span>" +
+      '<span class="ig-chev" aria-hidden="true"></span>' +
+      "</button>"
     );
   }
 
   function callPhone(phone) {
-    haptic();
+    if (!phone) return toast("Telefon raqami yo'q");
+    haptic("light");
     try {
-      window.open("tel:" + String(phone).replace(/\s/g, ""), "_blank");
-    } catch (_) {}
+      window.location.href = "tel:" + String(phone).replace(/[^0-9+]/g, "");
+    } catch (_) {
+      toast(phone);
+    }
+  }
+
+  function openTelegram(c) {
+    haptic("light");
+    const wa = window.Telegram && window.Telegram.WebApp;
+    try {
+      if (c.username) {
+        const url = "https://t.me/" + c.username;
+        if (wa && wa.openTelegramLink) return wa.openTelegramLink(url);
+        return window.open(url, "_blank");
+      }
+      window.open("tg://user?id=" + c.uid, "_blank");
+    } catch (_) {
+      toast("Ochib bo'lmadi");
+    }
   }
 
   /* -------------------------------------------------- cheksiz skroll */
 
-  /** Ro'yxat oxiridagi belgi ko'ringanda keyingi 20 tani chizadi.
-   *  `scroll` tinglovchisidan farqli — brauzer o'zi xabar beradi, ya'ni
-   *  skroll paytida hech qanday hisob-kitob bo'lmaydi (telefon qizmaydi). */
   function watchScroll(onHit) {
     stopScroll();
     const node = $("crm-sentinel");
     if (!node) return;
     if (!window.IntersectionObserver) {
-      // Juda eski brauzer — belgini tugmaga aylantiramiz.
       node.textContent = "Yana ko'rsatish";
       node.onclick = onHit;
       return;
@@ -1011,9 +1058,23 @@ window.ZimmerCRM = (function () {
     }
   }
 
-  /* ====================================================================
-     BITTA MIJOZ — profil va uning HAMMA buyurtmalari
-     ==================================================================== */
+  /* ------------------------------------------------------------ tafsilot */
+
+  const SV = {
+    call: '<path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.5 0 1 .4 1 1V20c0 .6-.5 1-1 1-9.4 0-17-7.6-17-17 0-.6.5-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.3 0 .7-.2 1z"/>',
+    tg: '<path d="M9.8 15.6l-.2 3.6c.4 0 .6-.2.8-.4l2-1.9 4.1 3c.8.4 1.3.2 1.5-.7l2.7-12.6c.2-1.1-.4-1.5-1.1-1.2L3.4 10.1c-1.1.4-1 1-.2 1.3l4.2 1.3 9.7-6.1c.5-.3.9-.1.5.2z"/>',
+    msg: '<path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM7 9h10v2H7zm6 5H7v-2h6zm4-6H7V6h10z"/>',
+    box: '<path d="M20 2H4c-1 0-2 .9-2 2v3c0 .7.4 1.3 1 1.7V20c0 1.1 1.1 2 2 2h14c.9 0 2-.9 2-2V8.7c.6-.4 1-1 1-1.7V4c0-1.1-1-2-2-2zm-5 12H9v-2h6v2zm5-7H4V4h16v3z"/>',
+    crown: '<path d="M5 16 3 5l5.5 5L12 4l3.5 6L21 5l-2 11zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14z"/>',
+    block: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM4 12a8 8 0 0 1 12.9-6.3L5.7 16.9A7.9 7.9 0 0 1 4 12zm8 8a7.9 7.9 0 0 1-4.9-1.7L18.3 7.1A8 8 0 0 1 12 20z"/>',
+  };
+  const svg = (k) => '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' + SV[k] + "</svg>";
+
+  function statusText(o) {
+    const cfg = (shop().KINDS || {})[o.kind];
+    const st = cfg && cfg.statuses && cfg.statuses[o.status];
+    return (st && st.label) || "Kutilmoqda";
+  }
 
   function openCustomer(uid) {
     const all = (S.data && S.data.customers) || [];
@@ -1023,94 +1084,242 @@ window.ZimmerCRM = (function () {
     S.view = "customer";
     S.uid = c.uid;
     stopScroll();
-    setHead(c.name, c.vip ? "👑 VIP mijoz" : c.done ? "Xaridor" : "Mijoz");
+    const t = tierOf(c);
+    setHead(c.name, t.icon + " " + t.name + (c.vip ? " · VIP mijoz" : " daraja"));
 
     const mine = (S.data.orders || []).filter((o) => String(o.uid) === c.uid);
+    const recent = mine.slice().sort((a, b) => (b.created_at || 0) - (a.created_at || 0)).slice(0, 6);
+
+    const needSum = Math.max(0, VIP_SPENT - c.spent);
+    const needOrd = Math.max(0, VIP_ORDERS - c.done);
+    const nextTx = c.vip
+      ? "VIP mijoz"
+      : "💎 VIP bo'lishga " + num(needSum) + " so'm yoki " + needOrd + " ta xarid qoldi";
+
+    const qb = (id, label, k, color) =>
+      '<button type="button" class="cx-q" id="' + id + '" style="--qc:' + color + '">' +
+      '<span class="cx-q-ic">' + svg(k) + '</span><span class="cx-q-l">' + label + "</span></button>";
+    const kv = (k, v, cls) =>
+      '<div class="cx-kv"><span class="k">' + k + '</span><span class="v' + (cls ? " " + cls : "") + '">' + v + "</span></div>";
+    const telV = c.phone
+      ? '<a class="cx-link" href="tel:' + esc(String(c.phone).replace(/[^0-9+]/g, "")) + '">' + esc(c.phone) + "</a>"
+      : "—";
     const initial = (c.name || "?").trim().charAt(0).toUpperCase() || "?";
 
-    /* Buyurtmalar ZimmerShop dagi AYNI kartochka bilan chiziladi, lekin
-       `next` bo'shatiladi — ya'ni holat tugmalari chiqmaydi. Holatni
-       o'zgartirish o'z bo'limida bo'ladi: bu yerda tugma qo'ysak, bosilgandan
-       keyin panel buyurtmalar oynasiga sakrab, admin mijoz kartasini
-       yo'qotardi. */
+    body().innerHTML =
+      '<div class="cx-wrap">' +
+      // --- HERO
+      '<div class="cx-hero' + (c.vip ? " is-vip" : "") + (c.blocked ? " is-blocked" : "") + '">' +
+      '<div class="cx-hav">' + esc(initial) + "</div>" +
+      '<h3 class="cx-hname">' + esc(c.name) + "</h3>" +
+      '<div class="cx-hphone">' + esc(c.phone || "Telefon yo'q") + "</div>" +
+      '<div class="cx-badges">' +
+      '<span class="cx-badge is-tier">' + t.icon + " " + esc(t.name) + "</span>" +
+      (c.manual ? '<span class="cx-badge">Qo\'lda</span>' : "") +
+      (c.blocked ? '<span class="cx-badge is-blk">Bloklangan</span>' : "") +
+      "</div></div>" +
+      // --- TEZKOR AMALLAR
+      '<div class="cx-quick">' +
+      (c.phone ? qb("cdt-a-call", "Qo'ng'iroq", "call", "#30d158") : "") +
+      qb("cdt-a-tg", "Telegram", "tg", "#0a84ff") +
+      qb("cdt-a-msg", "Xabar", "msg", "var(--accent)") +
+      qb("cdt-a-orders", "Buyurtmalar", "box", "#ff9f0a") +
+      "</div>" +
+      '<div id="cdt-msg-box" data-open="0"></div>' +
+      // --- STATISTIKA
+      '<p class="ig-sec">Statistika</p><div class="ig cx-grp">' +
+      kv("Buyurtmalar", c.orders + " ta" + (c.active ? " <em>· " + c.active + " faol</em>" : "")) +
+      kv("Sarflagan", esc(money(c.spent)), "is-acc") +
+      kv("O'rtacha chek", c.avg ? esc(money(c.avg)) : "—") +
+      kv("Oxirgi xarid", esc(c.last ? ago(c.last) : "—")) +
+      "</div>" +
+      // --- MA'LUMOT
+      '<p class="ig-sec">Ma\'lumot</p><div class="ig cx-grp">' +
+      kv("Telefon", telV) +
+      kv("Telegram", c.username ? "@" + esc(c.username) : "—") +
+      kv("ID", esc(c.uid), "mono") +
+      (c.car ? kv("Mashinasi", esc(c.car)) : "") +
+      kv("Birinchi xarid", c.first ? esc(new Date(c.first).toLocaleDateString("uz-UZ")) : "—") +
+      kv("Bo'limlar", "Do'kon " + c.kinds.order + " · Bi-LED " + c.kinds.biled + " · Navbat " + c.kinds.booking) +
+      "</div>" +
+      // --- DARAJA
+      '<p class="ig-sec">Daraja</p><div class="ig cx-grp">' +
+      kv("Hozirgi", t.icon + " " + esc(t.name) + (c.manual ? " <em>· qo'lda</em>" : "")) +
+      kv("Keyingi", esc(nextTx)) +
+      kv("Shart", VIP_ORDERS + " ta yakunlangan xarid yoki " + esc(money(VIP_SPENT))) +
+      (c.cancelled ? kv("Bekor qilingan", c.cancelled + " ta", "is-red") : "") +
+      "</div>" +
+      // --- OXIRGI BUYURTMALAR
+      '<p class="ig-sec">Oxirgi buyurtmalar</p><div class="ig cx-grp">' +
+      (recent.length
+        ? recent
+            .map(
+              (o) =>
+                '<div class="cx-ord"><span class="cx-ord-c"><b>' + esc(o.code || "#" + (o.id || "")) + "</b>" +
+                "<span>" + esc(o.created_at ? ago(o.created_at) : "—") + " · " + esc(statusText(o)) + "</span></span>" +
+                '<span class="cx-ord-s">' + esc(o.total ? money(o.total) : "—") + "</span></div>"
+            )
+            .join("")
+        : '<div class="cx-kv"><span class="k">Hali buyurtma yo\'q</span></div>') +
+      "</div>" +
+      // --- BOSHQARUV
+      '<p class="ig-sec">Boshqaruv</p><div class="ig cx-grp">' +
+      '<button type="button" class="ig-row cx-act" id="cdt-a-vip">' +
+      '<span class="ig-ic" style="--ic:linear-gradient(180deg,#e9c96a,#b48a2c)">' + svg("crown") + "</span>" +
+      '<span class="ig-lbl">' + (c.manual ? "Qo'lda VIPni olib tashlash" : "Qo'lda VIP qilish") + "</span>" +
+      '<span class="ig-chev" aria-hidden="true"></span></button>' +
+      '<button type="button" class="ig-row cx-act is-danger" id="cdt-a-block">' +
+      '<span class="ig-ic" style="--ic:' +
+      (c.blocked ? "linear-gradient(180deg,#3ad37f,#22a35c)" : "linear-gradient(180deg,#ff6a5f,#ff3b30)") +
+      '">' + svg("block") + "</span>" +
+      '<span class="ig-lbl">' + (c.blocked ? "Blokdan chiqarish" : "Bloklash") + "</span></button>" +
+      "</div>" +
+      '<p class="cx-foot">' +
+      (c.blocked
+        ? "Bu mijoz bloklangan: botga yoza olmaydi, ilovani ocha olmaydi va buyurtma bera olmaydi."
+        : "Bloklangan mijoz botdan va ilovadan foydalana olmaydi. Istalgan payt blokdan chiqarish mumkin.") +
+      "</p>" +
+      "</div>";
+
+    const on = (id, fn) => {
+      const b = $(id);
+      if (b) b.onclick = fn;
+    };
+    on("cdt-a-call", () => callPhone(c.phone));
+    on("cdt-a-tg", () => openTelegram(c));
+    on("cdt-a-msg", () => toggleMessage(c));
+    on("cdt-a-orders", () => {
+      haptic("light");
+      openCustomerOrders(c.uid);
+    });
+    on("cdt-a-vip", () => toggleManualVip(c));
+    on("cdt-a-block", () => {
+      haptic("light");
+      toggleBlock(c);
+    });
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }
+
+  /** Mijozning HAMMA buyurtmalari (ZimmerShop kartochkasi, faqat o'qish). */
+  function openCustomerOrders(uid) {
+    const c = ((S.data && S.data.customers) || []).filter((x) => x.uid === String(uid))[0];
+    if (!c) return;
+    S.view = "customer-orders";
+    S.uid = c.uid;
+    setHead(c.name, "Buyurtmalari");
+    const mine = (S.data.orders || []).filter((o) => String(o.uid) === c.uid);
     const KINDS = shop().KINDS || {};
     const cardOf = (o) => {
       const cfg = KINDS[o.kind];
       if (!cfg || !shop().orderCard) return "";
-      const readOnly = {};
-      Object.keys(cfg).forEach((k) => (readOnly[k] = cfg[k]));
-      readOnly.next = {};
-      return shop().orderCard(o, readOnly);
+      const ro = {};
+      Object.keys(cfg).forEach((k) => (ro[k] = cfg[k]));
+      ro.next = {}; // holat tugmalari o'z bo'limida
+      return shop().orderCard(o, ro);
     };
-
     const groups = ["order", "biled", "booking"]
       .map((kind) => {
         const rows = mine.filter((o) => o.kind === kind);
         if (!rows.length) return "";
         const meta = KIND_LABEL[kind];
         return (
-          '<div class="adm-list-title">' + meta.icon + " " + esc(meta.title) +
-          " <i>" + rows.length + "</i></div>" +
-          rows.map(cardOf).join("")
+          '<p class="ig-sec">' + esc(meta.title) + " · " + rows.length + "</p>" + rows.map(cardOf).join("")
         );
       })
       .join("");
-
-    const tg = c.username
-      ? '<button class="crm-act" id="crm-tg">✈️ Telegram</button>'
-      : "";
-    const tel = c.phone ? '<button class="crm-act is-primary" id="crm-call">📞 Qo\'ng\'iroq</button>' : "";
-
     body().innerHTML =
-      '<div class="crm-profile' + (c.vip ? " is-vip" : "") + '">' +
-      '<span class="crm-ava big">' + esc(initial) +
-      (c.vip ? '<i class="crm-ava-crown">👑</i>' : "") + "</span>" +
-      "<b>" + esc(c.name) + "</b>" +
-      '<span class="crm-profile-sub">' +
-      (c.username ? "@" + esc(c.username) + " · " : "") + "ID " + esc(c.uid) +
-      "</span>" +
-      (c.vip ? '<span class="crm-vip-tag">👑 VIP mijoz</span>' : "") +
-      (c.phone ? '<span class="crm-profile-row">📞 ' + esc(c.phone) + "</span>" : "") +
-      (c.car ? '<span class="crm-profile-row">🚗 ' + esc(c.car) + "</span>" : "") +
-      (c.registered ? "" : '<span class="crm-profile-row is-dim">Profil bazada yo\'q — ma\'lumot buyurtmadan olindi</span>') +
-      (tel || tg ? '<div class="crm-acts">' + tel + tg + "</div>" : "") +
-      "</div>" +
-      '<div class="crm-kpis">' +
-      kpi("crm-c-spent", "💰", "Sarflagan", money(c.spent), "gold") +
-      kpi("crm-c-done", "📦", "Yakunlangan", c.done + " ta", "green") +
-      "</div>" +
-      '<div class="crm-kpis">' +
-      kpi("crm-c-avg", "🧾", "O'rtacha chek", money(c.avg)) +
-      kpi("crm-c-run", "⏳", "Jarayonda", c.active + " ta") +
-      "</div>" +
-      (c.cancelled
-        ? '<div class="crm-strip"><span>✕ Bekor qilingan</span><b class="is-red">' +
-          c.cancelled + " ta</b></div>"
-        : "") +
-      (c.first
-        ? '<div class="crm-strip"><span>🕐 Birinchi buyurtma</span><b>' +
-          esc(timeLabel(c.first)) + "</b></div>"
-        : "") +
-      (groups ||
-        '<div class="crm-empty"><div class="crm-empty-ic">📭</div><b>Buyurtma yo\'q</b>' +
-          "<p>Bu mijoz hali hech narsa buyurtma qilmagan.</p></div>");
-
-    if ($("crm-call")) $("crm-call").onclick = () => callPhone(c.phone);
-    if ($("crm-tg"))
-      $("crm-tg").onclick = () => {
-        haptic();
-        const url = "https://t.me/" + c.username;
-        const wa = window.Telegram && window.Telegram.WebApp;
-        if (wa && wa.openTelegramLink) wa.openTelegramLink(url);
-        else window.open(url, "_blank");
-      };
-
-    // Kartochkadagi telefon tugmalari (ZimmerShop kartochkasi ichida).
+      groups ||
+      '<div class="cst-empty"><span class="ic">📭</span><b>Buyurtma yo\'q</b><p>Bu mijoz hali hech narsa buyurtma qilmagan.</p></div>';
     document.querySelectorAll(".ord-tel").forEach((btn) => {
       btn.onclick = () => callPhone(c.phone || btn.textContent.replace(/[^\d+]/g, ""));
     });
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }
 
-    window.scrollTo({ top: 0, behavior: reduced() ? "auto" : "smooth" });
+  /** Tasdiqlash: Telegram `showConfirm`, bo'lmasa `confirm` (Avto_A1). */
+  function ask(text, run) {
+    const wa = window.Telegram && window.Telegram.WebApp;
+    try {
+      if (wa && wa.showConfirm) {
+        wa.showConfirm(text, (ok) => ok && run());
+        return;
+      }
+    } catch (_) {}
+    if (window.confirm(text)) run();
+  }
+
+  function toggleBlock(c) {
+    if (!off() || !off().adminBlock) return toast("Worker yangilanmagan (1.10.0 kerak)");
+    const q = c.blocked
+      ? c.name + " blokdan chiqarilsinmi?"
+      : c.name + " bloklansinmi? U botdan va ilovadan foydalana olmaydi.";
+    ask(q, async () => {
+      try {
+        await off().adminBlock(c.uid, !c.blocked, c.name, c.phone);
+        c.blocked = !c.blocked;
+        haptic("success");
+        toast(c.blocked ? "⛔ " + c.name + " bloklandi" : c.name + " blokdan chiqarildi");
+        openCustomer(c.uid);
+      } catch (err) {
+        if (err && err.code === "admin") return toast("Adminni bloklab bo'lmaydi");
+        toast("Saqlanmadi: " + ((err && err.message) || "xato"));
+      }
+    });
+  }
+
+  async function toggleManualVip(c) {
+    if (!off() || !off().adminVip) return toast("Worker yangilanmagan (1.10.0 kerak)");
+    const next = !c.manual;
+    try {
+      await off().adminVip(c.uid, next);
+      c.manual = next;
+      c.vip = c.autoVip || c.manual;
+      haptic("success");
+      toast(next ? "👑 " + c.name + " → VIP mijoz (qo'lda)" : c.name + " — qo'lda daraja olib tashlandi");
+      setTimeout(() => openCustomer(c.uid), 250);
+    } catch (err) {
+      toast("Saqlanmadi: " + ((err && err.message) || "xato"));
+    }
+  }
+
+  /** Bot orqali shu mijozga xabar — tafsilot ichidagi maydon (prompt EMAS). */
+  function toggleMessage(c) {
+    const host = $("cdt-msg-box");
+    if (!host) return;
+    if (host.dataset.open === "1") {
+      host.dataset.open = "0";
+      host.innerHTML = "";
+      return;
+    }
+    haptic("light");
+    host.dataset.open = "1";
+    host.innerHTML =
+      '<div class="cx-msg">' +
+      '<label class="cx-msg-l">Xabar matni — ' + esc(c.name) + "</label>" +
+      '<textarea id="cdt-msg-tx" rows="3" maxlength="900" placeholder="Assalomu alaykum! Buyurtmangiz tayyor..."></textarea>' +
+      '<button type="button" class="btn btn-primary" id="cdt-msg-send">✈ Yuborish</button>' +
+      "</div>";
+    const tx = $("cdt-msg-tx");
+    if (tx) setTimeout(() => tx.focus(), 60);
+    $("cdt-msg-send").onclick = async () => {
+      const text = (tx.value || "").trim();
+      if (text.length < 2) return toast("Xabar matnini yozing");
+      if (!off() || !off().adminMessage) return toast("Xabar yuborish moduli topilmadi");
+      const btn = $("cdt-msg-send");
+      btn.disabled = true;
+      btn.textContent = "Yuborilmoqda...";
+      try {
+        await off().adminMessage(c.uid, text);
+        haptic("success");
+        toast("Xabar yuborildi");
+        host.dataset.open = "0";
+        host.innerHTML = "";
+      } catch (err) {
+        toast((err && err.message) || "Yuborilmadi — mijoz botni bloklagan bo'lishi mumkin");
+        btn.disabled = false;
+        btn.textContent = "✈ Yuborish";
+      }
+    };
   }
 
   /* ====================================================================
@@ -1133,8 +1342,12 @@ window.ZimmerCRM = (function () {
   /** «Orqaga»: mijoz tafsiloti -> ro'yxat. Ro'yxat/statistikada `false`
    *  qaytaradi — ZimmerShop bosh menyuga chiqaradi. */
   function back() {
+    if (S.view === "customer-orders") {
+      openCustomer(S.uid);
+      return true;
+    }
     if (S.view === "customer") {
-      openCustomers();
+      showCustomers(false);
       return true;
     }
     return false;
@@ -1144,7 +1357,7 @@ window.ZimmerCRM = (function () {
   function reload() {
     invalidate();
     if (S.view === "stats") return openStats(true);
-    if (S.view === "customer") {
+    if (S.view === "customer" || S.view === "customer-orders") {
       const uid = S.uid;
       // Ro'yxat qayta o'qilgach o'sha mijozga qaytamiz. O'qish yiqilsa
       // xato oynasi ustiga chizmaymiz.

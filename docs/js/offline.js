@@ -1383,6 +1383,19 @@
     return callWorker("/admin/users", {});
   }
 
+  /** Mijozlar oynasi (Avto_A1 modeli) — faqat tasdiqlangan admin.
+   *  Bloklash `blocked_users/{uid}`, qo'lda VIP `crm_vip/{uid}`, xabar —
+   *  bot orqali mijozning chatiga. */
+  function adminBlock(uid, block, name, phone) {
+    return callWorker("/admin/block", { uid: String(uid), block: !!block, name: name || "", phone: phone || "" });
+  }
+  function adminVip(uid, vip) {
+    return callWorker("/admin/vip", { uid: String(uid), vip: !!vip });
+  }
+  function adminMessage(uid, text) {
+    return callWorker("/admin/message", { uid: String(uid), text: String(text || "") });
+  }
+
   /* ==================================================================
      MENING BUYURTMALARIM (Worker qabul qilganlari)
 
@@ -1558,6 +1571,9 @@
     adminEdit: adminEdit,
     adminOrders: adminOrders,
     adminUsers: adminUsers,
+    adminBlock: adminBlock,
+    adminVip: adminVip,
+    adminMessage: adminMessage,
     adminBiledOrders: adminBiledOrders,
     adminBookings: adminBookings,
     myOrders: myOrders,

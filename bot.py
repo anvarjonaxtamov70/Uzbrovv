@@ -15,7 +15,7 @@ from api.server import start_api_server
 from config import all_admins, config
 from database.db import close_db, init_db
 from handlers import get_routers
-from middlewares import IdentityMiddleware
+from middlewares import BlockedMiddleware, IdentityMiddleware
 from services import admins as admin_registry
 from services import backup, firebase, sync
 from utils.commands import set_default_commands, set_menu_button
@@ -114,6 +114,8 @@ async def main() -> None:
     dispatcher = Dispatcher(storage=MemoryStorage())
     # Har bir yangilanishda foydalanuvchini tanib olamiz va eslab qolamiz
     dispatcher.update.outer_middleware(IdentityMiddleware())
+    # Admin bloklagan mijozga bot javob bermaydi (services/blocked.py)
+    dispatcher.update.outer_middleware(BlockedMiddleware())
     for router in get_routers():
         dispatcher.include_router(router)
 
