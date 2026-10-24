@@ -799,7 +799,8 @@
     } catch (_) {}
   }
 
-  const FAB_PAGES = ["home", "services", "saved", "profile"];
+  // Kabinetda yo'q: ro'yxat ustini yopmasin (Avto_A1 dagi kabi)
+  const FAB_PAGES = ["home", "services", "saved"];
 
   function syncShogirdFab(page, navVisible) {
     const fab = $("sg-fab");
@@ -5752,7 +5753,7 @@
       // Faqat birinchisiga tayanilgani uchun zaxira rejimda «ID: —» chiqardi.
       $("pf-id").textContent = "ID: " + (S.me.user_id || S.me.id || "—");
       // Telefon bor bo'lsa — VIP (ring yorqinroq)
-      const card = document.querySelector(".pf-card");
+      const card = $("pf-edit");
       if (card) card.classList.toggle("is-vip", !!S.me.phone);
       $("pf-since").textContent = S.me.phone ? "✓ Tasdiqlangan mijoz" : "Uzbrovv mijozi";
       $("profile-car").textContent = S.me.car
@@ -6049,7 +6050,7 @@
     const cfg = MY_KINDS[kind];
     const list = S.my[kind] || [];
 
-    $("mo-title").textContent = cfg.icon + " " + cfg.title;
+    $("mo-title").textContent = cfg.title;
     $("mo-sub").textContent = list.length ? list.length + " ta yozuv" : cfg.sub;
 
     // Qidiruv maydonini holatga moslaymiz (fokusni buzmasdan)

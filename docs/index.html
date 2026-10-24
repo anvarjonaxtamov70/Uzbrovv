@@ -51,7 +51,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=71">
+  <link rel="stylesheet" href="styles.css?v=72">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- Zoom jestlarini to'xtatish. `touch-action: manipulation` (CSS)
        double-tap zoom'ni o'chiradi va BOSISHNI buzmaydi; quyidagi JS esa
@@ -442,109 +442,108 @@
 
 <!-- ==================== KABINET ==================== -->
 <section id="profile" class="page hidden">
+  <!-- ==========================================================================
+       KABINET — iOS «Sozlamalar» tuzilishi (Avto_A1 modeli, Uzbrovv ranglarida)
+
+       Katta sarlavha → profil qatori (bosilsa ma'lumotni tahrirlash) →
+       statistika → guruhlangan ro'yxatlar (Buyurtmalarim · Mening · Yordam ·
+       Ilova). Har qator: rangli ikon, nom, qiymat, «›». Admin panelining
+       menyusi ham AYNAN shu komponentdan (`.ig`) foydalanadi.
+
+       JS id'lari O'ZGARMAGAN: pf-edit, pf-name, pf-id, pf-since, pf-avatar,
+       pf-stat-*, mo-open-* / mo-sum-* / mo-cnt-* / mo-new-*, change-car,
+       profile-car, pf-addresses, pf-addr-hint, pf-contact, pf-trust,
+       pf-clear-cache.
+       ========================================================================== -->
   <header class="topbar static">
     <div class="topbar-mid"><div class="topbar-title">Kabinet</div></div>
   </header>
-  <div class="pad">
-    <!-- VIP mijoz kartasi -->
-    <div class="pf-card">
-      <div class="pf-glow"></div>
-      <div class="pf-head">
-        <div class="pf-avatar-wrap">
-          <div class="pf-avatar" id="pf-avatar">M</div>
-          <div class="pf-vip-ring"></div>
-        </div>
-        <div class="pf-meta">
-          <h3 id="pf-name">Mijoz</h3>
-          <p id="pf-id">ID: —</p>
-          <div class="pf-since" id="pf-since">Uzbrovv mijozi</div>
-        </div>
-        <button class="pf-edit" id="pf-edit" aria-label="Tahrirlash">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-        </button>
-      </div>
+  <div class="pad ig-wrap">
+    <div class="ig">
+      <button class="ig-me" id="pf-edit" type="button" aria-label="Ma'lumotlarni tahrirlash">
+        <span class="ig-av" id="pf-avatar">M</span>
+        <span class="ig-me-tx">
+          <b id="pf-name">Mijoz</b>
+          <span class="ig-pill" id="pf-since">Uzbrovv mijozi</span>
+          <small id="pf-id">ID: —</small>
+        </span>
+        <span class="ig-chev" aria-hidden="true"></span>
+      </button>
     </div>
 
-    <!-- statistika (count-up) -->
-    <div class="pf-stats">
-      <div class="pf-stat"><b id="pf-stat-orders">0</b><span>Buyurtma</span></div>
-      <div class="pf-stat"><b id="pf-stat-bookings">0</b><span>Navbat</span></div>
-      <div class="pf-stat"><b id="pf-stat-saved">0</b><span>Saqlangan</span></div>
+    <div class="ig ig-stats">
+      <div class="ig-stat"><b id="pf-stat-orders">0</b><span>Buyurtma</span></div>
+      <div class="ig-stat"><b id="pf-stat-bookings">0</b><span>Navbat</span></div>
+      <div class="ig-stat"><b id="pf-stat-saved">0</b><span>Saqlangan</span></div>
     </div>
 
     <div id="phone-warn" class="hidden"></div>
 
-    <!-- mening mashinam -->
-    <div class="pf-block">
-      <div class="pf-block-head">
-        <h4>Mening mashinam</h4>
-        <button class="pf-mini-btn" id="change-car">O'zgartirish</button>
-      </div>
-      <div class="pf-car-info" id="profile-car">Belgilanmagan</div>
-    </div>
-
-    <!-- ==========================================================
-         BUYURTMALARIM — UCH BO'LIM, UCH ALOHIDA OYNA
-
-         Ilgari uchala ro'yxat (Bi-LED, navbat, mahsulot) shu yerda
-         ketma-ket chizilardi. Buyurtma ko'paygan mijozda kabinet
-         cho'zilib ketardi va menyu tugmalari ekrandan chiqib qolardi.
-
-         Endi admin panelidagi mantiq (`admin-shop.js` → `KINDS`)
-         mijozga moslandi: har bo'lim ALOHIDA to'liq ekranli oyna
-         (`#orders`), plitkada esa soni, oxirgi holati va yangilar
-         belgisi turadi.
-         ========================================================== -->
-    <h3 class="sec-title">Buyurtmalarim</h3>
-    <div class="mo-hub" id="mo-hub">
-      <button class="mo-tile" id="mo-open-order" data-kind="order">
-        <span class="mo-tile-ic ios-ic is-green"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.5 7.6 12 3.5l8.5 4.1v8.8L12 20.5l-8.5-4.1z"/><path d="M3.5 7.6 12 11.8l8.5-4.2M12 11.8v8.7"/></svg></span>
-        <span class="mo-tile-tx">
-          <b>Mahsulot buyurtmalari</b>
-          <small id="mo-sum-order">Yuklanmoqda…</small>
-        </span>
-        <span class="mo-tile-n" id="mo-cnt-order">0</span>
-        <span class="mo-tile-badge hidden" id="mo-new-order">0</span>
-        <span class="mo-tile-go">›</span>
+    <div class="ig-sec">Buyurtmalarim</div>
+    <div class="ig" id="mo-hub">
+      <button class="ig-row" id="mo-open-order" data-kind="order" type="button">
+        <span class="ig-ic" style="--ic:linear-gradient(180deg,#ff6b8b,#ff2d55)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.5 7.6 12 3.5l8.5 4.1v8.8L12 20.5l-8.5-4.1z"/><path d="M3.5 7.6 12 11.8l8.5-4.2M12 11.8v8.7"/></svg></span>
+        <span class="ig-tx"><b>Mahsulot buyurtmalari</b><small id="mo-sum-order">Yuklanmoqda…</small></span>
+        <span class="ig-badge hidden" id="mo-new-order">0</span>
+        <span class="ig-val" id="mo-cnt-order">0</span>
+        <span class="ig-chev" aria-hidden="true"></span>
       </button>
-      <button class="mo-tile" id="mo-open-biled" data-kind="biled">
-        <span class="mo-tile-ic ios-ic is-amber"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13.2 2.8 5 13.5h6.2l-1 7.7 8.3-10.8h-6.3z"/></svg></span>
-        <span class="mo-tile-tx">
-          <b>Bi&#8209;LED buyurtmalarim</b>
-          <small id="mo-sum-biled">Yuklanmoqda…</small>
-        </span>
-        <span class="mo-tile-n" id="mo-cnt-biled">0</span>
-        <span class="mo-tile-badge hidden" id="mo-new-biled">0</span>
-        <span class="mo-tile-go">›</span>
+      <button class="ig-row" id="mo-open-biled" data-kind="biled" type="button">
+        <span class="ig-ic" style="--ic:linear-gradient(180deg,#ffb340,#ff8c00)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13.2 2.8 5 13.5h6.2l-1 7.7 8.3-10.8h-6.3z"/></svg></span>
+        <span class="ig-tx"><b>Bi&#8209;LED buyurtmalarim</b><small id="mo-sum-biled">Yuklanmoqda…</small></span>
+        <span class="ig-badge hidden" id="mo-new-biled">0</span>
+        <span class="ig-val" id="mo-cnt-biled">0</span>
+        <span class="ig-chev" aria-hidden="true"></span>
       </button>
-      <button class="mo-tile" id="mo-open-booking" data-kind="booking">
-        <span class="mo-tile-ic ios-ic is-blue"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
-        <span class="mo-tile-tx">
-          <b>Navbatlarim</b>
-          <small id="mo-sum-booking">Yuklanmoqda…</small>
-        </span>
-        <span class="mo-tile-n" id="mo-cnt-booking">0</span>
-        <span class="mo-tile-badge hidden" id="mo-new-booking">0</span>
-        <span class="mo-tile-go">›</span>
+      <button class="ig-row" id="mo-open-booking" data-kind="booking" type="button">
+        <span class="ig-ic" style="--ic:linear-gradient(180deg,#4ba3ff,#0a7cff)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
+        <span class="ig-tx"><b>Navbatlarim</b><small id="mo-sum-booking">Yuklanmoqda…</small></span>
+        <span class="ig-badge hidden" id="mo-new-booking">0</span>
+        <span class="ig-val" id="mo-cnt-booking">0</span>
+        <span class="ig-chev" aria-hidden="true"></span>
       </button>
     </div>
 
-    <!-- profil menyusi -->
-    <div class="pf-menu">
-      <button class="pf-menu-item" id="pf-addresses">
-        <span class="left"><i class="ios-ic is-green"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 21s-6.8-6-6.8-11.2a6.8 6.8 0 0 1 13.6 0C18.8 15 12 21 12 21z"/><circle cx="12" cy="9.6" r="2.4"/></svg></i> Manzillarim</span>
-        <em><span class="pf-menu-hint" id="pf-addr-hint"></span> ›</em>
+    <div class="ig-sec">Mening</div>
+    <div class="ig">
+      <button class="ig-row" id="change-car" type="button">
+        <span class="ig-ic" style="--ic:linear-gradient(180deg,#7d7aff,#5856d6)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 15.5v-3.2l1.7-4.2A2 2 0 0 1 8.6 6.8h6.8a2 2 0 0 1 1.9 1.3l1.7 4.2v3.2"/><path d="M3.5 12.5h17v4.5a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/></svg></span>
+        <span class="ig-lbl">Mening mashinam</span>
+        <span class="ig-val" id="profile-car">Belgilanmagan</span>
+        <span class="ig-chev" aria-hidden="true"></span>
       </button>
-      <button class="pf-menu-item" id="pf-contact">
-        <span class="left"><i class="ios-ic is-blue"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5.3 3.8h3.3l1.6 4.1-2 1.3a11 11 0 0 0 6.6 6.6l1.3-2 4.1 1.6v3.3a1.9 1.9 0 0 1-2 1.9A16.4 16.4 0 0 1 3.4 5.8a1.9 1.9 0 0 1 1.9-2z"/></svg></i> Biz bilan aloqa</span><em>›</em>
-      </button>
-      <button class="pf-menu-item" id="pf-trust">
-        <span class="left"><i class="ios-ic is-teal"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.2 4.8 6v5.8c0 4.5 3.1 7.7 7.2 8.9 4.1-1.2 7.2-4.4 7.2-8.9V6z"/><path d="m9 12 2.1 2.1L15.2 10"/></svg></i> Kafolat va yetkazib berish</span><em>›</em>
-      </button>
-      <button class="pf-menu-item danger" id="pf-clear-cache">
-        <span class="left"><i class="ios-ic is-gray"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4.6h-4.6"/></svg></i> Ilovani yangilash</span><em>↻</em>
+      <button class="ig-row" id="pf-addresses" type="button">
+        <span class="ig-ic" style="--ic:linear-gradient(180deg,#3ad37f,#22a35c)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 21s-6.8-6-6.8-11.2a6.8 6.8 0 0 1 13.6 0C18.8 15 12 21 12 21z"/><circle cx="12" cy="9.6" r="2.4"/></svg></span>
+        <span class="ig-lbl">Manzillarim</span>
+        <span class="ig-val" id="pf-addr-hint"></span>
+        <span class="ig-chev" aria-hidden="true"></span>
       </button>
     </div>
+
+    <div class="ig-sec">Yordam</div>
+    <div class="ig">
+      <button class="ig-row" id="pf-contact" type="button">
+        <span class="ig-ic" style="--ic:linear-gradient(180deg,#40c8e0,#1a9fbf)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5.3 3.8h3.3l1.6 4.1-2 1.3a11 11 0 0 0 6.6 6.6l1.3-2 4.1 1.6v3.3a1.9 1.9 0 0 1-2 1.9A16.4 16.4 0 0 1 3.4 5.8a1.9 1.9 0 0 1 1.9-2z"/></svg></span>
+        <span class="ig-lbl">Biz bilan aloqa</span>
+        <span class="ig-chev" aria-hidden="true"></span>
+      </button>
+      <button class="ig-row" id="pf-trust" type="button">
+        <span class="ig-ic" style="--ic:linear-gradient(180deg,#4ba3ff,#0a7cff)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.2 4.8 6v5.8c0 4.5 3.1 7.7 7.2 8.9 4.1-1.2 7.2-4.4 7.2-8.9V6z"/><path d="m9 12 2.1 2.1L15.2 10"/></svg></span>
+        <span class="ig-lbl">Kafolat va yetkazib berish</span>
+        <span class="ig-chev" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <div class="ig-sec">Ilova</div>
+    <div class="ig">
+      <button class="ig-row" id="pf-clear-cache" type="button">
+        <span class="ig-ic" style="--ic:linear-gradient(180deg,#8e8e93,#636366)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4.6h-4.6"/></svg></span>
+        <span class="ig-lbl">Ilovani yangilash</span>
+        <span class="ig-chev" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <p class="ig-foot">Uzbrovv · Avtotuning</p>
   </div>
 </section>
 
@@ -774,6 +773,9 @@
   <button class="nav-btn" data-page="profile"><i><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8.2" r="3.8"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg></i><span>Kabinet</span></button>
   <button class="nav-btn hidden" id="nav-admin" data-page="admin"><i><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></i><span>Admin</span></button>
 </nav>
+<!-- Pastki menyu ostidagi joy xira bo'lib, kontent menyu tagida «yo'qolib»
+     boradi (Avto_A1 dagi `#a1-tab-edge`). Faqat menyu ko'ringanda (CSS). -->
+<div class="nav-edge" id="nav-edge" aria-hidden="true"></div>
 
 <!-- ==================== STORY KO'RUVCHI ==================== -->
 <!-- ==========================================================================
@@ -994,16 +996,16 @@
         pochta filiallari). U faqat rasmiylashtirishda «BTS Pochta»
         tanlanganda kerak, lekin har ochilishda o'qilardi.
      ========================================================================== -->
-<script defer src="config.js?v=71"></script>
+<script defer src="config.js?v=72"></script>
 <!-- Brauzerdan bazaga to'g'ridan yozish (Avto_A1 modeli) -->
-<script defer src="js/fb.js?v=71"></script>
+<script defer src="js/fb.js?v=72"></script>
 <!-- Telefon galereyasidan rasm yuklash (siqish + EXIF burilishi) -->
-<script defer src="js/upload.js?v=71"></script>
+<script defer src="js/upload.js?v=72"></script>
 <!-- Zaxira rejim: Render o'chganda katalogni Firebase'dan o'qiydi.
      app.js dan OLDIN yuklanishi kerak — u `window.ZimmerOffline` ni ishlatadi. -->
-<script defer src="js/offline.js?v=71"></script>
-<script defer src="js/headlight.js?v=71"></script>
-<script defer src="js/cars.js?v=71"></script>
-<script defer src="js/app.js?v=71"></script>
+<script defer src="js/offline.js?v=72"></script>
+<script defer src="js/headlight.js?v=72"></script>
+<script defer src="js/cars.js?v=72"></script>
+<script defer src="js/app.js?v=72"></script>
 </body>
 </html>

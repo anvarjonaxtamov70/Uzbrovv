@@ -275,92 +275,72 @@ window.ZimmerShop = (function () {
     clearPhotos();
     setHead("Boshqaruv", "Tovar va buyurtmalar");
 
-    const tile = (id, cls, icon, title, sub, badge) =>
-      '<button class="shop-hero-card ' + cls + '" id="' + id + '">' +
-      '<span class="shop-hero-ic">' + icon + "</span>" +
-      '<span class="shop-hero-tx"><b>' + esc(title) + "</b><i>" + esc(sub) + "</i></span>" +
-      (badge ? '<span class="shop-hero-badge hidden" id="' + badge + '"></span>' : "") +
+    /* iOS «Sozlamalar» uslubidagi guruhlangan ro'yxat — Kabinet bilan BIR
+       XIL tuzilish (`.ig`, `.ig-row`, `.ig-ic`). Emoji o'rniga chiziqli
+       ikonlar rangli kvadratda. ID'lar va belgi (`shop-badge-*`) o'zgarmagan. */
+    const IC = {
+      plus: '<path d="M12 5v14M5 12h14"/>',
+      box: '<path d="M3.5 7.6 12 3.5l8.5 4.1v8.8L12 20.5l-8.5-4.1z"/><path d="M3.5 7.6 12 11.8l8.5-4.2M12 11.8v8.7"/>',
+      car: '<path d="M5 15.5v-3.2l1.7-4.2A2 2 0 0 1 8.6 6.8h6.8a2 2 0 0 1 1.9 1.3l1.7 4.2v3.2"/><path d="M3.5 12.5h17v4.5a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/>',
+      bag: '<path d="M5.2 8h13.6l-.9 11.4a1.5 1.5 0 0 1-1.5 1.4H7.6a1.5 1.5 0 0 1-1.5-1.4z"/><path d="M9 10V6.8a3 3 0 0 1 6 0V10"/>',
+      bolt: '<path d="M13.2 2.8 5 13.5h6.2l-1 7.7 8.3-10.8h-6.3z"/>',
+      cal: '<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+      board: '<rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M8 9h8M8 13h5M8 17h7"/>',
+      users: '<circle cx="9" cy="8.5" r="3.3"/><path d="M3 19.5a6 6 0 0 1 12 0"/><path d="M15.5 5.5a3 3 0 0 1 0 6M17.5 14.2a5.5 5.5 0 0 1 3.5 5.3"/>',
+      chart: '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>',
+      cam: '<path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.2l1.1-1.7a1 1 0 0 1 .8-.5h4.8a1 1 0 0 1 .8.5L16.3 6h1.2A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z"/><circle cx="12" cy="12.2" r="3.4"/>',
+      wrench: '<path d="M14.6 6.1a4.2 4.2 0 0 0-5.3 5.4l-5.6 5.6a1.9 1.9 0 0 0 2.7 2.7l5.6-5.6a4.2 4.2 0 0 0 5.4-5.3l-2.6 2.6-2.5-.6-.6-2.5z"/>',
+      img: '<rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18 5-5 4 4 2.5-2.5L20 19"/>',
+    };
+    const C = {
+      green: "linear-gradient(180deg,#3ad37f,#22a35c)",
+      brown: "linear-gradient(180deg,#c49a6c,#94693f)",
+      blue: "linear-gradient(180deg,#4ba3ff,#0a7cff)",
+      pink: "linear-gradient(180deg,#ff6b8b,#ff2d55)",
+      amber: "linear-gradient(180deg,#ffb340,#ff8c00)",
+      red: "linear-gradient(180deg,#ff6a5f,#ff3b30)",
+      indigo: "linear-gradient(180deg,#7d7aff,#5856d6)",
+      teal: "linear-gradient(180deg,#40c8e0,#1a9fbf)",
+      purple: "linear-gradient(180deg,#c779f0,#a050d8)",
+      gray: "linear-gradient(180deg,#8e8e93,#636366)",
+    };
+    const tile = (id, color, icon, title, sub, badge) =>
+      '<button class="ig-row" id="' + id + '" type="button">' +
+      '<span class="ig-ic" style="--ic:' + C[color] + '"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' +
+      IC[icon] + "</svg></span>" +
+      '<span class="ig-tx"><b>' + esc(title) + "</b><small>" + esc(sub) + "</small></span>" +
+      (badge ? '<span class="ig-badge hidden" id="' + badge + '"></span>' : "") +
+      '<span class="ig-chev" aria-hidden="true"></span>' +
       "</button>";
+    const group = (title, rows) =>
+      (title ? '<div class="ig-sec">' + esc(title) + "</div>" : "") +
+      '<div class="ig">' + rows.join("") + "</div>";
 
     body().innerHTML =
-      // --- tovar
-      '<div class="shop-hero shop-hero-2">' +
-      tile("shop-add", "shop-hero-add", "＋", "Yangi tovar", "Mahsulot qo'shish") +
-      tile("shop-inv", "shop-hero-inv", "📦", "Ombor", "Zaxira nazorati") +
-      "</div>" +
-      /* --- katalog: mashinalar
-         Ilgari mashina qo'shish/tahrirlashning YAKKA yo'li Telegram boti
-         (`/admin` -> Mashinalar) edi va Mini App admin bu bo'limni umuman
-         ko'rsatmasdi: bu yerda mashinalar FAQAT tovarga biriktirish uchun
-         O'QILARDI. Endi Avto_A1 modeli — panel bazaga to'g'ridan yozadi. */
-      '<div class="apx-sub">Katalog</div>' +
-      '<div class="shop-hero shop-hero-1">' +
-      tile("shop-cars", "shop-hero-cars", "🚗", "Mashinalar", "Marka va rusum qo'shish") +
-      "</div>" +
-      // --- buyurtmalar
-      '<div class="apx-sub">Buyurtmalar</div>' +
-      '<div class="shop-hero">' +
-      tile("shop-ord", "shop-hero-ord", KINDS.order.icon, KINDS.order.title, KINDS.order.sub, "shop-badge-order") +
-      tile("shop-biled", "shop-hero-biled", KINDS.biled.icon, KINDS.biled.title, KINDS.biled.sub, "shop-badge-biled") +
-      tile("shop-book", "shop-hero-book", KINDS.booking.icon, KINDS.booking.title, KINDS.booking.sub, "shop-badge-booking") +
-      "</div>" +
-      /* --- navbatlar doskasi
-         Navbatlarni MIJOZ OLGAN KETMA-KETLIKDA (vaqt bo'yicha) ko'rsatadigan
-         alohida chiroyli doska. Ikki tizimga bo'linadi: fara sistemasi
-         (Bi-LED, polirovka, shisha, tozalash) va chexol sistemasi (rul,
-         o'rindiq, salon). */
-      '<div class="apx-sub">Navbat doskasi</div>' +
-      '<div class="shop-hero shop-hero-1">' +
-      tile(
-        "shop-board",
-        "shop-hero-board",
-        "🗓",
-        "Navbatlar doskasi",
-        "Fara va chexol — ketma-ketlik",
-        "shop-badge-board"
-      ) +
-      "</div>" +
-      /* --- mijozlar va hisobot (Avto_A1 dagi kabi alohida guruh)
-         Ilgari panelda mijozlar bazasi UMUMAN yo'q edi: admin kim nima
-         sotib olganini faqat buyurtmalarni varaqlab topardi. Endi
-         «Mijozlar» — kim, qancha sarflagan, nechta xarid; «Statistika» —
-         tushum, o'rtacha chek va xit savdolar. */
-      '<div class="apx-sub">Mijozlar va hisobot</div>' +
-      '<div class="shop-hero shop-hero-2">' +
-      tile("shop-cust", "shop-hero-cust", "👥", "Mijozlar", "Foydalanuvchilar bazasi") +
-      tile("shop-stats", "shop-hero-stats", "📊", "Statistika", "Savdo va hisobot") +
-      "</div>" +
-      /* --- stories
-         Ilgari story qo'shishning YAKKA yo'li Telegram boti edi
-         (rasmni `#bugun matn` izohi bilan yuborish). Panelda stories
-         bo'limi umuman yo'q edi va kim ko'rgani ham ko'rinmasdi. */
-      '<div class="apx-sub">Stories</div>' +
-      '<div class="shop-hero shop-hero-2">' +
-      tile("shop-story", "shop-hero-story", "📸", "Stories", "Qo'shish va statistika") +
-      tile("shop-story-add", "shop-hero-add", "＋", "Tez story", "Rasm + sarlavha") +
-      "</div>" +
-      /* --- xizmatlar
-         Ilgari bu bo'lim panelda UMUMAN yo'q edi: admin xizmat narxini
-         faqat Telegram boti orqali (`/admin` -> Xizmatlar) o'zgartira
-         olardi va Mini App'dan buni topa olmasdi. Ro'yxat va forma
-         ZimmerAdmin'da tayyor — shuning uchun shu yerda qaytadan
-         yozmaymiz, o'sha bo'limni ochamiz (`openEmbedded`). */
-      '<div class="apx-sub">Xizmatlar</div>' +
-      '<div class="shop-hero shop-hero-1">' +
-      tile(
-        "shop-srv",
-        "shop-hero-srv",
-        "🔧",
-        "Xizmatlar va narxlar",
-        "Narx, kafolat, video va «Tez kunda»"
-      ) +
-      "</div>" +
-      /* --- bosh sahifa ko'rinishi
-         Ilgari bannerlar panelda UMUMAN yo'q edi (faqat Telegram boti
-         orqali boshqarilardi). Fon musiqasi butunlay olib tashlandi. */
-      '<div class="apx-sub">Bosh sahifa</div>' +
-      '<div class="shop-hero shop-hero-2">' +
-      tile("shop-banners", "shop-hero-ban", "🖼", "Bannerlar", "Rasm, tartib, o'chirish") +
+      '<div class="ig-wrap">' +
+      group("Tovarlar", [
+        tile("shop-add", "green", "plus", "Yangi tovar", "Mahsulot qo'shish"),
+        tile("shop-inv", "brown", "box", "Ombor", "Zaxira nazorati"),
+        tile("shop-cars", "blue", "car", "Mashinalar", "Marka va rusum qo'shish"),
+      ]) +
+      group("Buyurtmalar", [
+        tile("shop-ord", "pink", "bag", KINDS.order.title, KINDS.order.sub, "shop-badge-order"),
+        tile("shop-biled", "amber", "bolt", KINDS.biled.title, KINDS.biled.sub, "shop-badge-biled"),
+        tile("shop-book", "blue", "cal", KINDS.booking.title, KINDS.booking.sub, "shop-badge-booking"),
+        tile("shop-board", "indigo", "board", "Navbatlar doskasi", "Fara va chexol — ketma-ketlik", "shop-badge-board"),
+      ]) +
+      group("Mijozlar va hisobot", [
+        tile("shop-cust", "teal", "users", "Mijozlar", "Foydalanuvchilar bazasi"),
+        tile("shop-stats", "purple", "chart", "Statistika", "Savdo va hisobot"),
+      ]) +
+      group("Kontent", [
+        tile("shop-story", "pink", "cam", "Stories", "Qo'shish va statistika"),
+        tile("shop-story-add", "green", "plus", "Tez story", "Rasm + sarlavha"),
+        tile("shop-banners", "amber", "img", "Bannerlar", "Rasm, tartib, o'chirish"),
+      ]) +
+      group("Xizmatlar", [
+        tile("shop-srv", "gray", "wrench", "Xizmatlar va narxlar", "Narx, kafolat, video va «Tez kunda»"),
+      ]) +
       "</div>";
 
     const bind = (id, fn) => {
