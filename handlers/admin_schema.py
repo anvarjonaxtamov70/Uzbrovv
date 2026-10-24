@@ -487,8 +487,8 @@ ENTITIES: dict[str, Entity] = {
             Field("title", "Sarlavha", required=True),
             Field("subtitle", "Tavsif", "long"),
             Field("tag", "Yorliq", hint="Masalan: -15% shu hafta"),
-            Field("color_from", "Rang 1", "color", hint="#ff2d2d"),
-            Field("color_to", "Rang 2", "color", hint="#38000a"),
+            Field("color_from", "Rang 1", "color", hint="#34c77b"),
+            Field("color_to", "Rang 2", "color", hint="#0f3d27"),
             *MEDIA,
             Field("sort", "Tartib", "int"),
         ),
@@ -586,7 +586,7 @@ def parse_value(kind: str, raw: str):
 
     if kind == "color":
         if not HEX.match(raw):
-            return None, "Rang #rrggbb ko'rinishida bo'lishi kerak. Masalan: #ff2d3a"
+            return None, "Rang #rrggbb ko'rinishida bo'lishi kerak. Masalan: #34c77b"
         return raw.lower(), None
 
     if kind in ("photo", "video"):

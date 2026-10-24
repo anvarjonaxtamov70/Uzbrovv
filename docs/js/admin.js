@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ZIMMER — Mini App ichidagi ADMIN PANEL
+   UZBROVV — Mini App ichidagi ADMIN PANEL
 
    Nima qiladi: katalogning HAMMA bo'limini telefon ekranidan boshqarish —
    mahsulot qo'shish, Bi-LED linzalarni, ochkilarni, ranglarni, mashinalarni,
@@ -1077,11 +1077,11 @@ window.ZimmerAdmin = (function () {
 
     /* rang */
     if (field.kind === "color") {
-      const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(value)) ? value : "#ff2d3a";
+      const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(value)) ? value : "#34c77b";
       box.innerHTML = `<span>${esc(field.label)}${req}</span>
         <div class="adm-color">
           <input type="color" value="${esc(hex)}" data-role="picker">
-          <input type="text" value="${esc(value)}" placeholder="#ff2d3a"
+          <input type="text" value="${esc(value)}" placeholder="#34c77b"
                  data-col="${esc(field.column)}" data-kind="color">
         </div>${hint}${err}`;
       const picker = box.querySelector('[data-role="picker"]');
@@ -1403,7 +1403,7 @@ window.ZimmerAdmin = (function () {
         }
       }
       if (field.kind === "color" && !/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(text)) {
-        return { column: column, message: `«${field.label}» rangi #ff2d3a ko'rinishida bo'lsin` };
+        return { column: column, message: `«${field.label}» rangi #34c77b ko'rinishida bo'lsin` };
       }
       const max = Number(field.max) || 0;
       if (max && text.length > max) {

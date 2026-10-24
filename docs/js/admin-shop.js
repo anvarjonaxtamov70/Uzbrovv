@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ZIMMER — TOVAR BOSHQARUVI (Avto_A1 dizayni, bitta manba)
+   UZBROVV — TOVAR BOSHQARUVI (Avto_A1 dizayni, bitta manba)
 
    NIMA UCHUN BITTA FAYL / BITTA YO'L
    Ilgari Zimmer'da uch xil tovar tizimi bor edi va ular chalkashardi:

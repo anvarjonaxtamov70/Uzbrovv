@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ZIMMER — BTS Pochta filiallari (yetkazib berish uchun)
+   UZBROVV — BTS Pochta filiallari (yetkazib berish uchun)
 
    Viloyat -> Tuman -> Filial ro'yxati. Har bir filial:
      { id, name, address, landmark, hours }

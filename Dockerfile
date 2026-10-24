@@ -1,5 +1,5 @@
 # =====================================================================
-#  Zimmer bot — Docker image
+#  Uzbrovv bot — Docker image
 #
 #  Konteyner platformalarida ishlaydi: Koyeb, Fly.io, Railway, Render,
 #  Google Cloud Run, o'z serveringiz.

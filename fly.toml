@@ -19,7 +19,7 @@ primary_region = "fra"   # Frankfurt — Toshkentga eng yaqin arzon mintaqa
   # api/server.py PORT bo'lmasa API serverni UMUMAN yoqmaydi (api/server.py:96)
   PORT = "8080"
   FIREBASE_ROOT = "zimmer"
-  SHOP_NAME = "Zimmer"
+  SHOP_NAME = "Uzbrovv"
   TIMEZONE = "Asia/Tashkent"
   MINI_APP_URL = "https://anvarjonaxtamov70.github.io/Zimmer/"
   # Bepul tarifda disk yo'q — SQLite qayta deployda tozalanadi.

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ZIMMER — OFFLINE (zaxira) REJIM
+   UZBROVV — OFFLINE (zaxira) REJIM
 
    MUAMMO
    Mini App'ning HAR BIR ekrani Render'dagi API'ga (`/api/*`) bog'langan edi.
@@ -99,14 +99,14 @@
      STORY_CATEGORIES bilan bir xil bo'lishi SHART. Aks holda offline'da
      halqalar boshqacha ko'rinadi. */
   var STORY_RINGS = [
-    ["aksiyalar", "Aksiyalar", "🔥", "#ff2d3a", "#6d0a10"],
-    ["bugun", "Bugun", "⚡️", "#ff6b3d", "#3a0f00"],
-    ["mijozlar", "Mijozlar", "💬", "#e01020", "#2a0006"],
-    ["natijalar", "Natijalar", "🏆", "#ff4b3e", "#1a0508"],
-    ["kafolat", "Kafolat", "🛡", "#c1121f", "#101215"],
-    ["lokatsiya", "Manzil", "📍", "#ff8f3d", "#2b1200"],
-    ["tolov", "To'lov", "💳", "#ff2d55", "#25040c"],
-    ["aloqa", "Aloqa", "📞", "#ff5f6d", "#20060a"],
+    ["aksiyalar", "Aksiyalar", "🔥", "#34c77b", "#0f3d27"],
+    ["bugun", "Bugun", "⚡️", "#5ad69a", "#123524"],
+    ["mijozlar", "Mijozlar", "💬", "#2fb4a0", "#0c2f2a"],
+    ["natijalar", "Natijalar", "🏆", "#7edca8", "#133325"],
+    ["kafolat", "Kafolat", "🛡", "#239a5c", "#0e1f17"],
+    ["lokatsiya", "Manzil", "📍", "#4cd68f", "#10301f"],
+    ["tolov", "To'lov", "💳", "#3ccf9a", "#0c2c22"],
+    ["aloqa", "Aloqa", "📞", "#6fe0b0", "#113126"],
   ];
 
   /* ------------------------------------------------------------------
@@ -520,8 +520,8 @@
       title: r.title || "",
       subtitle: r.subtitle || "",
       tag: r.tag || "",
-      color_from: r.color_from || "#c1121f",
-      color_to: r.color_to || "#101215",
+      color_from: r.color_from || "#239a5c",
+      color_to: r.color_to || "#0e1f17",
       photo_url: pic,
       photo_external: !!pic,
       video_url: photo(r.video_url, r.video_id),
