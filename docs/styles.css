@@ -10569,3 +10569,154 @@ html.lite .story-theme-orbit { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .story-theme-orbit { animation: none; }
 }
+
+/* ##########################################################################
+   UZBROVV — 4-BOSQICH: KABINET / ADMIN MENYU (iOS guruhlangan ro'yxat),
+   bosh sahifa sarlavhasi va pastki menyu cheti
+   ########################################################################## */
+
+/* ---- bosh sahifa sarlavhasi: skrollda QOTIB TURMAYDI (Avto_A1 kabi) */
+.home-header.hh,
+html:not(.lite) .home-header.hh {
+  position: relative; top: auto;
+  background: transparent;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  border-bottom: 0;
+}
+
+/* ---- «Mahsulotlar» → qidiruv → bo'limlar: bir xil, havodor oraliq */
+#catalog-sec .sec-head { margin-bottom: 14px; }
+.shop-tools { margin-bottom: 14px; }
+.shop-search { margin: 0; }
+.chips { padding: 0 0 2px; margin-bottom: 18px; }
+#cats { scroll-padding-left: 0; }
+
+/* ---- pastki menyu: biroz pastroq + ostidagi joy xira */
+.nav {
+  bottom: calc(var(--safe-b) * 0.4 + 8px);
+}
+.toast { bottom: calc(var(--safe-b) * 0.4 + 92px); }
+.sg-fab { bottom: calc(var(--safe-b) * 0.4 + 84px); }
+.nav-edge {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 43;
+  height: calc(var(--safe-b) * 0.4 + 104px);
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(11, 11, 12, 0) 0%, rgba(11, 11, 12, 0.72) 55%, rgba(11, 11, 12, 0.94) 100%);
+}
+html:not(.lite) .nav-edge {
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 45%);
+          mask-image: linear-gradient(to bottom, transparent 0%, #000 45%);
+}
+#nav.hidden + .nav-edge { display: none; }
+
+/* ======================================================= .ig — iOS ro'yxat
+   Kabinet va admin menyusi uchun YAGONA komponent. */
+.ig-wrap { padding-bottom: 8px; }
+.ig {
+  display: block; width: 100%;
+  background: #1c1c1e;
+  border: 0.5px solid rgba(84, 84, 88, 0.36);
+  border-radius: 18px;
+  overflow: hidden;
+  animation: igIn 0.42s var(--silk) both;
+}
+html:not(.lite) .ig { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.ig + .ig { margin-top: 14px; }
+.ig-sec {
+  margin: 26px 8px 8px;
+  font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+  text-transform: uppercase; color: rgba(235, 235, 245, 0.55);
+}
+.ig-wrap > .ig-sec:first-child { margin-top: 4px; }
+@keyframes igIn { from { opacity: 0; transform: translate3d(0, 8px, 0); } }
+
+.ig-row, .ig-me {
+  appearance: none; -webkit-appearance: none;
+  position: relative;
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; min-height: 52px; padding: 10px 14px;
+  border: 0; background: transparent; color: var(--text);
+  font: inherit; text-align: left; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.18s ease;
+}
+.ig-row:active, .ig-me:active { background: rgba(118, 118, 128, 0.22); }
+.ig > .ig-row + .ig-row::before {
+  content: ""; position: absolute; top: 0; left: 58px; right: 0;
+  height: 0.5px; background: rgba(84, 84, 88, 0.5);
+}
+
+.ig-ic {
+  flex: 0 0 32px; width: 32px; height: 32px; border-radius: 9px;
+  display: grid; place-items: center;
+  background: var(--ic); color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.ig-ic .ic { width: 19px; height: 19px; stroke-width: 2; }
+
+.ig-lbl { flex: 1; min-width: 0; font-size: 16px; font-weight: 500; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ig-tx { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.ig-tx b { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ig-tx small {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 13px; color: rgba(235, 235, 245, 0.55);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ig-val {
+  flex: 0 1 auto; max-width: 46%; min-width: 0;
+  font-size: 15px; color: rgba(235, 235, 245, 0.55);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.ig-val:empty { display: none; }
+.ig-badge {
+  flex: none; min-width: 22px; height: 22px; padding: 0 7px;
+  display: inline-grid; place-items: center; border-radius: 11px;
+  background: var(--danger); color: #fff;
+  font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.ig-chev {
+  flex: none; width: 8px; height: 14px; margin-left: 2px;
+  background: rgba(235, 235, 245, 0.3);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 14'%3E%3Cpath d='M1 1l6 6-6 6' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 14'%3E%3Cpath d='M1 1l6 6-6 6' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* ---- profil qatori */
+.ig-me { gap: 14px; padding: 14px; min-height: 0; }
+.ig-av {
+  flex: 0 0 60px; width: 60px; height: 60px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 25px; font-weight: 700; color: #fff; text-transform: uppercase;
+  background: var(--accent-grad);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 6px 16px -6px hsl(var(--h) var(--s) var(--l3) / 0.8);
+}
+.ig-me.is-vip .ig-av { box-shadow: 0 0 0 2px #1c1c1e, 0 0 0 4px var(--accent), 0 6px 16px -6px hsl(var(--h) var(--s) var(--l3) / 0.8); }
+.ig-me-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.ig-me-tx b { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ig-me-tx small { font-size: 13px; color: rgba(235, 235, 245, 0.55); font-variant-numeric: tabular-nums; }
+.ig-pill {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 9px;
+  border-radius: 999px; font-size: 12px; font-weight: 650;
+  color: var(--accent); background: hsl(var(--h) var(--s) var(--l) / 0.14);
+}
+
+
+/* ---- statistika: bitta guruh, uch ustun, ingichka ajratgich */
+.ig-stats { display: grid; grid-template-columns: repeat(3, 1fr); }
+.ig-stat { position: relative; padding: 12px 6px; text-align: center; }
+.ig-stat + .ig-stat::before {
+  content: ""; position: absolute; left: 0; top: 14px; bottom: 14px;
+  width: 0.5px; background: rgba(84, 84, 88, 0.5);
+}
+.ig-stat b { display: block; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.ig-stat span { display: block; margin-top: 2px; font-size: 12px; color: rgba(235, 235, 245, 0.55); }
+
+#phone-warn:not(.hidden) { margin-top: 14px; }
+.ig-foot { margin: 22px 0 6px; text-align: center; font-size: 12px; color: var(--dim); letter-spacing: 0.02em; }
+
+/* Admin menyusi: oldingi «plitka» uslublari bu yerga ta'sir qilmasin */
+#admin-body .ig-wrap { padding-top: 4px; }
+
+@media (prefers-reduced-motion: reduce) { .ig { animation: none; } }
