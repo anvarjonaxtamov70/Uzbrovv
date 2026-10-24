@@ -35,8 +35,6 @@ MEDIA_TABLES = {
     # (`config.VIDEO_SERVICE_THEMES`), lekin proksi jadval darajasida
     # ochiladi — cheklov yuklashda tekshiriladi, ko'rsatishda emas.
     "services",
-    # Mini App fon musiqasi (`audio` turi)
-    "music",
 }
 
 CONTENT_TYPES = {

@@ -35,7 +35,23 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=70">
+  <!-- RANG GENERATORI: oxirgi tanlangan brend rangi CSS'dan OLDIN qo'llanadi —
+       ilova ochilganda standart yashil bir lahza «miltillab» o'tmasin.
+       Manba: app.js -> rememberTheme (`localStorage["uzb_theme"]`). -->
+  <script>
+    (function () {
+      try {
+        var t = JSON.parse(localStorage.getItem("uzb_theme") || "null");
+        if (!t || t.h == null) return;
+        var st = document.documentElement.style;
+        st.setProperty("--h", String(+t.h));
+        st.setProperty("--s", (+t.s) + "%");
+        st.setProperty("--l", (+t.l) + "%");
+        if (t.ink) st.setProperty("--accent-ink", t.ink);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css?v=71">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- Zoom jestlarini to'xtatish. `touch-action: manipulation` (CSS)
        double-tap zoom'ni o'chiradi va BOSISHNI buzmaydi; quyidagi JS esa
@@ -221,31 +237,7 @@
         title="Server bilan aloqa yo'q"
       ><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.5 3.5l17 17"/><path d="M9 6.3A6 6 0 0 1 17.6 10h.4a3.8 3.8 0 0 1 2.4 6.8"/><path d="M16.5 18H7.2a4.4 4.4 0 0 1-1.5-8.5"/></svg></button>
 
-      <!-- Fon musiqasi tugmasi.
-           Musiqa qo'shilmagan bo'lsa BUTUNLAY yashiriladi (`paintMusicBtn`) —
-           bosilganda hech narsa bo'lmaydigan tugma turmasin.
 
-           DIQQAT: brauzer ovozni o'zi boshlamaydi (Chrome/Safari qoidasi),
-           shuning uchun boshlash uchun aynan shu tugma kerak. Tanlov
-           eslab qolinadi va keyingi kirishda o'zi davom etadi. -->
-      <button
-        class="music-btn hidden"
-        id="music-btn"
-        type="button"
-        aria-pressed="false"
-        aria-label="Fon musiqasini yoqish"
-      ><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5.5 6.5 9H3.5v6h3l4.5 3.5z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/></svg></button>
-
-      <!-- Saqlanganlar — musiqa tugmasi YONIDA (ilgari pastdagi navigatsiyada).
-           Ustidagi son saqlangan tovarlar sonini ko'rsatadi; nol bo'lsa
-           yashiriladi (bo'sh doira bezovta qiladi). -->
-      <button
-        class="hdr-btn"
-        id="saved-open"
-        type="button"
-        aria-label="Saqlanganlar"
-        title="Saqlanganlar"
-      ><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20s-7.2-4.4-8.9-9C1.9 7.6 4.1 4.6 7.3 4.6c1.9 0 3.5 1 4.7 2.7 1.2-1.7 2.8-2.7 4.7-2.7 3.2 0 5.4 3 4.2 6.4-1.7 4.6-8.9 9-8.9 9z"/></svg><b class="hdr-dot hidden" id="saved-dot" aria-hidden="true">0</b></button>
     </div>
   </header>
 
@@ -634,11 +626,6 @@
 <!-- ==================== SAQLANGANLAR (alohida bo'lim) ==================== -->
 <section id="saved" class="page hidden">
   <header class="topbar static">
-    <!-- «‹» tugmasi QO'SHILDI: bu bo'lim endi pastdagi navigatsiyada emas
-         (kirish nuqtasi bosh sahifaning tepa qatorida), shuning uchun
-         chiqish yo'li shu sarlavhada bo'lishi kerak. Navbar pastda
-         qolgani uchun boshqa bo'limga o'tish ham ishlaydi. -->
-    <button class="icon-btn" id="saved-back" aria-label="Orqaga"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.5 5 7.5 12l7 7"/></svg></button>
     <div class="topbar-mid"><div class="topbar-title">Saqlanganlar</div></div>
   </header>
   <div class="pad">
@@ -767,6 +754,9 @@
   <!-- «Konfigurator» → «Xizmatlar»: bu bo'lim endi BARCHA xizmatlarni
        o'z ichiga oladi (konfigurator ham ular orasida bittasi). -->
   <button class="nav-btn" data-page="services"><i><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.6 6.1a4.2 4.2 0 0 0-5.3 5.4l-5.6 5.6a1.9 1.9 0 0 0 2.7 2.7l5.6-5.6a4.2 4.2 0 0 0 5.4-5.3l-2.6 2.6-2.5-.6-.6-2.5z"/></svg></i><span>Xizmatlar</span></button>
+  <!-- Saqlanganlar — pastki menyuda, Xizmatlar yonida (mahsulot qarori).
+       Son belgisi `#saved-dot` (app.js: paintSavedDot). -->
+  <button class="nav-btn" data-page="saved"><i><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20s-7.2-4.4-8.9-9C1.9 7.6 4.1 4.6 7.3 4.6c1.9 0 3.5 1 4.7 2.7 1.2-1.7 2.8-2.7 4.7-2.7 3.2 0 5.4 3 4.2 6.4-1.7 4.6-8.9 9-8.9 9z"/></svg></i><span>Saqlangan</span><b class="badge hidden" id="saved-dot" aria-label="Saqlangan tovarlar soni">0</b></button>
   <!-- ==========================================================================
        «🎓 Shogird» va «❤️ Saqlangan» BU YERDAN OLIB TASHLANDI
 
@@ -1004,16 +994,16 @@
         pochta filiallari). U faqat rasmiylashtirishda «BTS Pochta»
         tanlanganda kerak, lekin har ochilishda o'qilardi.
      ========================================================================== -->
-<script defer src="config.js?v=70"></script>
+<script defer src="config.js?v=71"></script>
 <!-- Brauzerdan bazaga to'g'ridan yozish (Avto_A1 modeli) -->
-<script defer src="js/fb.js?v=70"></script>
+<script defer src="js/fb.js?v=71"></script>
 <!-- Telefon galereyasidan rasm yuklash (siqish + EXIF burilishi) -->
-<script defer src="js/upload.js?v=70"></script>
+<script defer src="js/upload.js?v=71"></script>
 <!-- Zaxira rejim: Render o'chganda katalogni Firebase'dan o'qiydi.
      app.js dan OLDIN yuklanishi kerak — u `window.ZimmerOffline` ni ishlatadi. -->
-<script defer src="js/offline.js?v=70"></script>
-<script defer src="js/headlight.js?v=70"></script>
-<script defer src="js/cars.js?v=70"></script>
-<script defer src="js/app.js?v=70"></script>
+<script defer src="js/offline.js?v=71"></script>
+<script defer src="js/headlight.js?v=71"></script>
+<script defer src="js/cars.js?v=71"></script>
+<script defer src="js/app.js?v=71"></script>
 </body>
 </html>

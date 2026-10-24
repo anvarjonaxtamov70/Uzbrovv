@@ -1,25 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <!-- Uzbrovv stories muqovasi (kafolat). Vaqtinchalik: admin keyin o'zinikini qo'yadi. -->
+  <!-- Uzbrovv stories muqovasi: kafolat. Har bo'lim o'z rangida (dizayn rangiga bog'liq emas).
+       Almashtirish: shu faylni boshqa rasm bilan almashtiring. -->
   <defs>
-    <radialGradient id="bg" cx="32%" cy="22%" r="95%">
-      <stop offset="0" stop-color="#1e5e3f"/>
-      <stop offset=".5" stop-color="#0e2c1e"/>
-      <stop offset="1" stop-color="#050b08"/>
+    <radialGradient id="bg" cx="50%" cy="30%" r="80%">
+      <stop offset="0" stop-color="#06393a"/>
+      <stop offset="1" stop-color="#021212"/>
     </radialGradient>
-    <linearGradient id="ink" gradientUnits="userSpaceOnUse" x1="3" y1="3" x2="21" y2="21">
-      <stop offset="0" stop-color="#d4fbe6"/>
-      <stop offset=".45" stop-color="#5ad69a"/>
-      <stop offset="1" stop-color="#1f9a5e"/>
-    </linearGradient>
     <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0" stop-color="#34c77b" stop-opacity=".35"/>
-      <stop offset="1" stop-color="#34c77b" stop-opacity="0"/>
+      <stop offset="0" stop-color="#30d6c8" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#30d6c8" stop-opacity="0"/>
     </radialGradient>
+    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="4" y1="2" x2="20" y2="22">
+      <stop offset="0" stop-color="#a5fff4"/>
+      <stop offset=".5" stop-color="#2fd4c4"/>
+      <stop offset="1" stop-color="#0b8f86"/>
+    </linearGradient>
   </defs>
   <rect width="128" height="128" fill="url(#bg)"/>
-  <circle cx="64" cy="64" r="46" fill="url(#glow)"/>
-  <circle cx="64" cy="64" r="43" fill="none" stroke="#7edca8" stroke-opacity=".16" stroke-width="1.2"/>
-  <g transform="translate(28 28) scale(3)" fill="none" stroke="url(#ink)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M12 2.8 4.6 5.7v6c0 4.7 3.2 8 7.4 9.5 4.2-1.5 7.4-4.8 7.4-9.5v-6z"/><path d="m8.8 12.2 2.3 2.3 4.4-4.6"/>
+  <circle cx="64" cy="66" r="50" fill="url(#glow)"/>
+  <g transform="translate(26 25) scale(3.15)">
+    <path d="M12 2 4.2 5.1v6.2c0 5 3.4 8.6 7.8 10.2 4.4-1.6 7.8-5.2 7.8-10.2V5.1z" fill="url(#g)"/><path d="m8.4 11.9 2.6 2.6 4.8-5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M12 3.6 5.8 6.1v2" stroke="#fff" stroke-width="1.1" stroke-linecap="round" fill="none" opacity=".45"/>
   </g>
 </svg>
