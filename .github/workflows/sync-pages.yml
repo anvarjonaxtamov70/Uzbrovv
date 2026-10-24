@@ -18,8 +18,8 @@ name: Mini App'ni gh-pages'ga chiqarish
 #  branchdan sayt qiladi. Bu yerda faqat `contents: write` kerak, ya'ni
 #  oddiy git push — hech qanday qo'shimcha ruxsat talab qilinmaydi.
 #
-#  Natija: https://<foydalanuvchi>.github.io/Zimmer/
-#  (manzil harf registriga sezgir — "Zimmer" katta harf bilan)
+#  Natija: https://<foydalanuvchi>.github.io/Uzbrovv/
+#  (manzil harf registriga sezgir — "Uzbrovv" katta harf bilan)
 # =====================================================================
 on:
   push:

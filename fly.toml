@@ -21,7 +21,7 @@ primary_region = "fra"   # Frankfurt — Toshkentga eng yaqin arzon mintaqa
   FIREBASE_ROOT = "zimmer"
   SHOP_NAME = "Uzbrovv"
   TIMEZONE = "Asia/Tashkent"
-  MINI_APP_URL = "https://anvarjonaxtamov70.github.io/Zimmer/"
+  MINI_APP_URL = "https://anvarjonaxtamov70.github.io/Uzbrovv/"
   # Bepul tarifda disk yo'q — SQLite qayta deployda tozalanadi.
   # Ma'lumot Firebase'dan tiklanadi (services/sync.py:initial_sync).
   DB_PATH = "zimmer.db"

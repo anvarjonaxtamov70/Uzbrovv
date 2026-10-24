@@ -280,7 +280,7 @@ config = Config(
     booking_days_ahead=_int_env("BOOKING_DAYS_AHEAD", 7),
     currency=os.getenv("CURRENCY", "so'm").strip(),
     mini_app_url=os.getenv(
-        "MINI_APP_URL", "https://anvarjonaxtamov70.github.io/Zimmer/"
+        "MINI_APP_URL", "https://anvarjonaxtamov70.github.io/Uzbrovv/"
     ).strip(),
     # Firebase Realtime Database — mijozlar va tovarlarni doimiy saqlash uchun
     firebase_db_url=os.getenv("FIREBASE_DB_URL", "").strip().rstrip("/"),
