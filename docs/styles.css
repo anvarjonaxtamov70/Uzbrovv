@@ -11264,3 +11264,85 @@ html:not(.lite) .th-fab { background: rgba(28, 28, 30, 0.6); -webkit-backdrop-fi
 @keyframes thFabIn { from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.7); } }
 html.lite .th-fab::before { animation: none; }
 @media (prefers-reduced-motion: reduce) { .th-fab, .th-fab::before { animation: none; } }
+
+/* ##########################################################################
+   UZBROVV — 7-BOSQICH: SKROLL SILLIQLIGI (oxirgi so'z — eng kuchli qoida)
+
+   O'lchov (bosh sahifa, 390×844): skroll qilinadigan kontent ichida 40 ta
+   `backdrop-filter`, 24 ta CHEKSIZ animatsiya bor edi. Har birining ostidagi
+   rasm skrollda siljigani uchun brauzer HAR KADRDA xiralashtirishni qaytadan
+   hisoblaydi — telefon kadrga ulgurmaydi.
+
+   Qoida:
+     • Shisha (blur) FAQAT skrolldan tashqaridagi qatlamlarda: pastki menyu,
+       pastdan chiqadigan oyna, toast. Sahifa va tovar oynasi ICHIDA blur yo'q
+       — o'rnida yarim shaffof qattiq fon (ko'rinish deyarli bir xil).
+     • Skroll paytida hech narsa cheksiz aylanmaydi/yaltiramaydi.
+     • Qotib turadigan qatlamlar (fon, menyu) alohida GPU qatlamida.
+     • Kartalar kadrdan tashqarida chizilmaydi (`content-visibility`), taxminiy
+       balandlik haqiqiysiga yaqin — skroll «sakramaydi».
+   ########################################################################## */
+
+/* 1) Sahifa va tovar oynasi ichida blur yo'q */
+html body .page *, html body .page *::before, html body .page *::after,
+html body #productModal *, html body #productModal *::before, html body #productModal *::after,
+html body #nav-edge, html body .sg-fab, html body .th-fab {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+html:not(.lite) body .prod.ac .prod-fav, html body .prod.ac .prod-fav {
+  background: rgba(0, 0, 0, 0.42) !important;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+}
+.ac-chip { background: rgba(0, 0, 0, 0.62); }
+html body .topbar:not(.static), html body .sticky-cta, html body .cart-checkout-bar,
+html body .sd-bar, html body .sg-bar { background: rgba(14, 14, 16, 0.96) !important; }
+html body #productModal.pd .pd-bar { background: rgba(14, 14, 17, 0.96) !important; }
+html body #productModal.pd .pd-gl { background: rgba(22, 22, 26, 0.72) !important; }
+html body #productModal.pd .pm-dots, html body #productModal.pd .pd-count,
+html body #productModal.pd .pm-zoom { background: rgba(18, 18, 22, 0.66) !important; }
+html body .sg-fab, html body .th-fab { background: rgba(28, 28, 30, 0.94) !important; }
+html body #nav-edge {
+  -webkit-mask-image: none !important; mask-image: none !important;
+  background: linear-gradient(to bottom, rgba(11, 11, 12, 0) 0%, rgba(11, 11, 12, 0.78) 55%, rgba(11, 11, 12, 0.96) 100%) !important;
+}
+/* Kartalar, plitkalar, chiplar — qattiq fon (ilgari shisha edi) */
+html body .page .card, html body .page .svt, html body .page .sd-block, html body .page .sd-fact,
+html body .page .opt, html body .page .car-card, html body .page .swatch, html body .page .pf-menu-item,
+html body .page .mo-tile, html body .page .ad-item, html body .page .saved-row, html body .page .bk-day,
+html body .page .bk-time, html body .page .slot, html body .page .sg-topic, html body .page .sg-card,
+html body .page .pz-group, html body .page .dlv-card, html body .page .ct-badge, html body .page .trust-item {
+  background-color: #1c1c1e;
+}
+
+/* 2) Cheksiz animatsiyalar o'chadi (bir martalik kirish animatsiyalari qoladi) */
+html body .prod.ac .prod-add.ac-add::before,
+html body .story-ring::before, html body .story-theme-orbit,
+html body .th-fab::before,
+html body .sg-fab, html body .sg-fab-glow, html body .sg-fab-ic,
+html body .offline-badge, html body .music-btn.on,
+html body .brand-mark::after, html body .fx::after,
+html body .cart-badge, html body .pf-vip-ring, html body .gate-icon {
+  animation: none !important;
+}
+html body .prod.ac .prod-add.ac-add::before { opacity: 0 !important; }
+html body .sg-fab.pop-in { animation: sgFabIn 0.5s var(--spring) both !important; }
+
+/* 3) Qotib turadigan qatlamlar — o'z GPU qatlamida (skrollda qayta chizilmaydi) */
+html body .fx, html body #nav, html body #nav-edge, html body .sg-fab, html body .th-fab {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+html body .fx-vignette { display: none; }
+
+/* 4) Kartalar: kadrdan tashqarida chizilmaydi, balandligi taxminan to'g'ri */
+html body .prod.ac {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 330px;
+  contain: layout paint style;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 8px 18px -14px rgba(0, 0, 0, 0.8) !important;
+  animation: none !important;
+}
+html body .prod.ac .prod-art { contain: layout paint; }
+html body .stories, html body .banners, html body .chips, html body .cst-segs { contain: content; }
+
