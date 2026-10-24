@@ -300,7 +300,7 @@ async def field_edit(callback: CallbackQuery, state: FSMContext) -> None:
         "<i>Telegram orqali maksimal 20 MB. Kattaroq video uchun URL ishlating.</i>",
         "money": "Narxni son ko'rinishida yuboring. Masalan: <code>1900000</code>",
         "int": "Butun son yuboring.",
-        "color": "Rangni HEX ko'rinishida yuboring. Masalan: <code>#ff2d3a</code>",
+        "color": "Rangni HEX ko'rinishida yuboring. Masalan: <code>#34c77b</code>",
         "long": "Matnni yuboring (bir necha qator bo'lishi mumkin).",
     }
     prompt = prompts.get(f.kind, "Yangi qiymatni yuboring.")

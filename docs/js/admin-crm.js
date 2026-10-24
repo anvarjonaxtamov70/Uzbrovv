@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ZIMMER — MIJOZLAR BAZASI VA STATISTIKA (Avto_A1 modeli)
+   UZBROVV — MIJOZLAR BAZASI VA STATISTIKA (Avto_A1 modeli)
 
    NEGA BU FAYL BOR
    Admin panelda tovar va buyurtmalar bor edi, lekin MIJOZ tushunchasi yo'q edi.

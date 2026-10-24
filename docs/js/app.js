@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ZIMMER — avtotuning Mini App
+   UZBROVV — avtotuning Mini App
 
    Oqim: salom → mashina → Bi-LED linza → ochki → optika rangi → buyurtma
          → asosiy menyu (stories, bannerlar, aksiyalar, mahsulotlar)
@@ -269,7 +269,7 @@
     const box = $("burst");
     box.innerHTML = "";
     box.classList.remove("hidden");
-    const colors = ["#ff2d3a", "#ffffff", "#ff8a3d", "#e01020", "#d4a853", "#2fd45f"];
+    const colors = ["#34c77b", "#ffffff", "#7edca8", "#239a5c", "#a8ecc6", "#30d158"];
     for (let i = 0; i < 42; i++) {
       const p = el("i");
       p.style.left = Math.random() * 100 + "%";
@@ -708,6 +708,7 @@
     document
       .querySelectorAll(".nav-btn")
       .forEach((b) => b.classList.toggle("active", b.dataset.page === page));
+    moveNavPill();
 
     syncShogirdFab(page, navVisible);
 
@@ -765,6 +766,42 @@
 
      Kirish animatsiyasi: har ko'rinishida qaytadan o'ynaydi — buning uchun
      `hidden` olib tashlangach klass qayta qo'yiladi (reflow bilan). */
+  /* ==========================================================================
+     NAVIGATSIYA «PUFAGI» (iOS 26 Liquid Glass tab bar)
+
+     Faol bo'lim ostidagi yashil shisha kapsula tugmadan tugmaga SURILIB
+     o'tadi (sakramaydi). Faqat `transform` va `width` o'zgaradi — kompozitor
+     qatlamida, telefon qizimaydi.
+
+     Faol tugma bo'lmasa (masalan «Saqlanganlar» yoki «Buyurtmalarim»
+     ochiq) kapsula yashiriladi. Birinchi joylashuv ANIMATSIYASIZ (`ready`
+     klassi keyin qo'yiladi) — aks holda ilova ochilganda kapsula chapdan
+     uchib kelardi.
+     ========================================================================== */
+  function moveNavPill() {
+    const nav = $("nav");
+    const pill = $("nav-pill");
+    if (!nav || !pill || nav.classList.contains("hidden")) return;
+    const btn = nav.querySelector(".nav-btn.active:not(.hidden)");
+    if (!btn) {
+      pill.style.opacity = "0";
+      return;
+    }
+    pill.style.opacity = "1";
+    pill.style.width = btn.offsetWidth + "px";
+    pill.style.transform = "translate3d(" + btn.offsetLeft + "px,0,0)";
+    if (!pill.classList.contains("ready")) {
+      requestAnimationFrame(() => pill.classList.add("ready"));
+    }
+  }
+  // Admin tugmasi chiqqanda yoki ekran burilganda tugmalar kengligi o'zgaradi
+  window.addEventListener("resize", () => requestAnimationFrame(moveNavPill));
+  if (window.ResizeObserver && document.getElementById("nav")) {
+    try {
+      new ResizeObserver(() => moveNavPill()).observe(document.getElementById("nav"));
+    } catch (_) {}
+  }
+
   const FAB_PAGES = ["home", "services", "saved", "profile"];
 
   function syncShogirdFab(page, navVisible) {
@@ -2446,13 +2483,13 @@
       ava.textContent = ring.emoji || "📸";
       ava.style.background = `linear-gradient(150deg,${safeColor(
         ring.color_from,
-        "#ff4b3e"
-      )},${safeColor(ring.color_to, "#1a0508")})`;
+        "#4cd68f"
+      )},${safeColor(ring.color_to, "#123524")})`;
     }
     const nameEl = $("story-who-name");
     if (nameEl) {
       nameEl.textContent =
-        (ring.title || "Zimmer") +
+        (ring.title || "Uzbrovv") +
         (S.stories.length > 1 ? " · " + (S.storyIndex + 1) + "/" + S.stories.length : "");
     }
     const timeEl = $("story-who-time");
@@ -2761,8 +2798,8 @@
     if (!url) return toast("Bu storyda yuklab olinadigan fayl yo'q");
     haptic("medium");
     const ring = S.rings[S.ringIndex];
-    const base = (ring && ring.title) || story.heading || "zimmer-story";
-    const name = ("zimmer-" + base).replace(/[^\w\-]+/g, "_");
+    const base = (ring && ring.title) || story.heading || "uzbrovv-story";
+    const name = ("uzbrovv-" + base).replace(/[^\w\-]+/g, "_");
     const ext = abs(story.video_url) ? ".mp4" : ".jpg";
     try {
       const a = document.createElement("a");
@@ -3183,6 +3220,15 @@
     document.addEventListener("keydown", kick);
   }
 
+  /* SF Symbols uslubidagi chiziqli ikonlar (index.html dagi `.ic` bilan bir xil).
+     Emoji o'rniga: har telefonda bir xil chiziladi va iOS ko'rinishiga mos. */
+  const ICON_MUSIC_ON =
+    '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.5V5.8l10-2.3v11.7"/>' +
+    '<circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.2" r="2.5"/></svg>';
+  const ICON_MUSIC_OFF =
+    '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5.5 6.5 9H3.5v6h3l4.5 3.5z"/>' +
+    '<path d="m16 9.5 5 5M21 9.5l-5 5"/></svg>';
+
   /** Tugma ko'rinishini holatga moslaydi. */
   function paintMusicBtn() {
     const btn = $("music-btn");
@@ -3192,7 +3238,7 @@
     btn.classList.toggle("hidden", !has);
     if (!has) return;
     btn.classList.toggle("on", MU.on);
-    btn.textContent = MU.on ? "🎵" : "🔇";
+    btn.innerHTML = MU.on ? ICON_MUSIC_ON : ICON_MUSIC_OFF;
     btn.setAttribute("aria-pressed", MU.on ? "true" : "false");
     btn.setAttribute(
       "aria-label",
@@ -5754,7 +5800,7 @@
       // Telefon bor bo'lsa — VIP (ring yorqinroq)
       const card = document.querySelector(".pf-card");
       if (card) card.classList.toggle("is-vip", !!S.me.phone);
-      $("pf-since").textContent = S.me.phone ? "✓ Tasdiqlangan mijoz" : "Zimmer mijozi";
+      $("pf-since").textContent = S.me.phone ? "✓ Tasdiqlangan mijoz" : "Uzbrovv mijozi";
       $("profile-car").textContent = S.me.car
         ? `${S.me.car.name} (${S.me.car.years || "-"})`
         : "Belgilanmagan";
@@ -8039,7 +8085,7 @@
         .getPropertyValue("--bg")
         .trim();
     } catch (_) {}
-    if (!/^#[0-9a-fA-F]{3,8}$/.test(bg)) bg = "#08080a"; // zaxira
+    if (!/^#[0-9a-fA-F]{3,8}$/.test(bg)) bg = "#1c1c1e"; // zaxira
 
     try {
       if (tg.setHeaderColor) tg.setHeaderColor(bg);

@@ -16,15 +16,15 @@ xavfsiz.
 # Izoh /stories buyrug'ida ko'rsatiladi — admin hashteglarni yoddan bilishi
 # shart emas (xatoga moyillik kamayadi).
 STORY_CATEGORIES: tuple[tuple[str, str, str, str, str, str], ...] = (
-    ("aksiyalar", "Aksiyalar", "🔥", "#ff2d3a", "#6d0a10", "Aksiya va chegirmalar"),
-    ("bugun", "Bugun", "⚡️", "#ff6b3d", "#3a0f00", "Bugungi yangilik, ish jarayoni"),
-    ("mijozlar", "Mijozlar", "💬", "#e01020", "#2a0006", "Mijozlar fikri / sharhlar"),
+    ("aksiyalar", "Aksiyalar", "🔥", "#34c77b", "#0f3d27", "Aksiya va chegirmalar"),
+    ("bugun", "Bugun", "⚡️", "#5ad69a", "#123524", "Bugungi yangilik, ish jarayoni"),
+    ("mijozlar", "Mijozlar", "💬", "#2fb4a0", "#0c2f2a", "Mijozlar fikri / sharhlar"),
     # «Yetkazib berish» o'rniga — bajarilgan ishlar
-    ("natijalar", "Natijalar", "🏆", "#ff4b3e", "#1a0508", "Bajarilgan ishlar (oldin/keyin)"),
-    ("kafolat", "Kafolat", "🛡", "#c1121f", "#101215", "Kafolat shartlari"),
-    ("lokatsiya", "Manzil", "📍", "#ff8f3d", "#2b1200", "Manzil / lokatsiya"),
-    ("tolov", "To'lov", "💳", "#ff2d55", "#25040c", "To'lov usullari"),
-    ("aloqa", "Aloqa", "📞", "#ff5f6d", "#20060a", "Aloqa ma'lumotlari"),
+    ("natijalar", "Natijalar", "🏆", "#7edca8", "#133325", "Bajarilgan ishlar (oldin/keyin)"),
+    ("kafolat", "Kafolat", "🛡", "#239a5c", "#0e1f17", "Kafolat shartlari"),
+    ("lokatsiya", "Manzil", "📍", "#4cd68f", "#10301f", "Manzil / lokatsiya"),
+    ("tolov", "To'lov", "💳", "#3ccf9a", "#0c2c22", "To'lov usullari"),
+    ("aloqa", "Aloqa", "📞", "#6fe0b0", "#113126", "Aloqa ma'lumotlari"),
 )
 
 # Tez izlash uchun

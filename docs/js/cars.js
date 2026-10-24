@@ -247,14 +247,14 @@ window.ZimmerCars = (function () {
     <!-- Yorug'lik: blur filtri emas, ko'p bosqichli gradient (mobil uchun arzon) -->
     <radialGradient id="carLight" cx="50%" cy="50%" r="50%">
       <stop offset="0%"   stop-color="#ffffff" stop-opacity=".95"/>
-      <stop offset="30%"  stop-color="#ff7a68" stop-opacity=".6"/>
-      <stop offset="62%"  stop-color="#ff2d3a" stop-opacity=".24"/>
-      <stop offset="100%" stop-color="#ff2d3a" stop-opacity="0"/>
+      <stop offset="30%"  stop-color="#a8ecc6" stop-opacity=".6"/>
+      <stop offset="62%"  stop-color="#34c77b" stop-opacity=".24"/>
+      <stop offset="100%" stop-color="#34c77b" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="carBeam" x1="1" y1="0" x2="0" y2="0">
-      <stop offset="0%"   stop-color="#ffd9d4" stop-opacity=".5"/>
-      <stop offset="60%"  stop-color="#ff2d3a" stop-opacity=".12"/>
-      <stop offset="100%" stop-color="#ff2d3a" stop-opacity="0"/>
+      <stop offset="0%"   stop-color="#e3fbef" stop-opacity=".5"/>
+      <stop offset="60%"  stop-color="#34c77b" stop-opacity=".12"/>
+      <stop offset="100%" stop-color="#34c77b" stop-opacity="0"/>
     </linearGradient>
   </defs>
 
@@ -262,7 +262,7 @@ window.ZimmerCars = (function () {
 
   <!-- yoniq fara (brend aksenti) -->
   <ellipse cx="20" cy="60" rx="17" ry="9" fill="url(#carLight)"/>
-  <path d="M14 57 C18 55 23 55 27 57 L27 63 C22 65 18 65 14 63 Z" fill="#ffe9e6"/>
+  <path d="M14 57 C18 55 23 55 27 57 L27 63 C22 65 18 65 14 63 Z" fill="#f0fff7"/>
   <path d="M-16 60 L14 51 L14 69 Z" fill="url(#carBeam)"/>
 
   <!-- orqa chiroq -->

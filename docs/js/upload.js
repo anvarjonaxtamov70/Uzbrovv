@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ZIMMER — TELEFON GALEREYASIDAN RASM YUKLASH
+   UZBROVV — TELEFON GALEREYASIDAN RASM YUKLASH
 
    NEGA FIREBASE STORAGE EMAS?
    Firebase Cloud Storage 2026-yil 3-fevraldan boshlab pullik Blaze tarifini

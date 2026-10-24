@@ -1,4 +1,4 @@
-"""Zimmer bot — kirish nuqtasi."""
+"""Uzbrovv bot — kirish nuqtasi."""
 
 import asyncio
 import logging

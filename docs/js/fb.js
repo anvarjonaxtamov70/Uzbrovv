@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ZIMMER — BRAUZERDAN FIREBASE'GA TO'G'RIDAN YOZISH
+   UZBROVV — BRAUZERDAN FIREBASE'GA TO'G'RIDAN YOZISH
 
    Model Avto_A1 bilan bir xil: mini app bazaga o'zi yozadi, shuning uchun
    Render ham, Cloudflare Worker ham kerak bo'lmaydi. Tovar qo'shish,

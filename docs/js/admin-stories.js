@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ZIMMER — STORIES BOSHQARUVI (admin paneli)
+   UZBROVV — STORIES BOSHQARUVI (admin paneli)
 
    NEGA BU FAYL BOR
    Story qo'shishning YAKKA yo'li Telegram boti edi: rasmni `#bugun matn`

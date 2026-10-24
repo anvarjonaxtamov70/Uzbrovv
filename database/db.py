@@ -1,6 +1,6 @@
 """SQLite ulanishi, jadvallar va boshlang'ich (demo) ma'lumotlar.
 
-Zimmer — Bi-LED avtotuning: mashina → Bi-LED linza → ochki (maska) →
+Uzbrovv — Bi-LED avtotuning: mashina → Bi-LED linza → ochki (maska) →
 fara optikasi rangi. Shuning uchun bazada ham shu bosqichlarga mos
 jadvallar bor.
 """
@@ -246,8 +246,8 @@ CREATE TABLE IF NOT EXISTS banners (
     title     TEXT NOT NULL,
     subtitle  TEXT,
     tag       TEXT,
-    color_from TEXT NOT NULL DEFAULT '#e01020',
-    color_to   TEXT NOT NULL DEFAULT '#3a0008',
+    color_from TEXT NOT NULL DEFAULT '#239a5c',
+    color_to   TEXT NOT NULL DEFAULT '#0e1f17',
     photo_id  TEXT,
     car_id    INTEGER REFERENCES cars(id),
     sort      INTEGER NOT NULL DEFAULT 0,
@@ -262,8 +262,8 @@ CREATE TABLE IF NOT EXISTS stories (
     emoji     TEXT NOT NULL DEFAULT '🔧',
     heading   TEXT,
     body      TEXT,
-    color_from TEXT NOT NULL DEFAULT '#ff3b30',
-    color_to   TEXT NOT NULL DEFAULT '#7a0010',
+    color_from TEXT NOT NULL DEFAULT '#34c77b',
+    color_to   TEXT NOT NULL DEFAULT '#0f3d27',
     photo_id  TEXT,
     sort      INTEGER NOT NULL DEFAULT 0,
     is_active INTEGER NOT NULL DEFAULT 1
@@ -492,7 +492,7 @@ DEMO_COLORS = [
         "Qizil aksent",
         "#ff3b30",
         "#6d0a10",
-        "Qora korpus + qizil chiziq. Zimmer uslubi.",
+        "Qora korpus + qizil chiziq. Sport uslubi.",
         450_000,
         4,
     ),

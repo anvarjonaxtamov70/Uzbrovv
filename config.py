@@ -271,7 +271,7 @@ def _db_path() -> str:
 config = Config(
     bot_token=os.getenv("BOT_TOKEN", "").strip(),
     admins=_admins_from_env(),
-    shop_name=os.getenv("SHOP_NAME", "Zimmer").strip(),
+    shop_name=os.getenv("SHOP_NAME", "Uzbrovv").strip(),
     db_path=_db_path(),
     timezone=os.getenv("TIMEZONE", "Asia/Tashkent").strip(),
     work_start_hour=_int_env("WORK_START_HOUR", 9),

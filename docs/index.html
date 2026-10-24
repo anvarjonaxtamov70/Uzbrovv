@@ -8,13 +8,34 @@
        qoldiradi, shuning uchun pastda pinch/double-tap jestlari JS bilan ham
        to'xtatiladi. Skroll va swipe (stories, karusel) ISHLAYVERADI. -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#08080a">
-  <title>ZIMMER — Avtotuning</title>
+  <meta name="theme-color" content="#1c1c1e">
+  <title>UZBROVV — Avtotuning</title>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=68">
+  <!-- Shrift: tizimniki (iPhone'da SF Pro, Android'da Roboto) — iOS ko'rinishi
+       va tashqi shrift yuklanmagani uchun tezroq ochilish. -->
+  <!-- LIQUID GLASS: kuchsiz qurilmada yengil rejim (`html.lite`).
+       CSS yuklanishidan OLDIN ishlaydi — birinchi kadrda «sakrash» bo'lmaydi.
+         * «Shaffoflikni kamaytirish» (iOS sozlamasi) yoqilgan;
+         * Android'da operativ xotira <= 3 GB yoki yadro <= 4;
+         * brauzer `backdrop-filter` ni umuman bilmaydi.
+       Sinash uchun: manzil oxiriga `?lite=1` (majburan yengil) yoki `?lite=0`. -->
+  <script>
+    (function () {
+      try {
+        var d = document.documentElement, n = navigator, q = location.search;
+        var reduce = window.matchMedia && matchMedia("(prefers-reduced-transparency: reduce)").matches;
+        var weak = /Android/i.test(n.userAgent || "") &&
+          ((n.deviceMemory && n.deviceMemory <= 3) || (n.hardwareConcurrency && n.hardwareConcurrency <= 4));
+        var blur = window.CSS && CSS.supports &&
+          (CSS.supports("backdrop-filter", "blur(1px)") || CSS.supports("-webkit-backdrop-filter", "blur(1px)"));
+        var lite = reduce || weak || !blur;
+        if (/[?&]lite=1/.test(q)) lite = true;
+        if (/[?&]lite=0/.test(q)) lite = false;
+        if (lite) d.classList.add("lite");
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css?v=69">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- Zoom jestlarini to'xtatish. `touch-action: manipulation` (CSS)
        double-tap zoom'ni o'chiradi va BOSISHNI buzmaydi; quyidagi JS esa
@@ -56,6 +77,7 @@
      Sodda: faqat salomlashuv. Maydadan kattalashib chiroyli chiqadi,
      so'ng bosh menyu o'zi ochiladi (tugma bosish shart emas). -->
 <section id="splash" class="splash">
+  <div class="splash-brand" aria-hidden="true"><span class="splash-mark">U</span><b>UZBROVV</b></div>
   <div class="splash-hello" id="splash-hello">
     <div class="hello-skeleton"></div>
   </div>
@@ -80,12 +102,12 @@
 <!-- ==================== KONFIGURATOR ==================== -->
 <section id="flow" class="page hidden">
   <header class="topbar">
-    <button class="icon-btn" id="flow-back" aria-label="Orqaga">‹</button>
+    <button class="icon-btn" id="flow-back" aria-label="Orqaga"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.5 5 7.5 12l7 7"/></svg></button>
     <div class="topbar-mid">
       <div class="topbar-title" id="flow-title">Mashinani tanlang</div>
       <div class="topbar-sub" id="flow-sub">1-qadam / 4</div>
     </div>
-    <button class="icon-btn ghost" id="flow-close" aria-label="Yopish">✕</button>
+    <button class="icon-btn ghost" id="flow-close" aria-label="Yopish"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
   </header>
 
   <div class="progress"><i id="progress-fill"></i></div>
@@ -160,10 +182,10 @@
 <section id="home" class="page hidden">
   <header class="home-header">
     <div class="brand">
-      <span class="brand-mark">Z</span>
-      <div class="brand-txt"><b>ZIMMER</b><small>Zimmer avtotuning</small></div>
+      <span class="brand-mark" aria-hidden="true">U</span>
+      <div class="brand-txt"><b>UZBROVV</b><small>Avtotuning</small></div>
     </div>
-    <button class="car-chip" id="car-chip"><i>🚗</i><span id="car-chip-name">—</span><em>▾</em></button>
+    <button class="car-chip" id="car-chip"><i><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 15.5v-3.2l1.7-4.2A2 2 0 0 1 8.6 6.8h6.8a2 2 0 0 1 1.9 1.3l1.7 4.2v3.2"/><path d="M3.5 12.5h17v4.5a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/><path d="M7 15.2h1.5M15.5 15.2H17"/></svg></i><span id="car-chip-name">—</span><em>▾</em></button>
 
     <!-- ======================================================================
          TEPADAGI AMAL TUGMALARI
@@ -172,7 +194,7 @@
          Ilgari bu tugmalar `.home-header` ning BEVOSITA farzandlari edi va
          header `justify-content: space-between` bo'lgani uchun ular bir-biridan
          uzoqlashib ketardi. ❤️ Saqlangan tugmasi qo'shilgandan keyin esa ular
-         «ZIMMER» yozuvi bilan mashina chipini siqib qo'yardi.
+         brend yozuvi bilan mashina chipini siqib qo'yardi.
          Endi hammasi o'ngdagi bitta guruhda, orasi ixcham.
 
          NEGA ❤️ AYNAN SHU YERDA
@@ -193,7 +215,7 @@
         type="button"
         aria-label="Server bilan aloqa yo'q — faqat ko'rish mumkin"
         title="Server bilan aloqa yo'q"
-      >☁️</button>
+      ><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.5 3.5l17 17"/><path d="M9 6.3A6 6 0 0 1 17.6 10h.4a3.8 3.8 0 0 1 2.4 6.8"/><path d="M16.5 18H7.2a4.4 4.4 0 0 1-1.5-8.5"/></svg></button>
 
       <!-- Fon musiqasi tugmasi.
            Musiqa qo'shilmagan bo'lsa BUTUNLAY yashiriladi (`paintMusicBtn`) —
@@ -208,7 +230,7 @@
         type="button"
         aria-pressed="false"
         aria-label="Fon musiqasini yoqish"
-      >🔇</button>
+      ><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5.5 6.5 9H3.5v6h3l4.5 3.5z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/></svg></button>
 
       <!-- Saqlanganlar — musiqa tugmasi YONIDA (ilgari pastdagi navigatsiyada).
            Ustidagi son saqlangan tovarlar sonini ko'rsatadi; nol bo'lsa
@@ -219,7 +241,7 @@
         type="button"
         aria-label="Saqlanganlar"
         title="Saqlanganlar"
-      >❤️<b class="hdr-dot hidden" id="saved-dot" aria-hidden="true">0</b></button>
+      ><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20s-7.2-4.4-8.9-9C1.9 7.6 4.1 4.6 7.3 4.6c1.9 0 3.5 1 4.7 2.7 1.2-1.7 2.8-2.7 4.7-2.7 3.2 0 5.4 3 4.2 6.4-1.7 4.6-8.9 9-8.9 9z"/></svg><b class="hdr-dot hidden" id="saved-dot" aria-hidden="true">0</b></button>
     </div>
   </header>
 
@@ -259,7 +281,7 @@
 
   <section class="sec" id="catalog-sec">
     <div class="sec-head">
-      <h3 class="sec-title">🛍 Mahsulotlar</h3>
+      <h3 class="sec-title">Mahsulotlar</h3>
       <span class="sec-count" id="products-count" aria-live="polite"></span>
     </div>
     <!-- ====================================================================
@@ -274,7 +296,7 @@
          ==================================================================== -->
     <div class="shop-tools">
       <div class="shop-search">
-        <span class="shop-search-i" aria-hidden="true">🔍</span>
+        <span class="shop-search-i" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.3-4.3"/></svg></span>
         <input
           type="search"
           id="shop-q"
@@ -330,10 +352,10 @@
 <section id="services" class="page hidden">
   <header class="topbar static">
     <div class="topbar-mid">
-      <div class="topbar-title">🛠 Xizmatlar</div>
+      <div class="topbar-title">Xizmatlar</div>
       <div class="topbar-sub" id="sv-sub">Narx va navbat</div>
     </div>
-    <button class="icon-btn ghost" id="sv-refresh" aria-label="Yangilash">↻</button>
+    <button class="icon-btn ghost" id="sv-refresh" aria-label="Yangilash"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4.6h-4.6"/></svg></button>
   </header>
   <div class="pad">
     <!-- Xizmatlar TUGMA-PLITKA ko'rinishida (admin panelidagi kabi).
@@ -354,7 +376,7 @@
      ========================================================================== -->
 <section id="service" class="page hidden">
   <header class="topbar static">
-    <button class="icon-btn" id="sd-back" aria-label="Orqaga">‹</button>
+    <button class="icon-btn" id="sd-back" aria-label="Orqaga"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.5 5 7.5 12l7 7"/></svg></button>
     <div class="topbar-mid">
       <div class="topbar-title" id="sd-title">Xizmat</div>
       <div class="topbar-sub" id="sd-sub"></div>
@@ -369,7 +391,7 @@
 <!-- ==================== SAVATCHA ==================== -->
 <section id="cart" class="page hidden">
   <header class="topbar static">
-    <div class="topbar-mid"><div class="topbar-title">🧺 Savatcha</div></div>
+    <div class="topbar-mid"><div class="topbar-title">Savatcha</div></div>
   </header>
   <div class="pad">
     <!-- bepul yetkazib berishgacha progress (animatsiyali) -->
@@ -424,12 +446,12 @@
      ========================================================================== -->
 <section id="checkout" class="page hidden">
   <header class="topbar static">
-    <button class="icon-btn" id="co-back" aria-label="Orqaga">‹</button>
+    <button class="icon-btn" id="co-back" aria-label="Orqaga"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.5 5 7.5 12l7 7"/></svg></button>
     <div class="topbar-mid">
       <div class="topbar-title" id="co-title">Rasmiylashtirish</div>
       <div class="topbar-sub" id="co-sub">1-qadam / 3</div>
     </div>
-    <button class="icon-btn ghost" id="co-close" aria-label="Savatga qaytish">✕</button>
+    <button class="icon-btn ghost" id="co-close" aria-label="Savatga qaytish"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
   </header>
   <!-- Qadam ko'rsatkichi (bajarilganiga qaytish uchun bosiladi) -->
   <div class="co-rail" id="co-steps"></div>
@@ -439,7 +461,7 @@
 <!-- ==================== KABINET ==================== -->
 <section id="profile" class="page hidden">
   <header class="topbar static">
-    <div class="topbar-mid"><div class="topbar-title">👤 Kabinet</div></div>
+    <div class="topbar-mid"><div class="topbar-title">Kabinet</div></div>
   </header>
   <div class="pad">
     <!-- VIP mijoz kartasi -->
@@ -453,7 +475,7 @@
         <div class="pf-meta">
           <h3 id="pf-name">Mijoz</h3>
           <p id="pf-id">ID: —</p>
-          <div class="pf-since" id="pf-since">Zimmer mijozi</div>
+          <div class="pf-since" id="pf-since">Uzbrovv mijozi</div>
         </div>
         <button class="pf-edit" id="pf-edit" aria-label="Tahrirlash">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
@@ -473,7 +495,7 @@
     <!-- mening mashinam -->
     <div class="pf-block">
       <div class="pf-block-head">
-        <h4>🚗 Mening mashinam</h4>
+        <h4>Mening mashinam</h4>
         <button class="pf-mini-btn" id="change-car">O'zgartirish</button>
       </div>
       <div class="pf-car-info" id="profile-car">Belgilanmagan</div>
@@ -491,10 +513,10 @@
          (`#orders`), plitkada esa soni, oxirgi holati va yangilar
          belgisi turadi.
          ========================================================== -->
-    <h3 class="sec-title">📋 Buyurtmalarim</h3>
+    <h3 class="sec-title">Buyurtmalarim</h3>
     <div class="mo-hub" id="mo-hub">
       <button class="mo-tile" id="mo-open-order" data-kind="order">
-        <span class="mo-tile-ic">📦</span>
+        <span class="mo-tile-ic ios-ic is-green"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.5 7.6 12 3.5l8.5 4.1v8.8L12 20.5l-8.5-4.1z"/><path d="M3.5 7.6 12 11.8l8.5-4.2M12 11.8v8.7"/></svg></span>
         <span class="mo-tile-tx">
           <b>Mahsulot buyurtmalari</b>
           <small id="mo-sum-order">Yuklanmoqda…</small>
@@ -504,7 +526,7 @@
         <span class="mo-tile-go">›</span>
       </button>
       <button class="mo-tile" id="mo-open-biled" data-kind="biled">
-        <span class="mo-tile-ic">🔥</span>
+        <span class="mo-tile-ic ios-ic is-amber"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13.2 2.8 5 13.5h6.2l-1 7.7 8.3-10.8h-6.3z"/></svg></span>
         <span class="mo-tile-tx">
           <b>Bi&#8209;LED buyurtmalarim</b>
           <small id="mo-sum-biled">Yuklanmoqda…</small>
@@ -514,7 +536,7 @@
         <span class="mo-tile-go">›</span>
       </button>
       <button class="mo-tile" id="mo-open-booking" data-kind="booking">
-        <span class="mo-tile-ic">🗓</span>
+        <span class="mo-tile-ic ios-ic is-blue"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
         <span class="mo-tile-tx">
           <b>Navbatlarim</b>
           <small id="mo-sum-booking">Yuklanmoqda…</small>
@@ -528,17 +550,17 @@
     <!-- profil menyusi -->
     <div class="pf-menu">
       <button class="pf-menu-item" id="pf-addresses">
-        <span class="left"><i>📍</i> Manzillarim</span>
+        <span class="left"><i class="ios-ic is-green"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 21s-6.8-6-6.8-11.2a6.8 6.8 0 0 1 13.6 0C18.8 15 12 21 12 21z"/><circle cx="12" cy="9.6" r="2.4"/></svg></i> Manzillarim</span>
         <em><span class="pf-menu-hint" id="pf-addr-hint"></span> ›</em>
       </button>
       <button class="pf-menu-item" id="pf-contact">
-        <span class="left"><i>📞</i> Biz bilan aloqa</span><em>›</em>
+        <span class="left"><i class="ios-ic is-blue"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5.3 3.8h3.3l1.6 4.1-2 1.3a11 11 0 0 0 6.6 6.6l1.3-2 4.1 1.6v3.3a1.9 1.9 0 0 1-2 1.9A16.4 16.4 0 0 1 3.4 5.8a1.9 1.9 0 0 1 1.9-2z"/></svg></i> Biz bilan aloqa</span><em>›</em>
       </button>
       <button class="pf-menu-item" id="pf-trust">
-        <span class="left"><i>🛡</i> Kafolat va yetkazib berish</span><em>›</em>
+        <span class="left"><i class="ios-ic is-teal"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.2 4.8 6v5.8c0 4.5 3.1 7.7 7.2 8.9 4.1-1.2 7.2-4.4 7.2-8.9V6z"/><path d="m9 12 2.1 2.1L15.2 10"/></svg></i> Kafolat va yetkazib berish</span><em>›</em>
       </button>
       <button class="pf-menu-item danger" id="pf-clear-cache">
-        <span class="left"><i>↻</i> Ilovani yangilash</span><em>↻</em>
+        <span class="left"><i class="ios-ic is-gray"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4.6h-4.6"/></svg></i> Ilovani yangilash</span><em>↻</em>
       </button>
     </div>
   </div>
@@ -559,12 +581,12 @@
      ========================================================================== -->
 <section id="orders" class="page hidden">
   <header class="topbar static">
-    <button class="icon-btn" id="mo-back" aria-label="Orqaga">‹</button>
+    <button class="icon-btn" id="mo-back" aria-label="Orqaga"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.5 5 7.5 12l7 7"/></svg></button>
     <div class="topbar-mid">
       <div class="topbar-title" id="mo-title">Buyurtmalarim</div>
       <div class="topbar-sub" id="mo-sub"></div>
     </div>
-    <button class="icon-btn ghost" id="mo-refresh" aria-label="Yangilash">↻</button>
+    <button class="icon-btn ghost" id="mo-refresh" aria-label="Yangilash"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4.6h-4.6"/></svg></button>
   </header>
 
   <!-- Pastga tortib yangilash ko'rsatkichi -->
@@ -576,7 +598,7 @@
 
     <!-- qidiruv: kod yoki tovar nomi bo'yicha -->
     <div class="mo-search" id="mo-search">
-      <span class="mo-search-ic">🔍</span>
+      <span class="mo-search-ic" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.3-4.3"/></svg></span>
       <input type="text" id="mo-q" placeholder="Kod yoki nom bo'yicha izlash…" autocomplete="off">
       <button class="mo-search-x hidden" id="mo-q-clear" aria-label="Tozalash">✕</button>
     </div>
@@ -589,7 +611,7 @@
 </section>
 
 <!-- ==========================================================================
-     MANZILLARIM (Avto_A1 dagi manzil menejeri, Zimmer dizaynida)
+     MANZILLARIM (Avto_A1 dagi manzil menejeri, Uzbrovv dizaynida)
 
      Ilgari manzillar FAQAT rasmiylashtirish oynasining ichida ko'rinardi:
      mijoz manzilni faqat buyurtma berayotganda ko'rar, tahrirlay olmas va
@@ -601,15 +623,15 @@
      ========================================================================== -->
 <section id="addresses" class="page hidden">
   <header class="topbar static">
-    <button class="icon-btn" id="ad-back" aria-label="Orqaga">‹</button>
+    <button class="icon-btn" id="ad-back" aria-label="Orqaga"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.5 5 7.5 12l7 7"/></svg></button>
     <div class="topbar-mid">
-      <div class="topbar-title">📍 Manzillarim</div>
+      <div class="topbar-title">Manzillarim</div>
       <div class="topbar-sub" id="ad-sub"></div>
     </div>
   </header>
   <div class="pad">
     <button class="ad-add" id="ad-add">
-      <span class="ad-add-ic">🗺</span>
+      <span class="ad-add-ic"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 4.5 3.5 6.6v13l5.5-2.1 6 2.1 5.5-2.1v-13L15 6.6z"/><path d="M9 4.5v13M15 6.6v13"/></svg></span>
       <span class="ad-add-tx"><b>Xaritadan yangi manzil</b>
         <small>Nuqtani belgilang — manzil o'zi topiladi</small></span>
       <span class="ad-add-plus">+</span>
@@ -626,8 +648,8 @@
          (kirish nuqtasi bosh sahifaning tepa qatorida), shuning uchun
          chiqish yo'li shu sarlavhada bo'lishi kerak. Navbar pastda
          qolgani uchun boshqa bo'limga o'tish ham ishlaydi. -->
-    <button class="icon-btn" id="saved-back" aria-label="Orqaga">‹</button>
-    <div class="topbar-mid"><div class="topbar-title">❤️ Saqlanganlar</div></div>
+    <button class="icon-btn" id="saved-back" aria-label="Orqaga"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.5 5 7.5 12l7 7"/></svg></button>
+    <div class="topbar-mid"><div class="topbar-title">Saqlanganlar</div></div>
   </header>
   <div class="pad">
     <div class="saved" id="my-saved"></div>
@@ -638,12 +660,12 @@
 <!-- ==================== ADMIN PANEL (faqat adminlarga) ==================== -->
 <section id="admin" class="page hidden">
   <header class="topbar static">
-    <button class="icon-btn" id="admin-back" aria-label="Orqaga">‹</button>
+    <button class="icon-btn" id="admin-back" aria-label="Orqaga"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.5 5 7.5 12l7 7"/></svg></button>
     <div class="topbar-mid">
       <div class="topbar-title" id="admin-title">Boshqaruv</div>
-      <div class="topbar-sub" id="admin-sub">Zimmer admin</div>
+      <div class="topbar-sub" id="admin-sub">Uzbrovv admin</div>
     </div>
-    <button class="icon-btn ghost" id="admin-reload" aria-label="Yangilash">⟳</button>
+    <button class="icon-btn ghost" id="admin-reload" aria-label="Yangilash"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4.6h-4.6"/></svg></button>
   </header>
   <div class="pad" id="admin-body"></div>
 </section>
@@ -679,14 +701,14 @@
      ========================================================================== -->
 <section id="shogird" class="page hidden">
   <header class="topbar static sg-top">
-    <button class="icon-btn" id="sg-back" aria-label="Orqaga">‹</button>
+    <button class="icon-btn" id="sg-back" aria-label="Orqaga"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.5 5 7.5 12l7 7"/></svg></button>
     <div class="topbar-mid">
-      <div class="topbar-title">🎓 Shogird</div>
+      <div class="topbar-title">Shogird</div>
       <div class="topbar-sub" id="sg-sub">Ustaxona yordamchisi</div>
     </div>
     <!-- Suhbat boshlanmaguncha yashirin: bosiladigan, lekin hech narsa
          qilmaydigan tugma turmasin. -->
-    <button class="icon-btn ghost hidden" id="sg-reset" aria-label="Yangi suhbat">↻</button>
+    <button class="icon-btn ghost hidden" id="sg-reset" aria-label="Yangi suhbat"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4.6h-4.6"/></svg></button>
   </header>
 
   <div class="sg-wrap">
@@ -697,7 +719,7 @@
       </div>
       <h2 class="sg-hi" id="sg-hi">Assalomu alaykum</h2>
       <p class="sg-hi-sub">
-        Men Zimmer ustaxonasining shogirdiman. Fara, narx, kafolat yoki
+        Men Uzbrovv ustaxonasining shogirdiman. Fara, narx, kafolat yoki
         navbat haqida so'rang — tushuntirib, yo'lini ko'rsatib beraman.
       </p>
       <div class="sg-topics" id="sg-topics"></div>
@@ -718,7 +740,7 @@
       enterkeyhint="send"
       aria-label="Shogirdga savol"
     ></textarea>
-    <button type="submit" class="sg-send" id="sg-send" aria-label="Yuborish">➤</button>
+    <button type="submit" class="sg-send" id="sg-send" aria-label="Yuborish"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 19V5.5M6.5 11 12 5.5l5.5 5.5"/></svg></button>
   </form>
 </section>
 
@@ -745,15 +767,16 @@
   title="Shogird — savol bering"
 >
   <span class="sg-fab-glow" aria-hidden="true"></span>
-  <span class="sg-fab-ic" aria-hidden="true">🎓</span>
+  <span class="sg-fab-ic" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.5 9 12 4.5 21.5 9 12 13.5z"/><path d="M6.5 11v4.6c0 1.4 2.5 2.9 5.5 2.9s5.5-1.5 5.5-2.9V11"/><path d="M21.5 9v5.5"/></svg></span>
 </button>
 
 <!-- ==================== NAVIGATSIYA ==================== -->
 <nav class="nav hidden" id="nav">
-  <button class="nav-btn active" data-page="home"><i>🏠</i><span>Asosiy</span></button>
+  <span class="nav-pill" id="nav-pill" aria-hidden="true"></span>
+  <button class="nav-btn active" data-page="home"><i><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.5 10.2 12 3.5l8.5 6.7V19a1.5 1.5 0 0 1-1.5 1.5h-4.2v-5.8H9.2v5.8H5A1.5 1.5 0 0 1 3.5 19z"/></svg></i><span>Asosiy</span></button>
   <!-- «Konfigurator» → «Xizmatlar»: bu bo'lim endi BARCHA xizmatlarni
        o'z ichiga oladi (konfigurator ham ular orasida bittasi). -->
-  <button class="nav-btn" data-page="services"><i>🛠</i><span>Xizmatlar</span></button>
+  <button class="nav-btn" data-page="services"><i><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.6 6.1a4.2 4.2 0 0 0-5.3 5.4l-5.6 5.6a1.9 1.9 0 0 0 2.7 2.7l5.6-5.6a4.2 4.2 0 0 0 5.4-5.3l-2.6 2.6-2.5-.6-.6-2.5z"/></svg></i><span>Xizmatlar</span></button>
   <!-- ==========================================================================
        «🎓 Shogird» va «❤️ Saqlangan» BU YERDAN OLIB TASHLANDI
 
@@ -767,9 +790,9 @@
        Bo'limlarning O'ZI joyida qoladi: `show("shogird")` va `show("saved")`
        ishlashda davom etadi, faqat kirish nuqtasi ko'chdi.
        ========================================================================== -->
-  <button class="nav-btn" data-page="cart"><i>🧺</i><span>Savatcha</span><b class="badge hidden" id="cart-badge" aria-live="polite" aria-label="Savatchadagi tovarlar soni">0</b></button>
-  <button class="nav-btn" data-page="profile"><i>👤</i><span>Kabinet</span></button>
-  <button class="nav-btn hidden" id="nav-admin" data-page="admin"><i>⚙️</i><span>Admin</span></button>
+  <button class="nav-btn" data-page="cart"><i><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5.2 8h13.6l-.9 11.4a1.5 1.5 0 0 1-1.5 1.4H7.6a1.5 1.5 0 0 1-1.5-1.4z"/><path d="M9 10V6.8a3 3 0 0 1 6 0V10"/></svg></i><span>Savatcha</span><b class="badge hidden" id="cart-badge" aria-live="polite" aria-label="Savatchadagi tovarlar soni">0</b></button>
+  <button class="nav-btn" data-page="profile"><i><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8.2" r="3.8"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg></i><span>Kabinet</span></button>
+  <button class="nav-btn hidden" id="nav-admin" data-page="admin"><i><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></i><span>Admin</span></button>
 </nav>
 
 <!-- ==================== STORY KO'RUVCHI ==================== -->
@@ -790,7 +813,7 @@
   <header class="story-head" id="story-head">
     <span class="story-ava" id="story-ava"></span>
     <span class="story-who">
-      <b id="story-who-name">Zimmer</b>
+      <b id="story-who-name">Uzbrovv</b>
       <i id="story-who-time"></i>
     </span>
     <button class="story-ico hidden" id="story-sound" aria-label="Ovoz">🔇</button>
@@ -817,7 +840,7 @@
     <div class="story-reacts" id="story-reacts"></div>
     <form class="story-reply" id="story-reply" autocomplete="off">
       <input type="text" id="story-reply-in" maxlength="900" placeholder="Xabar yozing...">
-      <button type="submit" class="story-send" id="story-send" aria-label="Yuborish">➤</button>
+      <button type="submit" class="story-send" id="story-send" aria-label="Yuborish"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 19V5.5M6.5 11 12 5.5l5.5 5.5"/></svg></button>
     </form>
   </div>
 </div>
@@ -828,7 +851,7 @@
   <div class="sheet-body">
     <div class="sheet-head">
       <b id="sheet-title">O'rnatishga navbat</b>
-      <button class="icon-btn ghost" id="sheet-close">✕</button>
+      <button class="icon-btn ghost" id="sheet-close"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
     </div>
     <div id="sheet-content"></div>
   </div>
@@ -882,11 +905,11 @@
   </div>
 </div>
 
-<!-- ==================== MAHSULOT MODAL (IVY → Zimmer) ==================== -->
+<!-- ==================== MAHSULOT MODAL (IVY → Uzbrovv) ==================== -->
 <div id="productModal" class="product-modal hidden">
   <div class="pm-header">
-    <button class="pm-close" id="pm-close">✕</button>
-    <button class="pm-wishlist" id="pm-wishlist">♥</button>
+    <button class="pm-close" id="pm-close"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+    <button class="pm-wishlist" id="pm-wishlist" aria-label="Saqlash"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20s-7.2-4.4-8.9-9C1.9 7.6 4.1 4.6 7.3 4.6c1.9 0 3.5 1 4.7 2.7 1.2-1.7 2.8-2.7 4.7-2.7 3.2 0 5.4 3 4.2 6.4-1.7 4.6-8.9 9-8.9 9z"/></svg></button>
   </div>
 
   <div class="pm-gallery">
@@ -949,7 +972,7 @@
 <div class="iv hidden" id="imgViewer">
   <div class="iv-top">
     <span class="iv-count" id="iv-count"></span>
-    <button class="iv-close" id="iv-close" aria-label="Yopish">✕</button>
+    <button class="iv-close" id="iv-close" aria-label="Yopish"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
   </div>
   <div class="iv-stage" id="iv-stage">
     <img id="iv-img" alt="">
@@ -991,16 +1014,16 @@
         pochta filiallari). U faqat rasmiylashtirishda «BTS Pochta»
         tanlanganda kerak, lekin har ochilishda o'qilardi.
      ========================================================================== -->
-<script defer src="config.js?v=68"></script>
+<script defer src="config.js?v=69"></script>
 <!-- Brauzerdan bazaga to'g'ridan yozish (Avto_A1 modeli) -->
-<script defer src="js/fb.js?v=68"></script>
+<script defer src="js/fb.js?v=69"></script>
 <!-- Telefon galereyasidan rasm yuklash (siqish + EXIF burilishi) -->
-<script defer src="js/upload.js?v=68"></script>
+<script defer src="js/upload.js?v=69"></script>
 <!-- Zaxira rejim: Render o'chganda katalogni Firebase'dan o'qiydi.
      app.js dan OLDIN yuklanishi kerak — u `window.ZimmerOffline` ni ishlatadi. -->
-<script defer src="js/offline.js?v=68"></script>
-<script defer src="js/headlight.js?v=68"></script>
-<script defer src="js/cars.js?v=68"></script>
-<script defer src="js/app.js?v=68"></script>
+<script defer src="js/offline.js?v=69"></script>
+<script defer src="js/headlight.js?v=69"></script>
+<script defer src="js/cars.js?v=69"></script>
+<script defer src="js/app.js?v=69"></script>
 </body>
 </html>

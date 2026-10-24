@@ -1,5 +1,5 @@
 # =====================================================================
-#  Zimmer bot — Render.com BEPUL deploy "blueprint"
+#  Uzbrovv bot — Render.com BEPUL deploy "blueprint"
 #
 #  Render bu faylni avtomatik o'qiydi va xizmatni shu sozlamalar bilan
 #  yaratadi. Maxfiy qiymatlar (sync: false) Render panelida qo'lda
@@ -97,7 +97,7 @@ services:
       - key: PYTHON_VERSION
         value: "3.11.9"
       - key: SHOP_NAME
-        value: "Zimmer"
+        value: "Uzbrovv"
       # Mini App manzili (GitHub Pages)
       - key: MINI_APP_URL
         value: "https://anvarjonaxtamov70.github.io/Zimmer/"
