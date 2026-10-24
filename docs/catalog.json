@@ -1,47 +1,7 @@
 {
  "car_id": null,
- "_generated_at": "2026-10-24T06:20:18Z",
- "banners": [
-  {
-   "id": 1,
-   "title": "Bi-LED o'rnatish",
-   "subtitle": "Ikki faraga to'liq to'plam + o'rnatish",
-   "tag": "-15% shu hafta",
-   "color_from": "#c1121f",
-   "color_to": "#101215",
-   "photo_url": "https://i.ibb.co/WW9L6s5j/63de4f6647cb.jpg",
-   "photo_external": true,
-   "video_url": null,
-   "video_external": true,
-   "has_media": true
-  },
-  {
-   "id": 2,
-   "title": "Kafolat 1 yil",
-   "subtitle": "Linzalarga rasmiy kafolat, xizmat ko'rsatish bilan",
-   "tag": "Ishonch",
-   "color_from": "#c1121f",
-   "color_to": "#101215",
-   "photo_url": "https://i.ibb.co/XkL68CfL/47673fc1a16b.jpg",
-   "photo_external": true,
-   "video_url": null,
-   "video_external": true,
-   "has_media": true
-  },
-  {
-   "id": 3,
-   "title": "Gentra & Nexia 2",
-   "subtitle": "Aynan sizning modelga tayyor yechimlar",
-   "tag": "Yangi",
-   "color_from": "#c1121f",
-   "color_to": "#101215",
-   "photo_url": "https://i.ibb.co/fGLRdjr0/5d1822981012.jpg",
-   "photo_external": true,
-   "video_url": null,
-   "video_external": true,
-   "has_media": true
-  }
- ],
+ "_generated_at": "2026-10-24T08:15:30Z",
+ "banners": [],
  "stories": [
   {
    "key": "bugun",
