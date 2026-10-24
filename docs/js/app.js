@@ -803,6 +803,10 @@
   const FAB_PAGES = ["home", "services", "saved"];
 
   function syncShogirdFab(page, navVisible) {
+    /* «RANG» generatori — Shogird tugmasining USTIDA, faqat adminga va
+       faqat bosh sahifada (ilgari stories qatorining boshida edi). */
+    const th = $("th-fab");
+    if (th) th.classList.toggle("hidden", !(navVisible && page === "home" && S.me && S.me.is_admin));
     const fab = $("sg-fab");
     if (!fab) return;
     const show = navVisible && FAB_PAGES.includes(page);
@@ -1733,7 +1737,7 @@
    *  cheklangan» oynasi). Server (Render va Worker) 403 `blocked` qaytaradi. */
   function showBlocked() {
     S.blocked = true;
-    ["splash", "gate", "nav", "sg-fab"].forEach((id) => {
+    ["splash", "gate", "nav", "sg-fab", "th-fab"].forEach((id) => {
       const n = $(id);
       if (n) n.classList.add("hidden");
     });
@@ -2142,7 +2146,7 @@
      yuklanadi: takror chaqiruv o'sha Promise'ni qaytaradi.
      ==================================================================== */
 
-  const SCRIPT_VERSION = "73"; // index.html dagi `?v=` bilan bir xil bo'lsin
+  const SCRIPT_VERSION = "74"; // index.html dagi `?v=` bilan bir xil bo'lsin
   const _scripts = new Map();
 
   function loadScript(src) {
@@ -2483,28 +2487,8 @@
       box.append(node);
     });
 
-    /* «RANG» — RANG GENERATORI (faqat adminga, qator boshida).
-       Ilgari bu yerda «+ Qo'shish» (yangi story) turardi — mahsulot qarori
-       bilan olib tashlandi; story endi faqat Boshqaruv → Stories orqali
-       qo'shiladi. */
-    const isAdmin = !!(S.me && S.me.is_admin);
-    if (isAdmin) {
-      const tb = el("button", "story story-theme");
-      tb.type = "button";
-      tb.setAttribute("aria-label", "Ilova rangini tanlash");
-      tb.innerHTML = `
-        <div class="story-ring story-theme-ring">
-          <i class="story-theme-orbit" aria-hidden="true"></i>
-          <div class="story-face story-theme-face">
-            <b class="story-theme-dot" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-1.9 2-1.9H17a4 4 0 0 0 4-4C21 6.4 17 3 12 3z"/><circle cx="7.5" cy="11.5" r="1.4"/><circle cx="10" cy="7.3" r="1.4"/><circle cx="15" cy="7.3" r="1.4"/></svg></b>
-          </div>
-        </div>
-        <span class="story-label">Rang</span>`;
-      tb.onclick = openThemeSheet;
-      box.prepend(tb);
-    }
-    // Birorta ham story bo'lmasa — qator umuman ko'rinmaydi (adminga «Rang» uchun ko'rinadi)
-    box.classList.toggle("hidden", !S.rings.length && !isAdmin);
+    // Birorta ham story bo'lmasa — qator umuman ko'rinmaydi (toza ko'rinish)
+    box.classList.toggle("hidden", !S.rings.length);
     // Bosqichma-bosqich chiqish (bir martalik)
     if (S.rings.length) {
       box.classList.remove("enter");
@@ -4007,76 +3991,59 @@
     else art.classList.remove("fit");
   }
 
-  /** Bitta tovar kartochkasi. */
+  /** Bitta tovar kartochkasi — Avto_A1 «App Store» kartasi.
+   *  Rasm kvadrat, chetdan-chetga; ustida chiplar (Tugagan · belgi · -%) va
+   *  shisha yurak; ostida 2 qatorli nom, bitta meta qator (qoldiq / razmer /
+   *  kafolat / mos mashina), pastda eski + joriy narx va yumaloq savatcha
+   *  tugmasi. Klasslar (`.prod`, `.prod-art`, `.prod-img`, `.prod-fav`,
+   *  `.prod-body`, `.prod-add`) saqlangan — boshqa kod ularga tayanadi. */
   function prodCard(p) {
-    const card = el("div", "prod");
+    const card = el("div", "prod ac");
     const photo = abs(p.photo_url);
     const off = discountPercent(p);
     const out = !(p.stock > 0);
+    const isLong = Number(p.price) >= 1000000;
+    if (isLong) card.classList.add("is-long");
 
-    // Nom "·" bo'yicha ajratiladi: asosiy nom + mashina eslatmasi (Avto_A1)
     const parts = String(p.name || "").split("·");
     const mainName = (parts[0] || p.name || "").trim();
-    const carHint = parts[1] ? '<div class="prod-hint">' + esc(parts[1].trim()) + "</div>" : "";
+    const carHint = parts[1] ? '<span class="car-hint"> · ' + esc(parts[1].trim()) + "</span>" : "";
 
+    let chips = "";
+    if (out) chips += '<i class="ac-chip is-out">Tugagan</i>';
+    else if (p.badge) chips += '<i class="ac-chip is-new">' + esc(p.badge) + "</i>";
+    if (off) chips += '<i class="ac-chip is-disc">−' + off + "%</i>";
+
+    /* Meta qator — eng muhimi birinchi: kam qoldi > razmerlar > mos mashina > kafolat */
+    let meta = "";
+    if (p.stock > 0 && p.stock <= 5) meta = '<span class="ac-low">' + p.stock + " ta qoldi</span>";
+    else if (isSized(p)) {
+      const live = sizesOf(p).filter((s) => s.stock > 0).slice(0, 5).map((s) => esc(s.size));
+      if (live.length) meta = '<span class="ac-sizes">' + live.join(" · ") + "</span>";
+    }
+    if (!meta && S.me && S.me.car && hasCarLink(p) && fitsMyCar(p, S.me.car.id, S.me.car.name))
+      meta = '<span class="ac-fit">✓ Mashinangizga mos</span>';
+    if (!meta && !out) meta = '<span class="ac-trust">' + (p.warranty ? esc(p.warranty) + " kafolat" : "Kafolatlangan") + "</span>";
+
+    // Narx raqami — «so'm» alohida, kichik yoziladi (Avto_A1). Belgi
+    // formatidan qat'i nazar raqamlarni o'zimiz formatlaymiz.
+    const priceTx = String(Math.round(Number(p.price) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
     card.innerHTML =
-      '<div class="prod-art' +
-      (photo ? "" : " empty") +
-      (out ? " is-out" : "") +
-      '">' +
+      '<div class="prod-art' + (photo ? "" : " empty") + (out ? " is-out" : "") + '">' +
       (photo
-        ? '<img class="prod-img" src="' + esc(photo) + '" alt="' + esc(p.name || "Tovar") + '" loading="lazy">'
+        ? '<img class="prod-img" src="' + esc(photo) + '" alt="' + esc(p.name || "Tovar") + '" loading="lazy" decoding="async">'
         : '<span class="prod-art-ph">💡</span>') +
-      (off ? '<span class="prod-off">−' + off + "%</span>" : "") +
-      (p.badge ? '<span class="prod-badge">' + esc(p.badge) + "</span>" : "") +
+      (chips ? '<div class="ac-chips">' + chips + "</div>" : "") +
       (p.video_url ? '<span class="prod-play">▶</span>' : "") +
-      (out ? '<span class="prod-outtag">Tugagan</span>' : "") +
-      '<button class="prod-fav' +
-      (S.favorites.has(p.id) ? " on" : "") +
-      '" aria-label="Saqlash">♥</button>' +
+      '<button class="prod-fav' + (S.favorites.has(p.id) ? " on" : "") + '" aria-label="Saqlash">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.3-9.6C1.6 7.6 3.8 4 7.4 4c2 0 3.5 1.1 4.6 2.6C13.1 5.1 14.6 4 16.6 4c3.6 0 5.8 3.6 4.7 6.9-1.8 5-9.3 9.6-9.3 9.6z"/></svg></button>' +
       "</div>" +
       '<div class="prod-body">' +
-      '<div class="prod-name">' +
-      esc(mainName) +
-      "</div>" +
-      carHint +
-      /* «✓ Mashinangizga mos» — faqat HAQIQATAN mos bo'lsa.
-         Ilgari shart `p.car_id ? ...` edi, ya'ni tovarda BIRON mashina
-         belgilangan bo'lsa yozuv chiqardi — mijozning mashinasi butunlay
-         boshqa bo'lsa ham. Endi tovar universal bo'lmasa VA mijozning
-         mashinasi ro'yxatda bo'lsa chiqadi. */
-      (S.me && S.me.car && hasCarLink(p) && fitsMyCar(p, S.me.car.id, S.me.car.name)
-        ? '<div class="prod-fit">✓ Mashinangizga mos</div>'
-        : "") +
-      /* Razmerli tovar — kartochkada BILINIB turishi kerak: mijoz «Savatga»
-         ni bosib «razmerni tanlang» degan xabarga duch kelmasin. */
-      (isSized(p)
-        ? '<div class="prod-sizes">📐 ' +
-          sizesOf(p)
-            .filter((s) => s.stock > 0)
-            .slice(0, 5)
-            .map((s) => esc(s.size))
-            .join(" · ") +
-          "</div>"
-        : "") +
-      '<div class="prod-cost"><b>' +
-      esc(p.price_label || fmt(p.price)) +
-      "</b>" +
-      (off && p.old_price_label ? "<s>" + esc(p.old_price_label) + "</s>" : "") +
-      "</div>" +
-      /* Pastdagi bitta satr: qoldiq kam bo'lsa OGOHLANTIRISH ustun turadi
-         (u shoshiltiradi), aks holda kafolat muddati.
-
-         DIQQAT: ilgari bu yerda «🛡 14 kun kafolat» degan QATTIQ matn
-         turardi — barcha tovarlar uchun bir xil va aksariyati uchun
-         noto'g'ri. Endi muddat admin panelda har tovarga alohida
-         qo'yiladi; qo'yilmagan bo'lsa satr UMUMAN chizilmaydi (yolg'on
-         kafolat yozib qo'yishdan ko'ra hech narsa yozmaslik to'g'ri). */
-      (p.stock > 0 && p.stock <= 5
-        ? '<div class="prod-low">📦 ' + p.stock + " ta qoldi</div>"
-        : p.stock > 0 && p.warranty
-          ? '<div class="prod-trust">🛡 ' + esc(p.warranty) + " kafolat</div>"
-          : "") +
+      '<h4 class="prod-name">' + esc(mainName) + carHint + "</h4>" +
+      '<div class="ac-meta">' + meta + "</div>" +
+      '<div class="ac-ft"><div class="ac-pr">' +
+      (off && p.old_price_label ? "<s>" + esc(p.old_price_label) + "</s>" : "<s></s>") +
+      "<b>" + priceTx + "<small> so'm</small></b></div></div>" +
       "</div>";
 
     /* Rasm: yuklanganda silliq paydo bo'ladi. Xato bo'lsa (havola o'lgan,
@@ -4108,33 +4075,35 @@
       toggleFavorite(p, fav);
     };
 
-    // Savat tugmasi — narx tanada bo'lgani uchun tugmada faqat amal yoziladi
-    const btn = el("button", "prod-add");
-    const idle = '<span class="prod-add-ico">🛒</span><span class="prod-add-tx">Savatga</span>';
+    // Savatcha — yumaloq tugma (Avto_A1 App Store kartasi)
+    const BAG =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.6 8.6h12.8l-.85 10.3a2.2 2.2 0 0 1-2.2 2H8.65a2.2 2.2 0 0 1-2.2-2z"/><path d="M9 10.2V7.4a3 3 0 0 1 6 0v2.8"/><path d="M12 12.7v4.6M9.7 15h4.6"/></svg>';
+    const DONE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17.5 19 7"/></svg>';
+    const btn = el("button", "prod-add ac-add");
+    btn.setAttribute("aria-label", out ? "Tugagan" : "Savatga qo'shish");
     if (out) {
       btn.classList.add("out");
-      btn.textContent = "Tugadi";
       btn.disabled = true;
+      btn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>';
     } else {
-      btn.innerHTML = idle;
+      btn.innerHTML = BAG;
     }
     btn.onclick = (ev) => {
       ev.stopPropagation();
       if (out) return;
       /* RAZMERLI TOVAR: to'g'ridan savatga tushmaydi — `quickAdd` oynani
-         ochib «razmerni tanlang» deydi. Aks holda mijoz razmerini
-         ko'rsatmagan buyurtma yuborardi. */
+         ochib «razmerni tanlang» deydi. */
       if (isSized(p)) return quickAdd(p, btn);
       addToCart(p, 1, btn);
       btn.classList.add("added");
-      btn.innerHTML = '<span class="prod-add-ico">✓</span><span class="prod-add-tx">Qo\'shildi</span>';
-      setTimeout(() => {
+      btn.innerHTML = DONE;
+      clearTimeout(btn._t);
+      btn._t = setTimeout(() => {
         btn.classList.remove("added");
-        btn.innerHTML = idle;
+        btn.innerHTML = BAG;
       }, 1100);
     };
-    // Tugma kartochka TANASI ichida — pastga yopishib turadi (Avto_A1 kabi)
-    card.querySelector(".prod-body").append(btn);
+    card.querySelector(".ac-ft").append(btn);
     return card;
   }
 
@@ -8952,6 +8921,7 @@
      ustida. Saqlanganlar esa tepa qatorda (`.home-acts`). Ikkisi ham
      `.nav-btn` sinfiga ega emas, shuning uchun umumiy bog'lovchi ularni
      tutmaydi — alohida bog'lanadi. */
+  if ($("th-fab")) $("th-fab").onclick = openThemeSheet;
   if ($("sg-fab")) {
     $("sg-fab").onclick = () => {
       haptic();
@@ -9925,7 +9895,7 @@
 
     box.classList.remove("hidden");
     box.innerHTML =
-      '<div class="pm-sizes-head">📐 Razmerni tanlang' +
+      '<div class="pm-sizes-head">Razmerni tanlang' +
       '<i id="pm-size-hint">tanlanmadi</i></div>' +
       '<div class="pm-size-chips" id="pm-size-chips">' +
       sizes
@@ -9972,16 +9942,16 @@
         // Razmer tanlanmaguncha aniq raqam ko'rsatish CHALKASHTIRADI
         // («12 ta bor» deydi, tanlagan razmerida esa 1 ta bo'lib chiqadi).
         const live = sizesOf(product).filter((s) => s.stock > 0).length;
-        stockEl.textContent = live ? `${live} razmer mavjud` : "Tugagan";
+        stockEl.innerHTML = live ? "Sotuvda bor <em>· " + live + " razmer</em>" : "Sotuvda qolmagan";
         stockEl.className = live ? "pm-stock in-stock" : "pm-stock out-of-stock";
       } else if (stock > 10) {
-        stockEl.textContent = "Omborda bor";
+        stockEl.innerHTML = "Sotuvda bor";
         stockEl.className = "pm-stock in-stock";
       } else if (stock > 0) {
-        stockEl.textContent = `${stock} ta qoldi`;
+        stockEl.innerHTML = "Sotuvda bor <em>· " + stock + " ta qoldi</em>";
         stockEl.className = "pm-stock low-stock";
       } else {
-        stockEl.textContent = "Tugagan";
+        stockEl.innerHTML = "Sotuvda qolmagan";
         stockEl.className = "pm-stock out-of-stock";
       }
     }
@@ -10047,29 +10017,58 @@
     if (!images.length) {
       slider.appendChild(el("div", "pm-noimg", "💡"));
     }
+    const cnt = $("pd-count");
+    if (cnt) {
+      cnt.textContent = images.length > 1 ? "1 / " + images.length : "";
+      cnt.classList.toggle("on", images.length > 1);
+    }
+    modal.scrollTop = 0;
 
     // Badges
+    /* Chiplar (Avto_A1: kod · birlik): artikul, turkum, belgi */
     const badges = $("pm-badges");
     badges.innerHTML = "";
     const off = discountPercent(product);
-    if (product.badge) {
-      const badge = el("span", "pm-badge new", product.badge);
-      badges.appendChild(badge);
-    }
-    if (off > 0) {
-      const saleBadge = el("span", "pm-badge sale", `-${off}%`);
-      badges.appendChild(saleBadge);
-    }
-    if (product.stock === 0) {
-      const outBadge = el("span", "pm-badge out", "Tugagan");
-      badges.appendChild(outBadge);
-    }
-    
+    const chip = (cls, html) => badges.insertAdjacentHTML("beforeend", '<span class="pd-chip ' + cls + '">' + html + "</span>");
+    if (product.code) chip("is-code", "Kod: <b>" + esc(product.code) + "</b>");
+    if (product._cat) chip("", esc(product._cat));
+    if (product.badge) chip("is-acc", esc(product.badge));
+
     // Ma'lumotlar
     $("pm-title").textContent = product.name;
-    $("pm-price").textContent = product.price_label || fmt(product.price);
-    
-    $("pm-desc").textContent = product.description || "";
+    const priceTx = product.price_label || fmt(product.price);
+    $("pm-price").textContent = priceTx;
+    if ($("pd-bar-price")) $("pd-bar-price").textContent = priceTx;
+    /* NARX KARTASI — eski narx, chegirma foizi va «Tejaysiz» (Avto_A1) */
+    const oldP = Number(product.old_price) || 0;
+    const nowP = Number(product.price) || 0;
+    const hasOld = off > 0 && oldP > nowP;
+    $("pd-old").classList.toggle("hidden", !hasOld);
+    $("pd-off").classList.toggle("hidden", !hasOld);
+    $("pd-old").textContent = hasOld ? product.old_price_label || fmt(oldP) : "";
+    $("pd-off").textContent = hasOld ? "−" + off + "%" : "";
+    $("pd-meta").innerHTML =
+      (hasOld ? "<span>Tejaysiz: <b>" + esc(fmt(oldP - nowP)) + "</b></span>" : "") +
+      '<span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 4h14v12H1zM15 9h4l3 3v4h-7"/><circle cx="6" cy="18.5" r="2"/><circle cx="18" cy="18.5" r="2"/></svg>Tez yetkazib berish</span>';
+    if ($("pd-bar-lbl"))
+      $("pd-bar-lbl").innerHTML = hasOld ? "Narxi<s>" + esc(product.old_price_label || fmt(oldP)) + "</s>" : "Narxi";
+
+    /* TAVSIF — 4 qator, uzun bo'lsa «Ko'proq» */
+    const descTx = String(product.description || "").trim();
+    const descEl = $("pm-desc");
+    descEl.textContent = descTx;
+    descEl.classList.add("pd-clamp");
+    $("pd-desc-h").classList.toggle("hidden", !descTx);
+    $("pd-desc-card").classList.toggle("hidden", !descTx);
+    const more = $("pd-more");
+    more.textContent = "Ko'proq";
+    more.classList.remove("on");
+    requestAnimationFrame(() => more.classList.toggle("on", descEl.scrollHeight > descEl.clientHeight + 4));
+    more.onclick = () => {
+      const open = descEl.classList.toggle("pd-clamp");
+      more.textContent = open ? "Ko'proq" : "Kamroq";
+      haptic("selection");
+    };
 
     /* RAZMERLAR va QOLDIQ. Ikkisi bir-biriga bog'liq (tanlangan razmer
        qoldiqni ham, tugmani ham o'zgartiradi), shuning uchun bitta joyda
@@ -10084,21 +10083,23 @@
     const specs = $("pm-specs");
     specs.innerHTML = "";
     const rows = [];
-    if (product.warranty) rows.push(["🛡 Kafolat", product.warranty]);
-    if (product.code) rows.push(["🔖 Artikul", product.code]);
-    if (product._cat) rows.push(["🗂 Turkum", product._cat]);
+    if (product.warranty) rows.push(["Kafolat", product.warranty]);
+    if (product.code) rows.push(["Artikul", product.code]);
+    if (product._cat) rows.push(["Turkum", product._cat]);
     /* MOS MASHINALAR — bittadan ko'p bo'lishi mumkin (admin panelda ko'p
        tanlov bor). Ilgari faqat birinchisi ko'rinardi va mijoz «mening
        Labomga to'g'ri kelmaydi shekilli» deb chiqib ketardi. */
     const carList = Array.isArray(product.car_names) ? product.car_names.filter(Boolean) : [];
-    if (carList.length > 1) rows.push(["🚗 Mos mashinalar", carList.join(", ")]);
-    else if (carList.length === 1) rows.push(["🚗 Mashina", carList[0]]);
-    else if (product.car_name) rows.push(["🚗 Mashina", product.car_name]);
+    if (carList.length > 1) rows.push(["Mos mashinalar", carList.join(", ")]);
+    else if (carList.length === 1) rows.push(["Mashina", carList[0]]);
+    else if (product.car_name) rows.push(["Mashina", product.car_name]);
     if (product.specs && typeof product.specs === "object") {
       Object.entries(product.specs).forEach(([key, val]) => {
         if (val) rows.push([key, val]);
       });
     }
+    $("pd-specs-h").classList.toggle("hidden", !rows.length);
+    specs.classList.toggle("hidden", !rows.length);
     rows.forEach(([key, val]) => {
       const row = el("div", "pm-spec-row");
       row.innerHTML =
@@ -10165,6 +10166,9 @@
     if (newIndex !== currentImageIndex) {
       currentImageIndex = newIndex;
       updateModalDots();
+      const cnt = $("pd-count");
+      if (cnt && cnt.classList.contains("on"))
+        cnt.textContent = newIndex + 1 + " / " + slider.children.length;
       haptic("selection");
     }
   }
@@ -10544,7 +10548,7 @@
     const btn = $("pm-add-cart");
     const originalText = btn.textContent;
     btn.textContent = "✓ Qo'shildi!";
-    btn.style.background = "linear-gradient(135deg, #2fd45f 0%, #1ea84a 100%)";
+    btn.classList.add("is-done");
     
     toast(`✅ ${modalSize ? modalSize + " · " : ""}${modalQuantity} ta savatga qo'shildi`);
     haptic("success");
@@ -10552,7 +10556,7 @@
     // Modalni yopish
     setTimeout(() => {
       btn.textContent = originalText;
-      btn.style.background = "";
+      btn.classList.remove("is-done");
       closeProductModal();
       modalQuantity = 1;
     }, 800);
