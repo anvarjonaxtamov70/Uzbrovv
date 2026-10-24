@@ -657,6 +657,11 @@
     if (S.page && KEEP_SCROLL.includes(S.page)) {
       S.scroll[S.page] = window.scrollY || 0;
     }
+    // Rasmiylashtirish oynasidan chiqildi — yakuniy ekran holati tozalanadi
+    if (page !== "checkout" && S.coDone) {
+      clearTimeout(S._coChatT);
+      S.coDone = null;
+    }
 
     [
       "splash",
@@ -952,6 +957,7 @@
        chiqadigan panelda) orqaga bosilishi butun oqimni yopib, tanlangan
        manzil va usulni yo'qotardi. */
     if (S.page === "checkout") {
+      if (S.coDone) return coDoneExit("home");
       if (S.coStep > 1) return coGo(S.coStep - 1);
       return show("cart");
     }
@@ -1232,31 +1238,182 @@
     return list;
   }
 
+  /* ==================================================================
+     GARAJ — «MENING MASHINAM» (iOS 26)
+
+     Soxta siluet rasmlari OLIB TASHLANDI. Har mashina — rangli
+     «monogramma» plitkasi (nomning bosh harflari, kuzov turiga qarab
+     rang), nomi, yillari, kuzov turi va unga MOS tovarlar soni. Admin
+     haqiqiy rasm yuklagan bo'lsa — plitka ichida o'sha rasm turadi.
+
+     Panelda (`openCarSheet`) tepada katta «hero» kartochka (tanlangan
+     mashina), qidiruv va kuzov turi bo'yicha segmentlar bor. Konfigurator
+     (`#cars`) ham xuddi shu qatorlarni ishlatadi — ikki xil dizayn yo'q.
+     ================================================================== */
+
+  /** Kuzov turlari: segment kaliti, nomi va plitka rangi. */
+  const GX_TYPES = {
+    sedan: { seg: "sedan", label: "Sedan", c1: "#5ac8fa", c2: "#0a84ff" },
+    old: { seg: "sedan", label: "Klassik sedan", c1: "#a59bff", c2: "#5e5ce6" },
+    hatch: { seg: "hatch", label: "Xetchbek", c1: "#ffb340", c2: "#ff7a00" },
+    suv: { seg: "suv", label: "Krossover", c1: "#4be38a", c2: "#1fa855" },
+    wagon: { seg: "wagon", label: "Universal", c1: "#ff7eb3", c2: "#e8447c" },
+    van: { seg: "work", label: "Mikroavtobus", c1: "#64e1e8", c2: "#0fa3b1" },
+    pickup: { seg: "work", label: "Pikap", c1: "#e0b07a", c2: "#a86b2d" },
+  };
+  const GX_SEGS = [
+    ["all", "Barchasi"],
+    ["sedan", "Sedan"],
+    ["hatch", "Xetchbek"],
+    ["suv", "Krossover"],
+    ["wagon", "Universal"],
+    ["work", "Tijorat"],
+  ];
+
+  function gxType(car) {
+    const Z = window.ZimmerCars;
+    const key = Z && Z.typeOf ? Z.typeOf(car.type || car.slug || car.name) : "sedan";
+    return GX_TYPES[key] ? key : "sedan";
+  }
+
+  /** «Nexia 3» → «N3», «Malibu XL» → «MX», «Damas» → «Da». */
+  function gxMono(name) {
+    const words = String(name || "?").trim().split(/\s+/).filter(Boolean);
+    if (words.length > 1) return (words[0][0] + words[1][0]).toUpperCase();
+    const w = words[0] || "?";
+    return w[0].toUpperCase() + (w[1] ? w[1].toLowerCase() : "");
+  }
+
+  /** Mashinaga ATAYLAB bog'langan (universal emas) tovarlar soni. */
+  function gxFitCount(car) {
+    const list = S.shopProducts || [];
+    if (!list.length || !car) return 0;
+    let n = 0;
+    list.forEach((p) => {
+      try {
+        if (hasCarLink(p) && fitsMyCar(p, car.id, car.name)) n++;
+      } catch (_) {}
+    });
+    return n;
+  }
+
+  function gxMine() {
+    return S.car || (S.me && S.me.car) || null;
+  }
+
+  function gxIsMine(car) {
+    const mine = gxMine();
+    return !!mine && (mine.id === car.id || (mine.name && mine.name === car.name));
+  }
+
   function renderCars(target) {
     const box = target || $("cars");
+    if (!box) return;
     box.innerHTML = "";
+    box.classList.add("gx-list");
     if (!S.cars.length) {
-      emptyState(box, "Hozircha mashinalar qo'shilmagan. Tez orada qo'shiladi.");
+      box.innerHTML =
+        '<div class="gx-empty"><b>Hozircha mashinalar yo\'q</b>' +
+        "<small>Tez orada qo'shiladi.</small></div>";
       return;
     }
-    S.cars.forEach((car) => {
-      const card = el("button", "car-card" + (S.car && S.car.id === car.id ? " selected" : ""));
-      const photo = abs(car.photo_url);
-      card.innerHTML = `
-        <div class="car-art">${
-          photo
-            ? img(photo, "car-thumb")
-            : window.ZimmerCars.art(car.slug)
-        }</div>
-        <div class="car-info">
-          <div class="car-name">${esc(car.name)}</div>
-          <div class="car-years">${esc(car.years || "")}</div>
-          <div class="car-note">${esc(car.note || "")}</div>
-        </div>
-        <span class="car-go">›</span>`;
-      card.onclick = () => pickCar(car);
-      box.append(card);
+
+    // Panelda qidiruv va segment filtrlari ishlaydi (konfiguratorda — yo'q)
+    const inSheet = box.id === "sheet-cars";
+    const q = inSheet ? String(S.gxQ || "").trim().toLowerCase() : "";
+    const seg = inSheet ? S.gxSeg || "all" : "all";
+
+    const list = S.cars.filter((car) => {
+      if (seg !== "all" && GX_TYPES[gxType(car)].seg !== seg) return false;
+      if (!q) return true;
+      return [car.name, car.note, car.years]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
     });
+
+    if (!list.length) {
+      box.innerHTML =
+        '<div class="gx-empty"><b>Hech narsa topilmadi</b>' +
+        "<small>Boshqa nom yoki kuzov turini sinab ko'ring.</small></div>";
+      return;
+    }
+
+    list.forEach((car, i) => {
+      const t = GX_TYPES[gxType(car)];
+      const mine = gxIsMine(car);
+      const fit = gxFitCount(car);
+      const photo = abs(car.photo_url);
+      const row = el("button", "gx-row" + (mine ? " is-on selected" : ""));
+      row.type = "button";
+      row.style.setProperty("--c1", t.c1);
+      row.style.setProperty("--c2", t.c2);
+      row.style.setProperty("--i", String(Math.min(i, 14)));
+      row.innerHTML =
+        '<span class="gx-mono">' +
+        (photo ? img(photo, "gx-photo", car.name) : "") +
+        "<b>" + esc(gxMono(car.name)) + "</b></span>" +
+        '<span class="gx-tx"><b>' + esc(car.name) + "</b>" +
+        "<small>" + esc([car.years, t.label].filter(Boolean).join(" · ")) + "</small></span>" +
+        (fit ? '<span class="gx-fit">' + fit + " tovar</span>" : "") +
+        '<span class="gx-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9"/></svg></span>';
+      row.onclick = () => {
+        if (!inSheet) return pickCar(car);
+        // Tanlov darhol ko'rinadi, panel esa yumshoq yopiladi
+        box.querySelectorAll(".gx-row").forEach((r) => r.classList.remove("is-on", "selected"));
+        row.classList.add("is-on", "selected", "is-picked");
+        haptic("medium");
+        setTimeout(() => pickCar(car), 260);
+      };
+      box.append(row);
+    });
+  }
+
+  /** Panel tepasidagi katta kartochka — hozirgi mashina. */
+  function gxHero() {
+    const car = gxMine();
+    if (!car) {
+      return (
+        '<div class="gx-hero is-empty">' +
+        '<div class="gx-beam"></div><div class="gx-beam b2"></div>' +
+        '<span class="gx-kicker">Garaj bo\'sh</span>' +
+        '<h3 class="gx-name">Mashinangizni<br>tanlang</h3>' +
+        "<p class=\"gx-lead\">Shunda do'kon va konfigurator faqat UNGA mos " +
+        "tovarlarni ko'rsatadi.</p></div>"
+      );
+    }
+    const full = (S.cars || []).find((c) => c.id === car.id || c.name === car.name) || car;
+    const t = GX_TYPES[gxType(full)];
+    const fit = gxFitCount(full);
+    return (
+      '<div class="gx-hero" style="--c1:' + t.c1 + ";--c2:" + t.c2 + '">' +
+      '<div class="gx-beam"></div><div class="gx-beam b2"></div>' +
+      '<span class="gx-water" aria-hidden="true">' + esc(gxMono(full.name)) + "</span>" +
+      '<span class="gx-kicker"><i></i>Garajda</span>' +
+      '<h3 class="gx-name">' + esc(full.name) + "</h3>" +
+      (full.note ? '<p class="gx-lead">' + esc(full.note) + "</p>" : "") +
+      '<div class="gx-stats">' +
+      '<span><small>Kuzov</small><b>' + esc(t.label) + "</b></span>" +
+      (full.years ? "<span><small>Yillar</small><b>" + esc(full.years) + "</b></span>" : "") +
+      "<span><small>Mos tovar</small><b>" + (fit || "—") + "</b></span>" +
+      "</div></div>"
+    );
+  }
+
+  function gxSegs() {
+    const counts = { all: S.cars.length };
+    S.cars.forEach((c) => {
+      const k = GX_TYPES[gxType(c)].seg;
+      counts[k] = (counts[k] || 0) + 1;
+    });
+    return GX_SEGS.filter(([k]) => counts[k])
+      .map(
+        ([k, label]) =>
+          '<button type="button" class="gx-seg' + ((S.gxSeg || "all") === k ? " is-on" : "") +
+          '" data-seg="' + k + '">' + esc(label) + "<i>" + counts[k] + "</i></button>"
+      )
+      .join("");
   }
 
   async function pickCar(car) {
@@ -4710,6 +4867,8 @@
        buyurtma tasdiqlanganda tozalanadi. */
     currentOrderAttemptKey();
     S.coStep = 1;
+    S.coDone = null;
+    S.coBagOpen = false;
     haptic();
     show("checkout");
   }
@@ -4737,42 +4896,124 @@
     renderCheckout();
   }
 
-  /** Savat xulosasi — har qadamda tepada turadi, shunda mijoz nima uchun
-   *  qancha to'layotganini ko'zdan qochirmaydi. */
-  function coSummary() {
-    const count = S.cart.reduce((s, i) => s + (Number(i.qty) || 0), 0);
+  /* ------------------------------------------------------------------
+     iOS 26 ikonlari (SF Symbols uslubida, `currentColor`).
+     ------------------------------------------------------------------ */
+  const XI = {
+    user: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.2-3.6 4-5.4 7.5-5.4s6.3 1.8 7.5 5.4"/></svg>',
+    phone: '<svg viewBox="0 0 24 24"><path d="M6.6 3.8h2.6l1.4 4-1.9 1.3a11 11 0 0 0 6.2 6.2l1.3-1.9 4 1.4v2.6a2 2 0 0 1-2.2 2A16.4 16.4 0 0 1 4.6 6a2 2 0 0 1 2-2.2z"/></svg>',
+    tg: '<svg viewBox="0 0 24 24"><path d="M20.5 4.2 3.6 10.8c-.9.4-.9 1.6.1 1.9l4.2 1.3 1.6 5c.3.8 1.3 1 1.9.4l2.3-2.2 4.2 3.1c.7.5 1.7.1 1.9-.8l2.8-13.9c.2-1-.8-1.8-1.7-1.4z"/><path d="m8 14 9.5-6.5-6.9 8"/></svg>',
+    lock: '<svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.6"/><path d="M8.3 10.5V8a3.7 3.7 0 0 1 7.4 0v2.5"/></svg>',
+    truck: '<svg viewBox="0 0 24 24"><path d="M2.8 6.5h11v9.5h-11z"/><path d="M13.8 9.5h4l3.4 3.6V16h-7.4"/><circle cx="7" cy="17.4" r="1.9"/><circle cx="17.3" cy="17.4" r="1.9"/></svg>',
+    box: '<svg viewBox="0 0 24 24"><path d="M12 2.8 20.5 7.5v9L12 21.2 3.5 16.5v-9z"/><path d="M3.5 7.5 12 12.2l8.5-4.7M12 12.2v9M7.8 5.1l8.5 4.7"/></svg>',
+    pin: '<svg viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg>',
+    card: '<svg viewBox="0 0 24 24"><rect x="2.8" y="5.5" width="18.4" height="13" rx="2.8"/><path d="M2.8 10h18.4M6.5 15h3.5"/></svg>',
+    app: '<svg viewBox="0 0 24 24"><rect x="6.2" y="2.8" width="11.6" height="18.4" rx="2.8"/><path d="M10.5 18h3"/><path d="M9.3 10.6l2 2 3.6-3.8"/></svg>',
+    cash: '<svg viewBox="0 0 24 24"><rect x="2.8" y="6.5" width="18.4" height="11" rx="2.2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg>',
+    bag: '<svg viewBox="0 0 24 24"><path d="M5.5 8h13l-1 12h-11z"/><path d="M8.8 8V6.6a3.2 3.2 0 0 1 6.4 0V8"/></svg>',
+    chev: '<svg viewBox="0 0 24 24"><path d="m9.5 5.5 6.5 6.5-6.5 6.5"/></svg>',
+    check: '<svg viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9"/></svg>',
+    copy: '<svg viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2.4"/><path d="M15.5 8.5V6.4A2.4 2.4 0 0 0 13.1 4H6.4A2.4 2.4 0 0 0 4 6.4v6.7a2.4 2.4 0 0 0 2.4 2.4h2.1"/></svg>',
+    home: '<svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20h-5.3v-5.6H9.3V20H4z"/></svg>',
+    list: '<svg viewBox="0 0 24 24"><path d="M9 6.5h11M9 12h11M9 17.5h11"/><circle cx="4.8" cy="6.5" r="1.1"/><circle cx="4.8" cy="12" r="1.1"/><circle cx="4.8" cy="17.5" r="1.1"/></svg>',
+  };
+
+  /** Pastki «dok»: chapda jami summa, o'ngda asosiy tugma. */
+  function coDock(btnId, label, extraCls, disabled) {
     return (
-      '<div class="co-sum">' +
-      '<span class="co-sum-ic">🧺</span>' +
-      '<span class="co-sum-tx"><b>' +
-      count +
-      " ta mahsulot</b><i>Savatchadagi buyurtma</i></span>" +
-      "<em>" +
-      esc(fmt(cartSum())) +
-      "</em>" +
-      "</div>"
+      '<div class="x-dock">' +
+      '<div class="x-dock-sum"><small>Jami</small><b>' + esc(fmt(cartSum())) + "</b></div>" +
+      '<button class="x-cta' + (extraCls ? " " + extraCls : "") + '" id="' + btnId + '"' +
+      (disabled ? " disabled" : "") + ">" + esc(label) + "</button></div>"
     );
   }
 
+  /** Qadam sarlavhasi (iOS «Large Title»). */
+  function coHead(kicker, title, sub) {
+    return (
+      '<div class="x-head"><span class="x-kicker">' + esc(kicker) + "</span>" +
+      "<h2>" + esc(title) + "</h2>" + (sub ? "<p>" + sub + "</p>" : "") + "</div>"
+    );
+  }
+
+  /** Savat xulosasi — har qadamda tepada turadi, bosilsa tarkib ochiladi.
+   *  Mijoz nima uchun qancha to'layotganini ko'zdan qochirmaydi. */
+  function coSummary() {
+    const count = S.cart.reduce((s, i) => s + (Number(i.qty) || 0), 0);
+    const thumbs = S.cart
+      .slice(0, 3)
+      .map((i) => {
+        const src = abs(i.photo_url);
+        return '<span class="x-bag-th">' + (src ? img(src, "", i.name) : XI.bag) + "</span>";
+      })
+      .join("");
+    const rows = S.cart
+      .map(
+        (i) =>
+          '<div class="x-bag-it"><span class="x-bag-q">' + (Number(i.qty) || 1) + "×</span>" +
+          "<span class=\"x-bag-n\">" + esc(i.name || "Tovar") +
+          (i.size ? " <i>" + esc(i.size) + "</i>" : "") + "</span>" +
+          "<b>" + esc(fmt((Number(i.price) || 0) * (Number(i.qty) || 0))) + "</b></div>"
+      )
+      .join("");
+    return (
+      '<button type="button" class="x-bag" id="x-bag" aria-expanded="' +
+      (S.coBagOpen ? "true" : "false") + '">' +
+      '<span class="x-bag-stack">' + thumbs + "</span>" +
+      '<span class="x-bag-tx"><b>' + count + " ta mahsulot</b><small>" +
+      (S.coBagOpen ? "Yashirish" : "Tarkibni ko'rish") + "</small></span>" +
+      "<em>" + esc(fmt(cartSum())) + "</em>" +
+      '<span class="x-bag-chev">' + XI.chev + "</span></button>" +
+      '<div class="x-bag-list' + (S.coBagOpen ? " is-open" : "") + '" id="x-bag-list">' +
+      '<div class="x-bag-in">' + rows + "</div></div>"
+    );
+  }
+
+  function coWireBag() {
+    const bag = $("x-bag");
+    if (!bag) return;
+    bag.onclick = () => {
+      S.coBagOpen = !S.coBagOpen;
+      haptic("light");
+      bag.setAttribute("aria-expanded", S.coBagOpen ? "true" : "false");
+      const sm = bag.querySelector(".x-bag-tx small");
+      if (sm) sm.textContent = S.coBagOpen ? "Yashirish" : "Tarkibni ko'rish";
+      const list = $("x-bag-list");
+      if (list) list.classList.toggle("is-open", !!S.coBagOpen);
+    };
+  }
+
   function renderCheckout() {
+    const page = $("checkout");
+    if (page) page.classList.add("x26");
+
+    // Buyurtma yuborilgan — «Qabul qilindi» ekrani (savat allaqachon bo'sh)
+    if (S.coDone) return renderOrderDone();
+
     /* Savat bo'shab qolsa (buyurtma yuborildi yoki oxirgi tovar o'chirildi)
        bu oynada turishning ma'nosi yo'q — savatga qaytaramiz. */
     if (!S.cart.length) return show("cart");
 
     const step = CO_STEPS[S.coStep - 1] || CO_STEPS[0];
-    $("co-title").textContent = step.title;
-    $("co-sub").textContent = step.n + "-qadam / " + CO_STEPS.length;
+    if (page) page.dataset.step = String(step.n);
+    $("co-title").textContent = "Rasmiylashtirish";
+    $("co-sub").textContent = step.n + " / " + CO_STEPS.length + " · " + step.label;
+    $("co-back").style.visibility = "";
 
-    // ---- qadam ko'rsatkichi
-    $("co-steps").innerHTML = CO_STEPS.map((s) => {
+    // ---- qadam ko'rsatkichi: uch kapsula, o'tilgani to'la, joriysi «nur»da
+    const rail = $("co-steps");
+    rail.classList.remove("hidden");
+    rail.classList.add("x-rail");
+    rail.innerHTML = CO_STEPS.map((s) => {
       const state = s.n < S.coStep ? " is-done" : s.n === S.coStep ? " is-now" : "";
       return (
-        '<button class="co-node' + state + '" data-step="' + s.n + '">' +
-        "<i>" + (s.n < S.coStep ? "✓" : s.icon) + "</i>" +
-        "<span>" + esc(s.label) + "</span></button>"
+        '<button type="button" class="x-seg' + state + '" data-step="' + s.n + '">' +
+        "<i><b></b></i><span>" +
+        (s.n < S.coStep ? '<em class="x-seg-ok">' + XI.check + "</em>" : "") +
+        esc(s.label) + "</span></button>"
       );
     }).join("");
-    document.querySelectorAll("#co-steps .co-node").forEach((node) => {
+    rail.querySelectorAll(".x-seg").forEach((node) => {
       node.onclick = () => {
         const n = parseInt(node.dataset.step, 10);
         if (!n || n >= S.coStep) return; // faqat orqaga
@@ -4785,6 +5026,14 @@
     else if (S.coStep === 3) coStepPayment();
     else coStepContact();
 
+    coWireBag();
+    const body = $("co-body");
+    if (body) {
+      body.classList.remove("x-in");
+      void body.offsetWidth;
+      body.classList.add("x-in");
+    }
+
     window.scrollTo({ top: 0 });
   }
 
@@ -4796,24 +5045,66 @@
 
     $("co-body").innerHTML =
       coSummary() +
-      `<p class="step-sub">Buyurtma kim uchun va qaysi raqamga? Bir marta
-        kiritasiz — keyingi buyurtmalarda tayyor turadi.</p>
-       <label class="field"><span>👤 Ism va familiya</span>
-         <input id="co-name" value="${esc(name)}" placeholder="Anvarjon Axtamov"></label>
-       <label class="field"><span>📞 Telefon</span>
-         <input id="co-phone" type="tel" inputmode="tel" value="${esc(phone)}"
-                placeholder="+998901234567"></label>
-       <button class="btn btn-ghost" id="co-contact">📱 Telegram raqamimni yuborish</button>
-       <button class="btn btn-primary co-cta" id="co-next-1">Davom etish →</button>`;
+      coHead(
+        "1-qadam",
+        "Ma'lumotlaringiz",
+        "Buyurtmani kim qabul qiladi? Bir marta kiritasiz — keyingi safar tayyor turadi."
+      ) +
+      `<div class="x-form">
+         <label class="x-field" id="x-f-name">
+           <span class="x-ic" style="--a:#5ac8fa;--b:#0a84ff">${XI.user}</span>
+           <span class="x-fl"><small>Ism va familiya</small>
+             <input id="co-name" value="${esc(name)}" placeholder="Ismingiz" autocomplete="name"
+                    autocapitalize="words" enterkeyhint="next"></span>
+         </label>
+         <label class="x-field" id="x-f-phone">
+           <span class="x-ic" style="--a:#4be38a;--b:#1fa855">${XI.phone}</span>
+           <span class="x-fl"><small>Telefon raqam</small>
+             <input id="co-phone" type="tel" inputmode="tel" value="${esc(phone)}"
+                    placeholder="+998 90 123 45 67" autocomplete="tel" enterkeyhint="done"></span>
+         </label>
+       </div>
+       <button type="button" class="x-tg" id="co-contact"><span class="x-tg-ic">${XI.tg}</span>
+         <span class="x-tg-tx"><b>Telegram raqamimni ulashish</b><small>Bir bosishda to'ldiriladi</small></span>
+         <span class="x-chev">${XI.chev}</span></button>
+       <p class="x-safe">${XI.lock}<span>Ma'lumotlaringiz faqat buyurtmani yetkazish uchun ishlatiladi.</span></p>` +
+      coDock("co-next-1", "Davom etish");
 
     wireRequestContact("co-contact", "co-phone");
+
+    // Bo'sh telefon maydoniga bosilganda «+998» o'zi yoziladi
+    const phoneIn = $("co-phone");
+    if (phoneIn) {
+      phoneIn.addEventListener("focus", () => {
+        if (!phoneIn.value.trim()) phoneIn.value = "+998 ";
+      });
+      phoneIn.addEventListener("blur", () => {
+        if (phoneIn.value.trim() === "+998") phoneIn.value = "";
+      });
+    }
+    ["co-name", "co-phone"].forEach((id) => {
+      const inp = $(id);
+      if (inp) inp.addEventListener("input", () => inp.closest(".x-field").classList.remove("is-err"));
+    });
+    const fieldErr = (id, msg) => {
+      const f = $(id);
+      if (f) {
+        f.classList.remove("is-err");
+        void f.offsetWidth;
+        f.classList.add("is-err");
+      }
+      haptic("warn");
+      toast(msg);
+    };
 
     $("co-next-1").onclick = async () => {
       const btn = $("co-next-1");
       const fullName = ($("co-name").value || "").trim();
       const value = ($("co-phone").value || "").trim();
-      if (fullName.length < 2) return toast("Ismingizni kiriting");
-      if (value.replace(/\D/g, "").length < 9) return toast("Telefon raqamni to'liq kiriting");
+      if (fullName.length < 2) return fieldErr("x-f-name", "Ismingizni kiriting");
+      if (value.replace(/\D/g, "").length < 9) {
+        return fieldErr("x-f-phone", "Telefon raqamni to'liq kiriting");
+      }
 
       // Hech narsa o'zgarmasa serverni bezovta qilmaymiz — darhol o'tamiz.
       if (me.full_name === fullName && me.phone === value) {
@@ -4830,7 +5121,7 @@
         coGo(2);
       } catch (err) {
         btn.disabled = false;
-        btn.textContent = "Davom etish →";
+        btn.textContent = "Davom etish";
         onError(err);
       }
     };
@@ -4838,45 +5129,56 @@
 
   /* ------------------------------------------ 2-qadam: yetkazib berish */
   function coStepDelivery() {
+    const free = cartSum() >= FREE_DELIVERY_TARGET;
     $("co-body").innerHTML =
       coSummary() +
-      `<p class="step-sub">Buyurtmani qanday qabul qilmoqchisiz?</p>
-       <div class="dlv-methods">
-         <button class="dlv-card" id="dlv-courier">
-           <span class="dlv-ico">🚖</span>
-           <span class="dlv-txt"><b>Kuryer — manzilga</b>
-             <small>Faqat ${esc(dcity())} shahar ichida</small></span>
-           <span class="dlv-check">✓</span>
+      coHead("2-qadam", "Yetkazib berish", "Buyurtmani qanday qabul qilmoqchisiz?") +
+      `<div class="dlv-methods x-methods">
+         <button type="button" class="dlv-card x-mcard" id="dlv-courier" style="--a:#ffb340;--b:#ff7a00">
+           <span class="x-mcard-top"><span class="dlv-ico">${XI.truck}</span>
+             <span class="dlv-check">${XI.check}</span></span>
+           <span class="dlv-txt"><b>Kuryer</b>
+             <small>${esc(dcity())} ichida · eshigingizgacha</small></span>
+           <span class="x-tag">${free ? "Bepul" : "Tez"}</span>
          </button>
-         <button class="dlv-card" id="dlv-bts">
-           <span class="dlv-ico">📦</span>
-           <span class="dlv-txt"><b>BTS Pochta filialiga</b>
-             <small>Butun O'zbekiston · 2–4 kun · filialdan olasiz</small></span>
-           <span class="dlv-check">✓</span>
+         <button type="button" class="dlv-card x-mcard" id="dlv-bts" style="--a:#5ac8fa;--b:#0a84ff">
+           <span class="x-mcard-top"><span class="dlv-ico">${XI.box}</span>
+             <span class="dlv-check">${XI.check}</span></span>
+           <span class="dlv-txt"><b>BTS Pochta</b>
+             <small>Butun O'zbekiston · filialdan olasiz</small></span>
+           <span class="x-tag">2–4 kun</span>
          </button>
        </div>
 
-       <div id="dlv-courier-box" class="hidden">
+       <div id="dlv-courier-box" class="hidden x-box">
+         <div class="x-sec">Manzil</div>
          <div class="dlv-addr-list" id="dlv-addresses"></div>
-         <button class="dlv-map-btn" id="dlv-map-btn">🗺 Xaritadan belgilash</button>
-         <label class="field"><span>📍 Yoki manzilni yozing</span>
+         <button type="button" class="dlv-map-btn x-map" id="dlv-map-btn">
+           <span class="x-map-art"><i></i>${XI.pin}</span>
+           <span class="x-map-tx"><b>Xaritadan belgilash</b>
+             <small>Aniq nuqta — kuryer adashmaydi</small></span>
+           <span class="x-chev">${XI.chev}</span>
+         </button>
+         <label class="x-area"><small>Yoki manzilni yozing</small>
            <textarea id="dlv-address" rows="2"
              placeholder="${esc(dcity())}, Registon ko'chasi, 25-uy, 12-xonadon"></textarea></label>
-         <p class="dlv-note">ℹ️ Kuryer faqat <b>${esc(dcity())} shahar ichida</b> ishlaydi.
-           Boshqa hududda bo'lsangiz, 📦 <b>BTS Pochta</b> ni tanlang.</p>
+         <p class="dlv-note x-note">Kuryer faqat <b>${esc(dcity())} shahar ichida</b> ishlaydi.
+           Boshqa hududda bo'lsangiz — <b>BTS Pochta</b> ni tanlang.</p>
        </div>
 
-       <div id="dlv-bts-box" class="hidden">
-         <label class="field"><span>📦 Viloyat</span>
-           <select id="bts-region" class="dlv-select"><option value="">— Viloyatni tanlang —</option></select></label>
-         <label class="field hidden" id="bts-district-f"><span>Tuman / shahar</span>
-           <select id="bts-district" class="dlv-select"><option value="">— Tumanni tanlang —</option></select></label>
-         <label class="field hidden" id="bts-branch-f"><span>Filial</span>
-           <select id="bts-branch" class="dlv-select"><option value="">— Filialni tanlang —</option></select></label>
+       <div id="dlv-bts-box" class="hidden x-box">
+         <div class="x-sec">BTS filiali</div>
+         <div class="x-form x-selects">
+           <label class="field x-sel"><span>Viloyat</span>
+             <select id="bts-region" class="dlv-select"><option value="">— Viloyatni tanlang —</option></select></label>
+           <label class="field x-sel hidden" id="bts-district-f"><span>Tuman / shahar</span>
+             <select id="bts-district" class="dlv-select"><option value="">— Tumanni tanlang —</option></select></label>
+           <label class="field x-sel hidden" id="bts-branch-f"><span>Filial</span>
+             <select id="bts-branch" class="dlv-select"><option value="">— Filialni tanlang —</option></select></label>
+         </div>
          <div class="bts-info hidden" id="bts-info"></div>
-       </div>
-
-       <button class="btn btn-primary co-cta" id="dlv-continue">To'lovga o'tish →</button>`;
+       </div>` +
+      coDock("dlv-continue", "To'lovga o'tish");
 
     /* Viloyatlar ro'yxati BU YERDA to'ldirilmaydi — `bts.js` (61 KB)
        endi talab bo'yicha yuklanadi va u faqat «BTS Pochta» tanlanganda
@@ -5146,8 +5448,8 @@
     const isBts = S.delivery.method === "bts";
     const txt = moClean(S.delivery.summary || S.delivery.address || "");
     return (
-      '<button class="pz-recap" id="pz-recap">' +
-      '<span class="pz-recap-ic">' + (isBts ? "📦" : "🚖") + "</span>" +
+      '<button type="button" class="pz-recap" id="pz-recap">' +
+      '<span class="pz-recap-ic">' + (isBts ? XI.box : XI.truck) + "</span>" +
       '<span class="pz-recap-tx"><small>Yetkazib berish</small>' +
       "<b>" + esc(txt) + "</b></span>" +
       '<span class="pz-recap-go">O\'zgartirish</span>' +
@@ -5160,21 +5462,24 @@
     const free = sum >= FREE_DELIVERY_TARGET;
     return (
       '<div class="pz-hero">' +
+      '<i class="pz-hero-glow" aria-hidden="true"></i>' +
       "<small>To'lov summasi</small>" +
       '<b id="pz-sum">' + esc(fmt(sum)) + "</b>" +
-      "<span>" + n + " dona mahsulot" +
-      (free ? " · 🚚 yetkazish bepul" : "") + "</span></div>"
+      '<span class="pz-hero-chips"><em>' + n + " dona</em>" +
+      (free ? "<em class=\"is-free\">Yetkazish bepul</em>" : "") + "</span></div>"
     );
   }
+
+  const PAY_IC = { card: "card", app: "app", cash: "cash" };
 
   function payRow(kind) {
     const m = PAY_METHODS[kind];
     return (
-      '<button class="pz-row" id="pz-row-' + kind + '" data-pay="' + kind + '">' +
-      '<span class="pz-radio"></span>' +
-      '<span class="pz-ic pz-ic-' + kind + '">' + m.icon + "</span>" +
+      '<button type="button" class="pz-row" id="pz-row-' + kind + '" data-pay="' + kind + '">' +
+      '<span class="pz-ic pz-ic-' + kind + '">' + XI[PAY_IC[kind]] + "</span>" +
       '<span class="pz-tx"><b>' + esc(m.title) + "</b>" +
-      "<small>" + esc(m.sub) + "</small></span></button>"
+      "<small>" + esc(m.sub) + "</small></span>" +
+      '<span class="pz-radio"></span></button>'
     );
   }
 
@@ -5191,6 +5496,7 @@
     const rows = isBts ? ["card", "app"] : ["card", "app", "cash"];
 
     $("co-body").innerHTML =
+      coHead("3-qadam", "To'lov", "") +
       payRecap() +
       payHero(sum) +
       '<div class="pz-label">To\'lov usulini tanlang</div>' +
@@ -5200,10 +5506,8 @@
           "qilinadi — shu sababli «Naqd» mavjud emas.</p>"
         : "") +
       '<div class="pz-panel" id="pz-panel"><div class="pz-panel-in" id="pz-panel-in"></div></div>' +
-      '<div class="pz-cta-wrap">' +
-      '<button class="btn btn-primary pz-cta" id="pz-cta" disabled>Usulni tanlang</button>' +
       '<p class="pz-cta-note" id="pz-cta-note">Usulni tanlaganingizdan keyin davom etamiz.</p>' +
-      "</div>";
+      coDock("pz-cta", "Usulni tanlang", "pz-cta", true);
 
     const recap = $("pz-recap");
     if (recap) recap.onclick = () => coGo(2);
@@ -5282,12 +5586,15 @@
               "So'ng <b>«To'lovni yubordim»</b> tugmasini bosing",
             ];
 
+      const digits = card.replace(/\D/g, "");
+      const brand = /^9860/.test(digits) ? "HUMO" : /^(8600|5614)/.test(digits) ? "UZCARD" : "KARTA";
       box.innerHTML =
-        '<div class="pz-card">' +
-        '<div class="pz-card-top"><span class="pz-card-chip"></span><em>UZCARD</em></div>' +
+        '<div class="pz-card" data-brand="' + brand + '">' +
+        '<i class="pz-card-sheen" aria-hidden="true"></i>' +
+        '<div class="pz-card-top"><span class="pz-card-chip"></span><em>' + brand + "</em></div>" +
         '<div class="pz-card-num" id="pz-card-num">' + esc(card) + "</div>" +
         '<div class="pz-card-foot"><span>' + esc(holder || "—") + "</span>" +
-        '<button class="pz-copy" id="pz-copy">📋 Nusxalash</button></div></div>' +
+        '<button type="button" class="pz-copy" id="pz-copy">' + XI.copy + "Nusxalash</button></div></div>" +
         /* O'tkaziladigan summa kartaning YONIDA yana bir marta turadi.
            Tepadagi summa skroll qilinganda ko'rinmay qoladi, mijoz esa
            bank ilovasiga o'tishdan oldin aynan shu raqamni yozadi. */
@@ -5408,6 +5715,145 @@
     return placeOrderViaApi(paymentLabel, openAdminChat);
   }
 
+  /* ==================================================================
+     «BUYURTMA QABUL QILINDI» — rasmiylashtirish oynasining yakuni
+
+     Ilgari buyurtmadan keyin faqat toast chiqib, kabinetga sakrab
+     o'tilardi — mijoz nima bo'lganini, raqamini va keyingi qadamni
+     ko'rmasdi. Endi xuddi shu oynada to'liq yakuniy ekran: animatsiyali
+     belgi, buyurtma raqami (nusxalanadi), xulosa, holat zanjiri va
+     keyingi amallar. Karta to'lovida chek yuborish tugmasi ham shu yerda.
+     ================================================================== */
+
+  /** Savat TOZALANISHIDAN OLDIN xulosani yig'adi. */
+  function coDoneInfo(paymentLabel, openAdminChat) {
+    const d = S.delivery || {};
+    return {
+      code: "",
+      total: cartSum(),
+      totalLabel: "",
+      count: S.cart.reduce((s, i) => s + (Number(i.qty) || 0), 0),
+      delivery: d.method === "bts" ? "BTS Pochta" : "Kuryer",
+      address: moClean(d.address || d.summary || ""),
+      payment: paymentLabel || "",
+      payKind: S.payMethod || "",
+      chat: !!openAdminChat,
+      notified: true,
+      name: ((S.me && S.me.full_name) || "").split(/\s+/)[0] || "",
+    };
+  }
+
+  function coShowDone(info) {
+    S.coDone = info;
+    S.coBagOpen = false;
+    S.myAt = 0; // «Buyurtmalarim» keyingi ochilishda serverdan yangilansin
+    if (S.page !== "checkout") show("checkout");
+    else renderCheckout();
+    syncBackButton();
+    // Karta to'lovi: chek uchun admin chati — avval yakuniy ekran ko'rinsin
+    if (info.chat && S.pay && S.pay.admin) {
+      clearTimeout(S._coChatT);
+      S._coChatT = setTimeout(() => {
+        if (S.coDone === info) openTelegram(S.pay.admin);
+      }, 2200);
+    }
+  }
+
+  /** Yakuniy ekrandan chiqish. */
+  function coDoneExit(where) {
+    clearTimeout(S._coChatT);
+    S.coDone = null;
+    if (where === "orders") return openMyOrders("order");
+    show("home");
+  }
+
+  function renderOrderDone() {
+    const d = S.coDone;
+    const page = $("checkout");
+    if (page) page.dataset.step = "done";
+    $("co-title").textContent = "Tayyor";
+    $("co-sub").textContent = d.code ? "Buyurtma " + d.code : "Buyurtma qabul qilindi";
+    $("co-back").style.visibility = "hidden";
+    const rail = $("co-steps");
+    rail.innerHTML = "";
+    rail.classList.add("hidden");
+
+    const total = d.totalLabel || fmt(d.total);
+    const canChat = !!(d.chat && S.pay && S.pay.admin);
+    const steps = [
+      ["Qabul qilindi", "Hozir"],
+      ["Tasdiqlanadi", "Admin tekshiradi"],
+      ["Yo'lda", d.delivery],
+      ["Yetkazildi", "Qo'lingizda"],
+    ];
+
+    $("co-body").innerHTML =
+      '<div class="xd">' +
+      '<div class="xd-orb" aria-hidden="true"><i class="xd-wave"></i><i class="xd-wave w2"></i>' +
+      '<svg viewBox="0 0 120 120"><circle class="xd-ring" cx="60" cy="60" r="50"/>' +
+      '<path class="xd-tick" d="M39 61.5 53.5 76 82 46"/></svg></div>' +
+      '<h2 class="xd-title">Buyurtma qabul qilindi</h2>' +
+      '<p class="xd-sub">' + (d.name ? "Rahmat, " + esc(d.name) + "! " : "Rahmat! ") +
+      "Admin tez orada tasdiqlab, siz bilan bog'lanadi.</p>" +
+      (d.code
+        ? '<button type="button" class="xd-code" id="xd-code"><small>Buyurtma raqami</small>' +
+          "<b>" + esc(d.code) + "</b><span>" + XI.copy + "</span></button>"
+        : "") +
+      '<div class="xd-card">' +
+      '<div class="xd-row"><small>Summa</small><b class="xd-sum">' + esc(total) + "</b></div>" +
+      '<div class="xd-row"><small>Mahsulotlar</small><b>' + d.count + " dona</b></div>" +
+      '<div class="xd-row"><small>Yetkazish</small><b>' + esc(d.delivery) + "</b></div>" +
+      (d.address ? '<div class="xd-row xd-addr"><small>Manzil</small><b>' + esc(d.address) + "</b></div>" : "") +
+      (d.payment ? '<div class="xd-row"><small>To\'lov</small><b>' + esc(d.payment) + "</b></div>" : "") +
+      "</div>" +
+      '<div class="xd-track">' +
+      steps
+        .map(
+          (s, i) =>
+            '<div class="xd-st' + (i === 0 ? " is-on" : "") + '" style="--i:' + i + '">' +
+            "<i>" + (i === 0 ? XI.check : "") + "</i><span><b>" + esc(s[0]) + "</b><small>" +
+            esc(s[1]) + "</small></span></div>"
+        )
+        .join("") +
+      "</div>" +
+      (!d.notified
+        ? '<p class="xd-warn">Buyurtma saqlandi, lekin adminga xabar ketmadi. ' +
+          "Iltimos, do'konga yozib qo'ying.</p>"
+        : "") +
+      (d.chat
+        ? '<p class="xd-hint">To\'lov chekining skrinshotini adminga yuboring — ' +
+          "shunda buyurtma tezroq tasdiqlanadi.</p>"
+        : "") +
+      '<div class="xd-acts">' +
+      (canChat
+        ? '<button type="button" class="x-cta" id="xd-chat">' + XI.tg + "Chekni yuborish</button>"
+        : "") +
+      '<button type="button" class="' + (canChat ? "x-ghost" : "x-cta") + '" id="xd-orders">' +
+      XI.list + "Buyurtmalarim</button>" +
+      '<button type="button" class="x-ghost" id="xd-home">' + XI.home + "Bosh sahifa</button>" +
+      "</div></div>";
+
+    const code = $("xd-code");
+    if (code) code.onclick = () => copyText(String(d.code).replace(/^#/, ""), "📋 Buyurtma raqami nusxalandi");
+    const chat = $("xd-chat");
+    if (chat) {
+      chat.onclick = () => {
+        clearTimeout(S._coChatT);
+        haptic("medium");
+        openTelegram(S.pay.admin);
+      };
+    }
+    $("xd-orders").onclick = () => {
+      haptic();
+      coDoneExit("orders");
+    };
+    $("xd-home").onclick = () => {
+      haptic();
+      coDoneExit("home");
+    };
+    window.scrollTo({ top: 0 });
+  }
+
   /** Zaxira yo'l: Render `/api/orders` (SQLite bo'yicha tekshiradi). */
   function placeOrderViaApi(paymentLabel, openAdminChat) {
     return withPhone(async () => {
@@ -5439,6 +5885,8 @@
           },
         });
         clearOrderAttemptKey();
+        const done = coDoneInfo(paymentLabel, openAdminChat);
+        done.code = res.order && res.order.id != null ? "#" + res.order.id : "";
         S.cart = [];
         saveCart();
         renderCart();
@@ -5449,14 +5897,8 @@
         haptic("ok");
         closeSheet();
         burst();
-        toast(`✅ Buyurtma #${res.order.id} qabul qilindi`, 3400);
-        show("profile");
-        // Karta to'lovi: chekni yuborish uchun admin chatini ochamiz
-        if (openAdminChat && S.pay && S.pay.admin) {
-          try {
-            tg.openTelegramLink("https://t.me/" + S.pay.admin);
-          } catch (_) {}
-        }
+        // «Buyurtma qabul qilindi» ekrani (chek uchun admin chati shu yerdan)
+        coShowDone(done);
       } catch (err) {
         if (btn) {
           btn.disabled = false;
@@ -6942,6 +7384,7 @@
 
   /* ----------------------------------------------------------------- sheet */
   function openSheet(title, html) {
+    $("sheet").classList.remove("is-garage");
     $("sheet-title").textContent = title;
     $("sheet-content").innerHTML = html;
     $("sheet").classList.remove("hidden");
@@ -6954,6 +7397,7 @@
     if (S.themeEditing) themeCancel();
     stopVideos();
     $("sheet").classList.add("hidden");
+    $("sheet").classList.remove("is-garage");
     $("sheet-content").innerHTML = "";
     syncBackButton();
   }
@@ -6964,9 +7408,44 @@
     return !!sheet && !sheet.classList.contains("hidden");
   }
 
+  /** «Mening mashinam» — garaj paneli (iOS 26). */
   function openCarSheet() {
-    openSheet("Mashinani tanlang", '<div class="cars" id="sheet-cars"></div>');
+    S.gxSeg = "all";
+    S.gxQ = "";
+    openSheet(
+      "Mening mashinam",
+      '<div id="gx-hero">' + gxHero() + "</div>" +
+        '<div class="gx-tools">' +
+        '<label class="gx-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>' +
+        '<input id="gx-q" type="search" placeholder="Model yoki yil bo\'yicha qidirish" autocomplete="off" enterkeyhint="search"></label>' +
+        '<div class="gx-segs" id="gx-segs">' + gxSegs() + "</div>" +
+        "</div>" +
+        '<div class="gx-cap">Barcha modellar</div>' +
+        '<div class="cars" id="sheet-cars"></div>'
+    );
+    $("sheet").classList.add("is-garage");
     renderCars($("sheet-cars"));
+
+    const q = $("gx-q");
+    if (q) {
+      q.oninput = () => {
+        S.gxQ = q.value;
+        renderCars($("sheet-cars"));
+      };
+    }
+    const segs = $("gx-segs");
+    if (segs) {
+      segs.onclick = (e) => {
+        const b = e.target.closest(".gx-seg");
+        if (!b) return;
+        S.gxSeg = b.dataset.seg;
+        haptic("light");
+        segs.querySelectorAll(".gx-seg").forEach((x) => x.classList.toggle("is-on", x === b));
+        const cap = document.querySelector("#sheet .gx-cap");
+        if (cap) cap.textContent = S.gxSeg === "all" ? "Barcha modellar" : b.firstChild.textContent;
+        renderCars($("sheet-cars"));
+      };
+    }
   }
 
   /* ==================================================================
@@ -9014,6 +9493,8 @@
   };
   $("co-close").onclick = () => {
     haptic();
+    // Yakuniy ekranda savat bo'sh — «✕» bosh sahifaga olib chiqadi
+    if (S.coDone) return coDoneExit("home");
     show("cart");
   };
 
@@ -10642,6 +11123,10 @@
          TIKLAMAYMIZ (dublikat yuborishning oldini olish). Bu yerdagi UI
          istisnosi buyurtmani "muvaffaqiyatsiz" qilib ko'rsatmaydi. */
       clearOrderAttemptKey();
+      let done = null;
+      try {
+        done = coDoneInfo(paymentLabel, openAdminChat);
+      } catch (_) {}
       try {
         S.cart = [];
         saveCart();
@@ -10655,7 +11140,6 @@
         burst();
 
         const code = (res.order && res.order.code) || "";
-        toast(`✅ Buyurtma ${code} qabul qilindi`, 3600);
 
         // Yangi buyurtmani darhol tarixga qo'shamiz (Worker'ni qayta
         // so'ramasdan) — mijoz uni profilda ko'radi.
@@ -10678,12 +11162,12 @@
           toast("⚠️ Buyurtma saqlandi, lekin adminga xabar ketmadi", 5000);
         }
 
-        show("profile");
-        if (openAdminChat && S.pay && S.pay.admin) {
-          try {
-            tg.openTelegramLink("https://t.me/" + S.pay.admin);
-          } catch (_) {}
-        }
+        // «Buyurtma qabul qilindi» ekrani (chek uchun admin chati shu yerdan)
+        const info = done || coDoneInfo(paymentLabel, openAdminChat);
+        info.code = code;
+        if (res.order && res.order.total_label) info.totalLabel = res.order.total_label;
+        info.notified = !!res.notified;
+        coShowDone(info);
       } catch (uiErr) {
         // Buyurtma ALLAQACHON qabul qilingan — UI xatosini faqat log qilamiz.
         console.error("[order] commit keyingi UI xatosi:", uiErr);
