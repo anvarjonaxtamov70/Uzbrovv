@@ -1,6 +1,6 @@
 {
  "car_id": null,
- "_generated_at": "2026-10-27T16:11:44Z",
+ "_generated_at": "2026-10-27T18:11:39Z",
  "banners": [
   {
    "id": 900001,
@@ -228,6 +228,238 @@
  ],
  "catalog": [
   {
+   "id": 1,
+   "name": "BI-ledlar",
+   "icon": "🔵",
+   "products": [
+    {
+     "id": 900023,
+     "name": "Aozoom Truck Dedicate",
+     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🔧 O'rnatish xizmati mavjud.",
+     "price": 1800000,
+     "old_price": 1920000,
+     "badge": "24v",
+     "stock": 10,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": "1 yil",
+     "car_names": [],
+     "car_name": null,
+     "price_label": "1 800 000 so'm",
+     "old_price_label": "1 920 000 so'm",
+     "photo_url": "https://i.ibb.co/Rp6yzCBx/974b79d05b65.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/Rp6yzCBx/974b79d05b65.jpg"
+     ]
+    },
+    {
+     "id": 900022,
+     "name": "Aozoom King Kong",
+     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🔧 O'rnatish xizmati mavjud.",
+     "price": 1520000,
+     "old_price": 1650000,
+     "badge": "NEW TECHNOLOGY",
+     "stock": 10,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": "1 yil",
+     "car_names": [],
+     "car_name": null,
+     "price_label": "1 520 000 so'm",
+     "old_price_label": "1 650 000 so'm",
+     "photo_url": "https://i.ibb.co/xKzJxCzj/2bc4a0fbfd6a.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/xKzJxCzj/2bc4a0fbfd6a.jpg"
+     ]
+    },
+    {
+     "id": 900021,
+     "name": "Aozoom. Bi led  3 dym",
+     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🔧 O'rnatish xizmati mavjud.",
+     "price": 1300000,
+     "old_price": 1450000,
+     "badge": "Yangi",
+     "stock": 10,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": "1 yil",
+     "car_names": [],
+     "car_name": null,
+     "price_label": "1 300 000 so'm",
+     "old_price_label": "1 450 000 so'm",
+     "photo_url": "https://i.ibb.co/gbJtwVd3/91d324d4ddce.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/gbJtwVd3/91d324d4ddce.jpg"
+     ]
+    },
+    {
+     "id": 900020,
+     "name": "Aozoom  Emerald  Warrior",
+     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🛡 1 yil kafolat beriladi.\n🔧 O'rnatish xizmati mavjud.",
+     "price": 1425000,
+     "old_price": 1600000,
+     "badge": "Grenn",
+     "stock": 10,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": "1 yil",
+     "car_names": [],
+     "car_name": null,
+     "price_label": "1 425 000 so'm",
+     "old_price_label": "1 600 000 so'm",
+     "photo_url": "https://i.ibb.co/bR7r2Z2H/b59ca1f70b2f.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/bR7r2Z2H/b59ca1f70b2f.jpg"
+     ]
+    },
+    {
+     "id": 16,
+     "name": "Zimmer r50 max",
+     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🔧 O'rnatish xizmati mavjud.",
+     "price": 430000,
+     "old_price": 500000,
+     "badge": "R50",
+     "stock": 9,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": "1 yil",
+     "car_names": [],
+     "car_name": null,
+     "price_label": "430 000 so'm",
+     "old_price_label": "500 000 so'm",
+     "photo_url": "https://i.ibb.co/v6BYf0P2/28ecc232f126.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/v6BYf0P2/28ecc232f126.jpg"
+     ]
+    },
+    {
+     "id": 15,
+     "name": "Zemmer r60 max",
+     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🛡 1 yil kafolat beriladi.\n🔧 O'rnatish xizmati mavjud.",
+     "price": 520000,
+     "old_price": 600000,
+     "badge": "R60",
+     "stock": 10,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": "1 yil",
+     "car_names": [],
+     "car_name": null,
+     "price_label": "520 000 so'm",
+     "old_price_label": "600 000 so'm",
+     "photo_url": "https://i.ibb.co/7d8JvJHD/6e09df73bbc5.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/7d8JvJHD/6e09df73bbc5.jpg"
+     ]
+    },
+    {
+     "id": 14,
+     "name": "Zimmer r70 max",
+     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🛡 1 yil kafolat beriladi.\n🔧 O'rnatish xizmati mavjud.",
+     "price": 580000,
+     "old_price": 650000,
+     "badge": "R70",
+     "stock": 10,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": "1 yil",
+     "car_names": [],
+     "car_name": null,
+     "price_label": "580 000 so'm",
+     "old_price_label": "650 000 so'm",
+     "photo_url": "https://i.ibb.co/rrDFqD2/eb28a23b47f4.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/rrDFqD2/eb28a23b47f4.jpg"
+     ]
+    },
+    {
+     "id": 12,
+     "name": "Zimmer G90",
+     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🛡 1 yil kafolat beriladi.\n🔧 O'rnatish xizmati mavjud.",
+     "price": 1000000,
+     "old_price": 1200000,
+     "badge": "G90",
+     "stock": 10,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": "1 yil",
+     "car_names": [],
+     "car_name": null,
+     "price_label": "1 000 000 so'm",
+     "old_price_label": "1 200 000 so'm",
+     "photo_url": "https://i.ibb.co/VWpDNtbT/3cdbd269254c.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/VWpDNtbT/3cdbd269254c.jpg"
+     ]
+    },
+    {
+     "id": 10,
+     "name": "Zimmer r80",
+     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🛡 1 yil kafolat beriladi.\n🔧 O'rnatish xizmati mavjud.",
+     "price": 620000,
+     "old_price": 850000,
+     "badge": null,
+     "stock": 10,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": "1 yil",
+     "car_names": [],
+     "car_name": null,
+     "price_label": "620 000 so'm",
+     "old_price_label": "850 000 so'm",
+     "photo_url": "https://i.ibb.co/zh8mPjvW/b57e358ffc23.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/zh8mPjvW/b57e358ffc23.jpg"
+     ]
+    }
+   ]
+  },
+  {
    "id": 2,
    "name": "Lampalar",
    "icon": "💡",
@@ -364,31 +596,6 @@
      "images": [
       "https://i.ibb.co/d4SN7x0V/e97389a3d21b.jpg"
      ]
-    },
-    {
-     "id": 10,
-     "name": "Zimmer r80",
-     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🛡 1 yil kafolat beriladi.",
-     "price": 720000,
-     "old_price": 850000,
-     "badge": null,
-     "stock": 10,
-     "car_id": null,
-     "product_type": "oddiy",
-     "sizes": [],
-     "warranty": null,
-     "car_names": [],
-     "car_name": null,
-     "price_label": "720 000 so'm",
-     "old_price_label": "850 000 so'm",
-     "photo_url": "https://i.ibb.co/zh8mPjvW/b57e358ffc23.jpg",
-     "photo_external": true,
-     "video_url": null,
-     "video_external": true,
-     "has_media": true,
-     "images": [
-      "https://i.ibb.co/zh8mPjvW/b57e358ffc23.jpg"
-     ]
     }
    ]
   },
@@ -401,8 +608,8 @@
      "id": 19,
      "name": "Fara uchun maxsus lentali germetika",
      "description": null,
-     "price": 60000,
-     "old_price": 80000,
+     "price": 50000,
+     "old_price": 60000,
      "badge": null,
      "stock": 10,
      "car_id": null,
@@ -411,8 +618,8 @@
      "warranty": null,
      "car_names": [],
      "car_name": null,
-     "price_label": "60 000 so'm",
-     "old_price_label": "80 000 so'm",
+     "price_label": "50 000 so'm",
+     "old_price_label": "60 000 so'm",
      "photo_url": "https://i.ibb.co/wZXhNJ3V/0175af57bd6f.jpg",
      "photo_external": true,
      "video_url": null,
@@ -496,113 +703,6 @@
      "images": [
       "https://i.ibb.co/Jw6FxDmK/0d12b1b1ad8d.jpg",
       "https://i.ibb.co/LhxP0J6s/c297be27206b.jpg"
-     ]
-    }
-   ]
-  },
-  {
-   "id": 1,
-   "name": "BI-ledlar",
-   "icon": "🔵",
-   "products": [
-    {
-     "id": 16,
-     "name": "Zimmer r50 max",
-     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🛡 1 yil kafolat beriladi.",
-     "price": 460000,
-     "old_price": 500000,
-     "badge": "R50",
-     "stock": 9,
-     "car_id": null,
-     "product_type": "oddiy",
-     "sizes": [],
-     "warranty": null,
-     "car_names": [],
-     "car_name": null,
-     "price_label": "460 000 so'm",
-     "old_price_label": "500 000 so'm",
-     "photo_url": "https://i.ibb.co/v6BYf0P2/28ecc232f126.jpg",
-     "photo_external": true,
-     "video_url": null,
-     "video_external": true,
-     "has_media": true,
-     "images": [
-      "https://i.ibb.co/v6BYf0P2/28ecc232f126.jpg"
-     ]
-    },
-    {
-     "id": 15,
-     "name": "Zemmer r60 max",
-     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🛡 1 yil kafolat beriladi.",
-     "price": 550000,
-     "old_price": 650000,
-     "badge": "R60",
-     "stock": 10,
-     "car_id": null,
-     "product_type": "oddiy",
-     "sizes": [],
-     "warranty": null,
-     "car_names": [],
-     "car_name": null,
-     "price_label": "550 000 so'm",
-     "old_price_label": "650 000 so'm",
-     "photo_url": "https://i.ibb.co/7d8JvJHD/6e09df73bbc5.jpg",
-     "photo_external": true,
-     "video_url": null,
-     "video_external": true,
-     "has_media": true,
-     "images": [
-      "https://i.ibb.co/7d8JvJHD/6e09df73bbc5.jpg"
-     ]
-    },
-    {
-     "id": 14,
-     "name": "Zimmer r70 max",
-     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🛡 1 yil kafolat beriladi.",
-     "price": 650000,
-     "old_price": 750000,
-     "badge": "R70",
-     "stock": 10,
-     "car_id": null,
-     "product_type": "oddiy",
-     "sizes": [],
-     "warranty": null,
-     "car_names": [],
-     "car_name": null,
-     "price_label": "650 000 so'm",
-     "old_price_label": "750 000 so'm",
-     "photo_url": "https://i.ibb.co/rrDFqD2/eb28a23b47f4.jpg",
-     "photo_external": true,
-     "video_url": null,
-     "video_external": true,
-     "has_media": true,
-     "images": [
-      "https://i.ibb.co/rrDFqD2/eb28a23b47f4.jpg"
-     ]
-    },
-    {
-     "id": 12,
-     "name": "Zimmer G90",
-     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🛡 1 yil kafolat beriladi.",
-     "price": 1000000,
-     "old_price": 1200000,
-     "badge": "G90",
-     "stock": 10,
-     "car_id": null,
-     "product_type": "oddiy",
-     "sizes": [],
-     "warranty": null,
-     "car_names": [],
-     "car_name": null,
-     "price_label": "1 000 000 so'm",
-     "old_price_label": "1 200 000 so'm",
-     "photo_url": "https://i.ibb.co/VWpDNtbT/3cdbd269254c.jpg",
-     "photo_external": true,
-     "video_url": null,
-     "video_external": true,
-     "has_media": true,
-     "images": [
-      "https://i.ibb.co/VWpDNtbT/3cdbd269254c.jpg"
      ]
     }
    ]
