@@ -15,7 +15,10 @@ Mijoz botda faqat ro'yxatdan o'tadi, qolgan hammasi ilova ichida bo'ladi.
              🌐 API (bot ichida, aiohttp) ──> 🗄 SQLite
 ```
 
-Hosting: bot + API — **Render.com** (bepul), Mini App — **GitHub Pages** (bepul).
+Hosting (2.0.0): **bot + backend — Cloudflare Worker** (`cloudflare-worker.js`,
+webhook; bepul, uxlamaydi, karta so'ramaydi), ma'lumot — **Firebase RTDB**,
+Mini App — **GitHub Pages**. Render endi shart emas — sozlash:
+[WORKER_SETUP.md](WORKER_SETUP.md). Python bot (`bot.py`) ixtiyoriy zaxira.
 
 ---
 

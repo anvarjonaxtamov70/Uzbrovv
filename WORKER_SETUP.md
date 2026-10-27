@@ -1,4 +1,34 @@
-# Cloudflare Worker
+# Cloudflare Worker — bot va do'kon (bepul, uxlamaydi)
+
+> ## 🤖 2.0.0: BOT ENDI SHU YERDA — Render kerak emas
+>
+> Telegram bot Cloudflare Worker'ga ko'chdi (webhook). Bepul (kuniga
+> 100 000 so'rov), karta so'ramaydi, uxlamaydi. Bir marta qiling:
+>
+> 1. **Kodni qo'ying** — pastdagi «5 qadam» (Cloudflare → Worker → Edit code →
+>    `cloudflare-worker.js` ni to'liq qo'yib → **Deploy**).
+> 2. **Karta rekvizitlari** (Render'da edi) — Worker → **Settings →
+>    Variables and Secrets** → *Secret* sifatida qo'shing:
+>    `PAY_CARD_NUMBER` (masalan `8600 1234 5678 9012`) va `PAY_CARD_HOLDER`.
+>    Qo'shilmasa «Karta orqali» to'lovda rekvizit chiqmaydi.
+>    *(Ixtiyoriy: `SHOP_PHONE`, `SHOP_TELEGRAM`, `DELIVERY_CITY`.)*
+> 3. **Botni ulang** — brauzerda bir marta oching:
+>    `https://zimmer-worker.anvaraxtamov70.workers.dev/setup`
+>    → `"✅ Bot ulandi"` chiqadi. *(Mini App bir marta ochilsa ham o'zi ulanadi.)*
+> 4. **Render'ni o'chiring** — Render → xizmat → **Settings → Suspend**
+>    (yoki Delete). Endi u kerak emas va pul so'ramaydi.
+> 5. Telegram'da botga **/start** yuboring — menyu chiqsa, tayyor.
+>
+> **Bot nima qiladi:** /start menyusi (do'kon, 📦 buyurtmalarim, 🛡 kafolatim,
+> ☎ aloqa), yangi buyurtma / Bi-LED / navbat adminga **holat tugmalari** bilan
+> keladi (✅ Qabul → 🚚 Yo'lda → 🎉 Yetkazildi), mijozga har o'zgarish haqida
+> xabar ketadi, «Yetkazildi» / «Topshirildi» bosilsa mijozning **1 yillik
+> kafolati** boshlanadi. Mijoz botga yozsa — xabar adminga boradi; admin
+> «Reply» qilsa — javob mijozga.
+>
+> **Python botni qaytarmoqchi bo'lsangiz** (Oracle va h.k.): Worker'da
+> `BOT_WEBHOOK=off` qo'ying va serverda `BOT_MODE=polling` bilan ishga tushiring.
+> Busiz Python bot Worker webhook'iga tegmaydi (bot.py).
 
 > ## ⚡ KODNI YANGILASH — eng ko'p kerak bo'ladigan ish
 >
@@ -37,13 +67,16 @@
 > `version` maydonini qaraysiz:
 >
 > ```json
-> { "status": "ok", "version": "1.4.0", "features": [ ... ] }
+> { "status": "ok", "version": "2.0.0", "features": [ ... ] }
 > ```
 >
 > | `version` | Ma'nosi |
 > |---|---|
-> | **1.4.0** yoki yuqori | ✅ Yangi nusxa turibdi, hammasi joyida |
-> | 1.3.0 yoki pastroq | ❌ Eski nusxa — 4-qadam bajarilmagan |
+> | **2.0.0** yoki yuqori | ✅ Yangi nusxa (bot ham shu yerda) |
+> | 1.10.0 yoki pastroq | ❌ Eski nusxa — 4-qadam bajarilmagan, bot ishlamaydi |
+>
+> Bot ulanganini tekshirish: `https://<manzil>/health?deep=1` →
+> `checks.bot_webhook.ok: true`.
 >
 > Mini App ham buni o'zi tekshiradi: admin panelni ochganda eski nusxa
 > bo'lsa **«Cloudflare'da Worker'ning ESKI nusxasi turibdi»** degan
@@ -83,12 +116,14 @@ do'kon uchun bu juda ko'p.
 | **Buyurtma berish** | ✅ | ✅ *Worker `/order`* |
 | **Adminga Telegram xabari** | ✅ | ✅ *Worker yuboradi* |
 | **Buyurtmalarim** tarixi | ✅ | ✅ |
-| Navbat olish, Bi-LED buyurtmasi | ✅ | ⛔ serverni talab qiladi |
-| Admin panel | ✅ | ⛔ serverni talab qiladi |
+| Navbat olish / bekor qilish, Bi-LED buyurtmasi | ✅ | ✅ *Worker `/booking`, `/biled-order`* |
+| Admin panel (buyurtmalar, katalog, mijozlar) | ✅ | ✅ *Worker `/admin/*`* |
+| **Telegram bot** (/start, holat tugmalari, xabarlar) | — | ✅ *Worker `/tg` (2.0.0)* |
+| **🛡 Tovar kafolati** (Kabinet + `/kafolat`) | — | ✅ *Worker `/me` (2.0.0)* |
+| AI yordamchi (Shogird) | ✅ | ⛔ mahalliy bilim bilan javob beradi |
 
-Bot ko'tarilganda Worker qabul qilgan buyurtmalar **o'zi bazaga ko'chiriladi**
-(`sync.import_pending_orders`) — ular «Ombor», statistika va admin panelda
-ko'rinadi.
+2.0.0 dan Render shart emas: `docs/config.js` dagi `API_BASE` bo'sh — ilova
+to'g'ridan Worker + Firebase bilan ishlaydi.
 
 ---
 

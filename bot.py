@@ -111,6 +111,43 @@ async def main() -> None:
         token=config.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
+    # ==============================================================
+    #  BOT ENDI CLOUDFLARE WORKER'DA (webhook) — bepul va uxlamaydi.
+    #
+    #  Telegram'da bitta bot uchun faqat BITTA qabul qiluvchi bo'ladi:
+    #  yo webhook (Worker), yo polling (shu fayl). Ilgari pastda shartsiz
+    #  `delete_webhook()` turardi — ya'ni Python bot qayerdadir (Render yangi
+    #  oyda o'zi qayta yonganda ham) ishga tushsa, Worker botini JIMGINA
+    #  o'chirib qo'yardi, keyin o'zi 15 daqiqada uxlab, bot butunlay jim
+    #  qolardi.
+    #
+    #  Endi webhook o'rnatilgan bo'lsa unga TEGMAYMIZ va hech narsa
+    #  sinxronlamaymiz: Worker'ning navbat/Bi-LED yozuvlarini SQLite'ga
+    #  ko'chirish ularning kalitini o'zgartirib, admin tugmalarini buzardi,
+    #  kunlik zaxira nusxalar esa bazani behuda kattalashtirardi. Faqat
+    #  /health javob beradi (Render port tekshiruvi uchun).
+    #  Python botni majburan qayta ishlatish: BOT_MODE=polling
+    #  (va Worker'da BOT_WEBHOOK=off).
+    # ==============================================================
+    if os.getenv("BOT_MODE", "auto").strip().lower() != "polling":
+        hook = await bot.get_webhook_info()
+        if hook.url:
+            logger.warning(
+                "Telegram webhook o'rnatilgan (%s) — bot Cloudflare Worker'da ishlayapti. "
+                "Python polling va sinxron ishga tushmaydi (majburlash: BOT_MODE=polling).",
+                hook.url,
+            )
+            me = await bot.get_me()
+            idle_api = await start_api_server(bot, me.username)
+            try:
+                await asyncio.Event().wait()
+            finally:
+                if idle_api is not None:
+                    await idle_api.cleanup()
+                await close_db()
+                await bot.session.close()
+            return
+
     dispatcher = Dispatcher(storage=MemoryStorage())
     # Har bir yangilanishda foydalanuvchini tanib olamiz va eslab qolamiz
     dispatcher.update.outer_middleware(IdentityMiddleware())

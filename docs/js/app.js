@@ -129,6 +129,12 @@
     offline: false,
     // Sahifalar bo'yicha scroll holati (`show()` tiklaydi)
     scroll: {},
+    /* Worker `/me` Bi-LED va navbat tarixini ham berdimi (2.0.0+). */
+    myFull: false,
+    /* 🛡 Kafolat: `list` — Worker hisoblagan ro'yxat (null — eski Worker,
+       sahifa o'zi hisoblaydi), `skew` — server va telefon soati farqi,
+       `sel` — katta kartochkadagi kafolat, `timer` — soniya taymeri. */
+    wr: { list: null, skew: 0, at: 0, sel: null, timer: 0, turn: 0, hero: null },
   };
 
   const fmt = (v) =>
@@ -263,20 +269,29 @@
 
   function burst() {
     const box = $("burst");
+    if (!box) return;
+    // Harakat kamaytirilgan bo'lsa — konfetti yo'q (faqat haptic yetarli)
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     box.innerHTML = "";
     box.classList.remove("hidden");
     // Brend rangidan (rang generatori) + oq — konfetti ilova rangiga mos
     const colors = ["var(--accent)", "#ffffff", "var(--mint)", "var(--accent-2)", "var(--accent-pale)", "#ffffff"];
-    for (let i = 0; i < 42; i++) {
+    /* 42 → 26 (kuchsiz telefonda 14): bir martalik effekt, lekin 2.8 s
+       davomida har bo'lak alohida qatlam — ko'pi kadrni sindirardi. */
+    const n = document.documentElement.classList.contains("lite") ? 14 : 26;
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < n; i++) {
       const p = el("i");
       p.style.left = Math.random() * 100 + "%";
       p.style.background = colors[i % colors.length];
       p.style.animationDelay = Math.random() * 0.5 + "s";
       p.style.width = (4 + Math.random() * 5) + "px";
       p.style.height = (8 + Math.random() * 8) + "px";
-      box.append(p);
+      frag.append(p);
     }
-    setTimeout(() => {
+    box.append(frag);
+    clearTimeout(burst._t);
+    burst._t = setTimeout(() => {
       box.classList.add("hidden");
       box.innerHTML = "";
     }, 2800);
@@ -296,6 +311,11 @@
     );
   }
   const API = apiBase();
+  /* Python server (Render) sozlanmagan — ilova TO'LIQ Worker + Firebase
+     rejimida ishlaydi (2.0.0: bot ham Worker'da). Bu holat «aloqa yo'q»
+     EMAS: zaxira belgisi ko'rsatilmaydi va Render'ni qayta-qayta so'rab
+     o'tirilmaydi. */
+  const WORKER_ONLY = !API;
 
   /** Nisbiy media manzilini to'liq manzilga aylantiradi. */
   const abs = (url) => (!url ? null : /^https?:\/\//.test(url) ? url : API + url);
@@ -309,7 +329,7 @@
      mijoz nimani ko'rayotganini bilmaydi. */
   const img = (src, cls, alt) =>
     src
-      ? `<img ${cls ? `class="${cls}"` : ""} src="${esc(src)}" alt="${esc(alt || "")}" loading="lazy" ${FALLBACK}>`
+      ? `<img ${cls ? `class="${cls}"` : ""} src="${esc(src)}" alt="${esc(alt || "")}" loading="lazy" decoding="async" ${FALLBACK}>`
       : "";
 
   /** Ro'yxat bo'sh bo'lsa — chiroyli xabar (admin hali qo'shmagan bo'lishi mumkin). */
@@ -328,19 +348,30 @@
   }
 
   async function api(path, opts) {
+    // Python server yo'q — so'rov GitHub Pages'ga (404) ketib vaqt yemasin
+    if (WORKER_ONLY) throw { code: "no_server", message: "Server ishlatilmaydi" };
     const o = opts || {};
     const headers = { Authorization: "tma " + ((tg && tg.initData) || "") };
     if (o.body !== undefined) headers["Content-Type"] = "application/json";
 
+    /* Vaqt chegarasi. Ilgari yo'q edi: Render «uxlab» yoki osilib qolsa
+       splash-ekran daqiqalab turardi. GET — 9 s, yozish — 25 s. */
+    const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = ctrl
+      ? setTimeout(() => ctrl.abort(), (o.method || "GET") === "GET" ? 9000 : 25000)
+      : 0;
     let res;
     try {
       res = await fetch(API + path, {
         method: o.method || "GET",
         headers,
         body: o.body === undefined ? undefined : JSON.stringify(o.body),
+        signal: ctrl ? ctrl.signal : undefined,
       });
     } catch (_) {
       throw { code: "network", message: "Server javob bermadi. Internetni tekshiring." };
+    } finally {
+      clearTimeout(timer);
     }
 
     let data = null;
@@ -682,6 +713,8 @@
       // Kabinetning ichki oynalari: buyurtmalarim (uch bo'lim) va manzillarim.
       "orders",
       "addresses",
+      // 🛡 Tovar kafolati (teskari sanoq)
+      "warranty",
     ].forEach((p) => {
       const node = $(p);
       if (node) node.classList.toggle("hidden", p !== page);
@@ -703,9 +736,9 @@
        (klaviatura + yozish maydoni + navbar) ekranni siqib qo'yardi va
        yozgan matn ko'rinmasdi. Chiqish uchun tepada «‹» tugmasi bor. */
     const navVisible =
-      ["home", "cart", "saved", "profile", "admin", "orders", "addresses", "services"].includes(
-        page
-      ) && S.me;
+      [
+        "home", "cart", "saved", "profile", "admin", "orders", "addresses", "services", "warranty",
+      ].includes(page) && S.me;
     $("nav").classList.toggle("hidden", !navVisible);
     document
       .querySelectorAll(".nav-btn")
@@ -730,6 +763,9 @@
     /* Bo'lim (`S.moKind`) `openMyOrders()` da o'rnatiladi va shundan keyin
        `show("orders")` chaqiriladi — chizish shu yerda, bitta joyda. */
     if (page === "orders") renderMyOrdersPage();
+    // Kafolat taymeri FAQAT o'z oynasida yuradi
+    if (page === "warranty") renderWarrantyPage();
+    else wrStop();
     // Boshqaruv paneli: ONLINE bo'lsa to'liq panel (`admin.js`, Render),
     // zaxira rejimda esa Worker orqali ishlaydigan ixcham panel.
     //
@@ -910,7 +946,7 @@
       (S.page === "flow" && S.step > 1) ||
       [
         "cart", "saved", "profile", "checkout",
-        "orders", "addresses", "services", "service", "shogird",
+        "orders", "addresses", "services", "service", "shogird", "warranty",
       ].includes(S.page);
     if (need) tg.BackButton.show();
     else tg.BackButton.hide();
@@ -972,7 +1008,7 @@
        emas) — mijoz qaysi bo'limdan kelganini yo'qotmasin. Xarita va
        manzil oynalari ustma-ust turgan bo'lsa, avval ular yopiladi. */
     // Xarita/manzil oynalari yuqorida (sahifadan qat'i nazar) yopiladi
-    if (S.page === "addresses" || S.page === "orders") return show("profile");
+    if (S.page === "addresses" || S.page === "orders" || S.page === "warranty") return show("profile");
     if (S.page === "flow" && S.step > 1) return setStep(S.step - 1);
     if (S.page !== "home") return show("home");
   }
@@ -1446,6 +1482,10 @@
           onError(err);
         }
       }
+    } else if (S.offline && window.ZimmerOffline && ZimmerOffline.workerReady()) {
+      /* Worker rejimi: mashina profilga yoziladi (ilgari bu holatda umuman
+         saqlanmasdi — boshqa telefondan kirsa mashina «Belgilanmagan» edi). */
+      ZimmerOffline.saveProfile({ car_id: car._fallback ? null : car.id, car_name: car.name }).catch(() => {});
     }
 
     if (S.page === "flow") {
@@ -1816,7 +1856,8 @@
     S.offline = true;
     S.home = probe; // ikkinchi marta so'ramaymiz — `loadHome()` shuni ishlatadi
     S.homeAt = Date.now();
-    console.warn("[offline] Server javob bermadi — katalog Firebase'dan o'qildi.");
+    if (WORKER_ONLY) console.info("[worker] Worker + Firebase rejimi (Python server ishlatilmaydi).");
+    else console.warn("[offline] Server javob bermadi — katalog Firebase'dan o'qildi.");
     scheduleServerRecheck();
     return true;
   }
@@ -1880,6 +1921,11 @@
       const res = await ZimmerOffline.me();
       if (res && res.me) {
         S.offlineOrders = res.orders || [];
+        /* Worker 2.0.0: to'lov rekvizitlari (Render `/api/config` o'rniga),
+           Bi-LED, navbat va kafolatlar ham shu javobda keladi — kabinet
+           birinchi ochilishda kutmasdan chiziladi. */
+        S.workerConfig = res.config || null;
+        applyWorkerAll(res);
         saveMe(res.me); // keyingi safar tarmoqsiz ham tanilsin
         return res.me;
       }
@@ -1999,8 +2045,10 @@
 
     const badge = $("offline-badge");
     if (!badge) return;
-    badge.classList.toggle("hidden", !S.offline);
-    setOfflineNote(S.offline);
+    // Worker rejimi — bu NORMAL ish holati, «aloqa yo'q» belgisi chiqmaydi
+    const show = S.offline && !WORKER_ONLY;
+    badge.classList.toggle("hidden", !show);
+    setOfflineNote(show);
   }
 
   /** Server tiklanganini jimgina tekshirib turadi.
@@ -2014,7 +2062,8 @@
       clearInterval(S._recheck);
       S._recheck = null;
     }
-    if (!S.offline) return;
+    // Python server yo'q — har 30 soniyada bo'sh joyni so'rash ma'nosiz
+    if (!S.offline || WORKER_ONLY) return;
 
     S._recheck = setInterval(async () => {
       if (!S.offline) {
@@ -2683,31 +2732,57 @@
      uzunligi. Bosib turilsa pauza qiladi. */
   function animateStoryProgress(fill, ms) {
     cancelAnimationFrame(S.storyRaf);
+    S.storyRaf = 0;
+    S._storyStep = null;
     S.storyDuration = ms;
     S.storyPassed = 0;
     S.storyPaused = false;
-    let last = Date.now();
-
-    function step() {
+    let last = performance.now();
+    /* ISHLASH: chiziq `width` bilan emas, `transform: scaleX()` bilan
+       to'ladi — har kadrda layout/paint emas, faqat kompozitsiya (GPU).
+       Pauzada sikl TO'XTAYDI (ilgari bo'sh aylanib turardi), qaytganda
+       `resumeStoryProgress()` davom ettiradi. Fonga o'tib qaytilsa vaqt
+       sakramaydi (`performance.now` + 100 ms dan katta tanaffus hisoblanmaydi). */
+    if (fill) {
+      fill.style.transformOrigin = "0 50%";
+      fill.style.transform = "scaleX(0)";
+      fill.style.width = "100%";
+    }
+    function step(now) {
       if (S.storyPaused) {
-        last = Date.now();
-        S.storyRaf = requestAnimationFrame(step);
+        S.storyRaf = 0;
         return;
       }
-      const now = Date.now();
-      S.storyPassed += now - last;
+      const dt = now - last;
       last = now;
-      const percent = (S.storyPassed / S.storyDuration) * 100;
-      if (percent >= 100) {
-        if (fill) fill.style.width = "100%";
+      S.storyPassed += dt > 100 ? 16 : Math.max(0, dt);
+      const frac = S.storyPassed / S.storyDuration;
+      if (frac >= 1) {
+        if (fill) fill.style.transform = "none";
         // Video o'zining `ended` hodisasi bilan o'tadi — ikki marta o'tmaymiz
         if (!S.storyVideo) stepStory(1);
         return;
       }
-      if (fill) fill.style.width = percent + "%";
+      if (fill) fill.style.transform = `scaleX(${frac.toFixed(4)})`;
       S.storyRaf = requestAnimationFrame(step);
     }
-    S.storyRaf = requestAnimationFrame(step);
+    S._storyStep = (t) => {
+      last = t;
+      S.storyRaf = requestAnimationFrame(step);
+    };
+    S.storyRaf = requestAnimationFrame((t) => {
+      last = t;
+      step(t);
+    });
+  }
+
+  /** Pauzadan keyin chiziqni davom ettiradi (bitta sikl — ikki marta emas). */
+  function resumeStoryProgress() {
+    if (S.storyRaf || !S._storyStep) return;
+    S.storyRaf = requestAnimationFrame((t) => {
+      S.storyRaf = 0;
+      if (S._storyStep && !S.storyPaused) S._storyStep(t);
+    });
   }
 
   /** Keyingi storyni fonda yuklab qo'yadi — silliq o'tishi uchun. */
@@ -2717,8 +2792,10 @@
     const photo = abs(next.photo_url);
     const video = abs(next.video_url);
     if (video) {
+      /* «metadata» — ilgari «auto» edi: joriy video ijro bo'layotganda
+         keyingisi ham TO'LIQ yuklanardi (ikki oqim — trafik va issiqlik). */
       const v = document.createElement("video");
-      v.preload = "auto";
+      v.preload = "metadata";
       v.muted = true;
       v.src = video;
     } else if (photo) {
@@ -2753,6 +2830,8 @@
     const fill = bars[S.storyIndex] ? bars[S.storyIndex].querySelector("b") : null;
 
     cancelAnimationFrame(S.storyRaf);
+    S.storyRaf = 0;
+    S._storyStep = null;
     clearTimeout(S.storyTimer);
     releaseStoryVideo();
 
@@ -3131,6 +3210,7 @@
   /** Bosib turilsa — pauza (video ham, chiziq ham to'xtaydi). */
   function storyPause(on) {
     S.storyPaused = on;
+    if (!on) resumeStoryProgress();
     const ind = $("story-pause");
     if (ind) ind.classList.toggle("show", on);
     if (S.storyVideo) {
@@ -3294,6 +3374,8 @@
   function closeStory() {
     clearTimeout(S.storyTimer);
     cancelAnimationFrame(S.storyRaf);
+    S.storyRaf = 0;
+    S._storyStep = null;
     releaseStoryVideo();
     stopVideos();
     storyPause(false);
@@ -3375,6 +3457,8 @@
 
   function startBannerTimer(box) {
     stopBannerTimer();
+    // Harakat kamaytirilgan — bannerlar o'zi aylanmaydi (qo'lda suriladi)
+    if (reduceMotion()) return;
     S.bannerTimer = setInterval(() => {
       if (S.page !== "home" || document.hidden) return;
       const step = box.clientWidth - 24;
@@ -6158,6 +6242,12 @@
     if (!obj) return;
     end = Number(end) || 0;
     const draw = format || String;
+    /* Qiymat o'zgarmagan bo'lsa qayta «sanamaymiz» — ilgari kabinet har
+       yangilanganda (fonda ham) sonlar 0 dan qayta yugurib, miltillardi. */
+    if (obj.textContent === draw(end) || reduceMotion()) {
+      obj.textContent = draw(end);
+      return;
+    }
     let startTime = null;
     const duration = 800;
     function step(ts) {
@@ -6234,28 +6324,25 @@
 
     try {
       if (S.offline) {
-        /* Zaxira rejim: do'kon buyurtmalari Firebase'dagi `pending_orders`
-           dan o'qiladi (ilova yopilib qayta ochilsa ham yo'qolmaydi).
-           Bi-LED va navbat tarixi FAQAT serverda turadi — ular bo'sh
-           qoladi va oynada buning sababi yoziladi. */
-        const mine = await myPendingOrders();
-        S.my = {
-          order: mine.length ? mine : offlineOrdersForView(),
-          biled: [],
-          booking: [],
-        };
+        /* Worker rejimi: BITTA `/me` so'rovida do'kon buyurtmalari, Bi-LED,
+           navbatlar va kafolatlar keladi (Worker 2.0.0). Eski Worker'da
+           Bi-LED/navbat bo'lmaydi — oynada buning sababi yoziladi. */
+        const all = await myWorkerAll();
+        if (all) applyWorkerAll(all.raw);
+        else S.my = { order: offlineOrdersForView(), biled: [], booking: [] };
       } else {
-        const [biled, bookings, orders, pending] = await Promise.all([
+        const [biled, bookings, orders, all] = await Promise.all([
           grab("/api/biled-orders"),
           grab("/api/bookings"),
           grab("/api/orders"),
-          myPendingOrders(),
+          myWorkerAll(),
         ]);
         S.my = {
-          order: mergeOrders(orders, pending),
+          order: mergeOrders(orders, all ? all.orders : []),
           biled: byNewest(biled),
           booking: byNewest(bookings),
         };
+        if (all) applyWarranties(all.raw);
       }
       S.myAt = Date.now();
     } catch (err) {
@@ -6270,20 +6357,87 @@
 
     renderProfileHub();
     if (S.page === "orders") renderMyOrdersPage();
+    if (S.page === "warranty") renderWarrantyPage();
   }
 
   const byNewest = (list) => (list || []).slice().sort((a, b) => orderTime(b) - orderTime(a));
 
-  /** Firebase `pending_orders` dan MENING buyurtmalarim (Worker qabul
-   *  qilganlari). O'qish yiqilsa — jimgina bo'sh ro'yxat. */
-  async function myPendingOrders() {
+  /** Worker `/me` (hammasi bir so'rovda). Yiqilsa — null (ro'yxatlar keshda qoladi). */
+  async function myWorkerAll() {
     try {
-      const uid = S.me && (S.me.user_id || S.me.id);
-      if (!uid || !window.ZimmerOffline || !ZimmerOffline.myOrders) return [];
-      return await ZimmerOffline.myOrders(uid);
-    } catch (_) {
-      return [];
+      if (!window.ZimmerOffline || !ZimmerOffline.workerReady() || !ZimmerOffline.myAll) return null;
+      return await ZimmerOffline.myAll();
+    } catch (err) {
+      if (err && err.code === "blocked") S.blocked = true;
+      return null;
     }
+  }
+
+  /** Worker `/me` javobini kabinet keshiga yozadi: buyurtmalar, Bi-LED,
+   *  navbatlar (Render shakliga keltirilib) va kafolatlar. */
+  function applyWorkerAll(res) {
+    if (!res || typeof res !== "object") return;
+    const Z = window.ZimmerOffline;
+    const orders = Z && Z.mapOrders ? Z.mapOrders(res.orders) : [];
+    S.myFull = Array.isArray(res.biled) && Array.isArray(res.bookings);
+    if (S.offline || WORKER_ONLY) {
+      S.my = {
+        order: orders.length ? orders : S.offline ? offlineOrdersForView() : [],
+        biled: S.myFull ? res.biled.map(biledFromWorker) : [],
+        booking: S.myFull ? res.bookings.map(bookingFromWorker) : [],
+      };
+      S.myAt = Date.now();
+    }
+    applyWarranties(res);
+  }
+
+  /** Kafolatlar: Worker hisoblagani (yagona manba). Eski Worker bo'lsa — null,
+   *  sahifa ularni o'zi hisoblaydi (`wrBuild`). */
+  function applyWarranties(res) {
+    S.wr.list = res && Array.isArray(res.warranties) ? res.warranties : null;
+    if (res && Number(res.now)) S.wr.skew = Number(res.now) - Date.now();
+    S.wr.at = Date.now();
+  }
+
+  function biledFromWorker(b) {
+    return {
+      id: b.id,
+      key: b.key,
+      code: b.code,
+      car_name: b.car_name || "",
+      biled_name: b.biled_name || "",
+      biled_id: b.biled_id,
+      summary: b.summary || [b.biled_name, b.shroud_name, b.color_name].filter(Boolean).join(" · "),
+      comment: b.comment || "",
+      total: Number(b.total) || 0,
+      total_label: b.total_label || fmt(b.total),
+      status: b.status || "new",
+      status_at: Number(b.status_at) || 0,
+      warranty_from: Number(b.warranty_from) || 0,
+      createdAt: Number(b.createdAt) || 0,
+      _worker: true,
+    };
+  }
+
+  function bookingFromWorker(k) {
+    const Z = window.ZimmerOffline;
+    const key = String(k.key || k.id || "");
+    return {
+      id: key,
+      key,
+      // Worker kaliti uzun — mijozga qisqa, o'qiladigan kod ko'rsatamiz
+      code: /^\d+$/.test(key) ? "#" + key : "NV-" + key.slice(-6).toUpperCase(),
+      service_name: k.service_name || "Xizmat",
+      date: k.date || "",
+      date_label: k.date && Z && Z.dateLabel ? Z.dateLabel(k.date) : k.date || "-",
+      time: k.time || "",
+      price: Number(k.price) || 0,
+      price_label: fmt(k.price),
+      status: k.status || "new",
+      can_cancel: !!k.can_cancel,
+      createdAt: Number(k.createdAt) || 0,
+      _worker: true,
+    };
   }
 
   /** SQLite va Worker buyurtmalarini birlashtiradi (takrorsiz, yangisi tepada).
@@ -6399,8 +6553,8 @@
       if (!list.length) {
         sumEl.textContent = S.myLoading
           ? "Yuklanmoqda…"
-          : S.offline && kind !== "order"
-            ? "Server uyg'onganda ko'rinadi"
+          : S.offline && !S.myFull && kind !== "order"
+            ? "Worker yangilangach ko'rinadi"
             : "Hozircha bo'sh";
         return;
       }
@@ -6414,7 +6568,549 @@
     // Statistika: buyurtma (do'kon + bi-led) va navbat
     animateNum("pf-stat-orders", (S.my.order || []).length + (S.my.biled || []).length);
     animateNum("pf-stat-bookings", (S.my.booking || []).length);
+    renderWarrantyRow();
   }
+
+  /* ==================================================================
+     🛡 TOVAR KAFOLATI — Kabinet → alohida oyna (iOS 26)
+
+     Bi-LED linza (do'kon tovari) yoki Bi-LED O'RNATISH buyurtmasi
+     topshirilgach 1 yillik kafolat boshlanadi va shu oynada TESKARI
+     sanaladi: kun · soat · daqiqa · soniya.
+
+     Manba — Worker `/me` (`warranties`): u bot `/kafolat` buyrug'i bilan
+     AYNAN bir xil hisoblaydi. Eski Worker turgan bo'lsa ro'yxat shu
+     yerda, xuddi shu qoidalar bilan hisoblanadi (`wrBuild`).
+
+     TELEFON QIZIMAYDI: taymer sekundiga bir marta faqat 3-4 ta raqamni
+     almashtiradi (o'zgargani yumshoq «aylanadi» — transform/opacity),
+     halqa daqiqada bir marta yangilanadi. Oyna yopilsa yoki ilova fonga
+     o'tsa taymer to'xtaydi. Cheksiz animatsiya YO'Q.
+     ================================================================== */
+  const WR_BILED_MONTHS = 12;
+  const WR_C = 2 * Math.PI * 88; // halqa aylanasi (r = 88)
+  function reduceMotion() {
+    return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }
+  const wrNow = () => Date.now() + (S.wr.skew || 0);
+  const pad2 = (n) => String(n).padStart(2, "0");
+
+  /* ---- Worker'dagi mantiqning AYNAN nusxasi (cloudflare-worker.js) ---- */
+  function wrParse(text) {
+    const s = String(text || "").toLowerCase().replace(",", ".").trim();
+    if (!s) return null;
+    const num = (re) => {
+      const m = re.exec(s);
+      return m ? parseFloat(m[1]) : null;
+    };
+    let n = num(/(\d+(?:\.\d+)?)\s*-?\s*(?:yil|year|йил|год|лет)/);
+    if (n != null && n > 0) return { months: Math.round(n * 12) };
+    n = num(/(\d+(?:\.\d+)?)\s*-?\s*(?:oy|month|ой|мес)/);
+    if (n != null && n > 0) return { months: Math.round(n) };
+    n = num(/(\d+)\s*-?\s*(?:hafta|week|ҳафта|недел)/);
+    if (n != null && n > 0) return { days: n * 7 };
+    n = num(/(\d+)\s*-?\s*(?:kun|day|кун|дн|ден)/);
+    if (n != null && n > 0) return { days: n };
+    if (/bir\s*yil/.test(s)) return { months: 12 };
+    if (/yarim\s*yil/.test(s)) return { months: 6 };
+    if (/^\d{1,2}$/.test(s) && Number(s) > 0) return { months: Number(s) };
+    return null;
+  }
+
+  function wrIsBiled(name, cat) {
+    const c = String(cat || "").toLowerCase();
+    if (c) return /bi[\s-]?led|bi[\s-]?lens|linza|линз/.test(c);
+    const n = String(name || "").toLowerCase();
+    if (/mas+ka|mask|ochki|lenta|germet|rgb|chexol|lampa|лампа/.test(n)) return false;
+    return /bi[\s-]?led|bi[\s-]?lens|linza|линз/.test(n);
+  }
+
+  function wrAdd(start, p) {
+    if (p.months) {
+      const d = new Date(start);
+      const day = d.getUTCDate();
+      d.setUTCMonth(d.getUTCMonth() + p.months);
+      if (d.getUTCDate() < day) d.setUTCDate(0);
+      return d.getTime();
+    }
+    return start + (p.days || 0) * 86400000;
+  }
+
+  function wrLabel(p) {
+    if (p.months) return p.months % 12 === 0 ? `${p.months / 12} yil` : `${p.months} oy`;
+    return p.days >= 7 && p.days % 7 === 0 ? `${p.days / 7} hafta` : `${p.days} kun`;
+  }
+
+  /** Eski Worker uchun: kafolatlarni kabinet keshidan hisoblaydi. */
+  function wrBuild() {
+    const out = [];
+    const byId = new Map();
+    const byName = new Map();
+    (S.shopProducts || []).forEach((p) => {
+      byId.set(String(p.id), p);
+      byName.set(String(p.name || "").trim().toLowerCase(), p);
+    });
+    const types = new Map(
+      ((S.tuning && S.tuning.biled_types) || []).map((t) => [String(t.id), t])
+    );
+    const startOf = (o) => Number(o.warranty_from) || Number(o.status_at) || orderTime(o) || null;
+    const rec = (x) => {
+      const end = x.start ? wrAdd(x.start, x.p) : null;
+      out.push({
+        ...x,
+        p: undefined,
+        months: x.p.months || 0,
+        days: x.p.days || 0,
+        period: wrLabel(x.p),
+        end,
+      });
+    };
+    (S.my.order || []).forEach((o) => {
+      const st = myNorm("order", o.status);
+      if (st === "cancelled") return;
+      (o.items || []).forEach((it, idx) => {
+        const p = byId.get(String(it.product_id)) || byName.get(String(it.name || "").trim().toLowerCase());
+        const name = it.name || (p && p.name) || "Tovar";
+        const cat = it.cat || (p && p._cat) || "";
+        const biled = wrIsBiled(name, cat);
+        const per = wrParse(it.warranty || (p && p.warranty)) || (biled ? { months: WR_BILED_MONTHS } : null);
+        if (!per) return;
+        rec({
+          id: "KF-" + String(o.code || o.id || "").replace(/^ZM-/, "").replace(/^#/, "") + "-" + (idx + 1),
+          kind: biled ? "biled" : "product",
+          title: name,
+          sub: biled ? "Bi-LED linza" : cat || "Do'kon tovari",
+          qty: Number(it.qty) || 1,
+          size: it.size || null,
+          p: per,
+          start: st === "delivered" ? startOf(o) : null,
+          created: orderTime(o),
+          order_code: o.code || (o.id != null ? "#" + o.id : ""),
+          order_kind: "order",
+          order_status: st,
+        });
+      });
+    });
+    (S.my.biled || []).forEach((b) => {
+      const st = myNorm("biled", b.status);
+      if (st === "cancelled") return;
+      const t = types.get(String(b.biled_id));
+      rec({
+        id: "KF-" + String(b.code || b.id || "").replace(/^#/, "").replace(/-/g, ""),
+        kind: "install",
+        title: b.biled_name || "Bi-LED linza o'rnatish",
+        sub: b.car_name ? "O'rnatish · " + b.car_name : "Bi-LED o'rnatish",
+        qty: 1,
+        size: null,
+        p: wrParse(t && t.warranty) || { months: WR_BILED_MONTHS },
+        start: st === "done" ? startOf(b) : null,
+        created: orderTime(b),
+        order_code: b.code || (b.id != null ? "#" + b.id : ""),
+        order_kind: "biled",
+        order_status: st,
+      });
+    });
+    return out;
+  }
+
+  /** Joriy ro'yxat — holat (faol/kutilmoqda/tugagan) HOZIRGI vaqt bo'yicha. */
+  function wrList() {
+    const raw = Array.isArray(S.wr.list) ? S.wr.list : wrBuild();
+    const now = wrNow();
+    const rank = { active: 0, pending: 1, expired: 2 };
+    return raw
+      .map((w) => ({
+        ...w,
+        state: !w.start ? "pending" : Number(w.end) > now ? "active" : "expired",
+      }))
+      .sort(
+        (a, b) =>
+          rank[a.state] - rank[b.state] ||
+          (a.state === "active" ? a.end - b.end : (b.start || b.created || 0) - (a.start || a.created || 0))
+      );
+  }
+
+  const wrDate = (ms) => {
+    if (!ms) return "—";
+    const d = new Date(Number(ms));
+    return `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()}`;
+  };
+
+  /** Qolgan ulush (0…1) — halqa uchun. */
+  function wrFrac(w) {
+    if (w.state !== "active" || !w.start || !w.end) return w.state === "pending" ? 1 : 0;
+    const total = Math.max(1, w.end - w.start);
+    return Math.min(1, Math.max(0, (w.end - wrNow()) / total));
+  }
+
+  function wrDaysLeft(w) {
+    return Math.max(0, Math.floor((w.end - wrNow()) / 86400000));
+  }
+
+  const WR_IC = {
+    shield:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8 4.6 5.7v5.9c0 4.6 3.1 7.9 7.4 9.6 4.3-1.7 7.4-5 7.4-9.6V5.7z"/><path d="m8.8 12.2 2.3 2.3 4.3-4.6"/></svg>',
+    lens:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><circle cx="12" cy="12" r="4.4"/><path d="M12 3.8v2.6M12 17.6v2.6M3.8 12h2.6M17.6 12h2.6"/></svg>',
+    wrench:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.3 5.2L4 16.9a1.8 1.8 0 1 0 2.6 2.6l5.4-5.4a4 4 0 0 0 5.2-5.3l-2.4 2.4-2.3-.4-.4-2.3z"/></svg>',
+    bag: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 8h13l-1 12h-11z"/><path d="M8.8 8V6.6a3.2 3.2 0 0 1 6.4 0V8"/></svg>',
+    hourglass:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11M6.5 20.5h11M7.5 3.5c0 4.6 4.5 5.6 4.5 8.5s-4.5 3.9-4.5 8.5M16.5 3.5c0 4.6-4.5 5.6-4.5 8.5s4.5 3.9 4.5 8.5"/></svg>',
+    copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2.4"/><path d="M15.5 8.5V6.4A2.4 2.4 0 0 0 13.1 4H6.4A2.4 2.4 0 0 0 4 6.4v6.7a2.4 2.4 0 0 0 2.4 2.4h2.1"/></svg>',
+    chat: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 4.2 3.6 10.8c-.9.4-.9 1.6.1 1.9l4.2 1.3 1.6 5c.3.8 1.3 1 1.9.4l2.3-2.2 4.2 3.1c.7.5 1.7.1 1.9-.8l2.8-13.9c.2-1-.8-1.8-1.7-1.4z"/></svg>',
+    phone:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 3.8h2.6l1.4 4-1.9 1.3a11 11 0 0 0 6.2 6.2l1.3-1.9 4 1.4v2.6a2 2 0 0 1-2.2 2A16.4 16.4 0 0 1 4.6 6a2 2 0 0 1 2-2.2z"/></svg>',
+    chev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 5.5 6.5 6.5-6.5 6.5"/></svg>',
+  };
+
+  const wrKindIc = (w) => (w.kind === "install" ? WR_IC.wrench : w.kind === "biled" ? WR_IC.lens : WR_IC.bag);
+
+  /** Asosiy (katta kartochkadagi) kafolat: avval BI-LED (eng oz qolgani),
+   *  keyin boshqa faol tovar, keyin kutilayotgani. */
+  function wrPrimary(list) {
+    const isBi = (w) => w.kind === "biled" || w.kind === "install";
+    const act = list.filter((w) => w.state === "active");
+    const pen = list.filter((w) => w.state === "pending");
+    return act.find(isBi) || act[0] || pen.find(isBi) || pen[0] || list[0] || null;
+  }
+  const WR_STATE = { active: "Faol", pending: "Kutilmoqda", expired: "Tugagan" };
+
+  /** Kabinetdagi «Tovar kafolati» qatori: kichik halqa va qolgan kun. */
+  function renderWarrantyRow() {
+    const sum = $("wr-sum");
+    if (!sum) return;
+    const list = wrList();
+    const act = list.filter((w) => w.state === "active");
+    const pen = list.filter((w) => w.state === "pending");
+    const cnt = $("wr-cnt");
+    const ring = $("wr-mini-fg");
+    const row = $("pf-warranty");
+    if (act.length) {
+      const w = wrPrimary(list);
+      sum.textContent = `${w.title} · ${wrDaysLeft(w)} kun qoldi`;
+      if (cnt) cnt.textContent = act.length > 1 ? `${act.length} ta` : "";
+      if (ring) ring.style.strokeDashoffset = String(100 * (1 - wrFrac(w)));
+    } else if (pen.length) {
+      sum.textContent = `${pen.length} ta kafolat — topshirilgach boshlanadi`;
+      if (cnt) cnt.textContent = "";
+      if (ring) ring.style.strokeDashoffset = "100";
+    } else {
+      sum.textContent = S.myLoading ? "Yuklanmoqda…" : "Bi-LED xaridida 1 yillik kafolat";
+      if (cnt) cnt.textContent = "";
+      if (ring) ring.style.strokeDashoffset = "100";
+    }
+    if (row) {
+      row.classList.toggle("is-on", !!act.length);
+      row.classList.toggle("is-wait", !act.length && !!pen.length);
+    }
+  }
+
+  function openWarranty() {
+    haptic("light");
+    show("warranty");
+    if (!S.wr.at || Date.now() - S.wr.at > 30000) refreshMyOrders({ silent: true });
+  }
+
+  /* ---------------------------------------------------- oyna */
+  function wrHero(w) {
+    const frac = wrFrac(w);
+    // Kutilayotgan kafolat — to'liq muddat (1 yil = 365 kun) ko'rsatiladi
+    const days =
+      w.state === "active"
+        ? wrDaysLeft(w)
+        : w.state === "pending"
+          ? w.months
+            ? Math.round(w.months * 30.4375)
+            : Number(w.days) || 0
+          : 0;
+    const stLine =
+      w.state === "active"
+        ? "kun qoldi"
+        : w.state === "pending"
+          ? "kunlik kafolat"
+          : "muddat tugagan";
+    const statusTxt =
+      w.state === "pending"
+        ? (w.order_kind === "biled" ? MY_KINDS.biled : MY_KINDS.order).st[w.order_status]
+        : null;
+    return (
+      `<div class="wr-hero is-${w.state}" data-id="${esc(w.id)}">` +
+      '<i class="wr-hero-glow" aria-hidden="true"></i>' +
+      `<span class="wr-hero-badge"><i></i>${esc(WR_STATE[w.state])}</span>` +
+      '<div class="wr-ring">' +
+      '<svg viewBox="0 0 200 200" aria-hidden="true">' +
+      '<defs><linearGradient id="wr-grad" x1="0" y1="0" x2="1" y2="1">' +
+      '<stop offset="0" stop-color="#9dfccf"/><stop offset=".55" style="stop-color:var(--mint)"/>' +
+      '<stop offset="1" style="stop-color:var(--accent)"/></linearGradient></defs>' +
+      '<circle class="wr-ticks" cx="100" cy="100" r="97"/>' +
+      '<circle class="wr-ring-bg" cx="100" cy="100" r="88"/>' +
+      `<circle class="wr-ring-fg" id="wr-ring-fg" cx="100" cy="100" r="88" data-frac="${frac.toFixed(4)}"` +
+      ` style="stroke-dasharray:${WR_C.toFixed(1)};stroke-dashoffset:${WR_C.toFixed(1)}"/>` +
+      "</svg>" +
+      (w.state === "active" ? '<div class="wr-orbit" id="wr-orbit"><i></i></div>' : "") +
+      '<div class="wr-ring-in">' +
+      (w.state === "pending" ? `<span class="wr-ring-ic">${WR_IC.hourglass}</span>` : "") +
+      `<b id="wr-days">${days}</b><small>${stLine}</small></div>` +
+      "</div>" +
+      (w.state === "active"
+        ? '<div class="wr-clock" role="timer" aria-live="off">' +
+          '<span class="wr-cell"><b id="wr-h">00</b><i>soat</i></span><em>:</em>' +
+          '<span class="wr-cell"><b id="wr-m">00</b><i>daqiqa</i></span><em>:</em>' +
+          '<span class="wr-cell is-sec"><b id="wr-s">00</b><i>soniya</i></span></div>'
+        : "") +
+      `<h3 class="wr-title">${esc(w.title)}${w.qty > 1 ? ` <em>×${w.qty}</em>` : ""}</h3>` +
+      `<p class="wr-line">${esc(w.sub || "")} · ${esc(w.period)} kafolat${w.size ? " · " + esc(w.size) : ""}</p>` +
+      (w.state === "pending"
+        ? '<p class="wr-wait">Tovar qo\'lingizga topshirilgan lahzadan hisob boshlanadi.' +
+          (statusTxt ? ` Hozir: <b>${esc(statusTxt.label)}</b>.` : "") +
+          "</p>"
+        : '<div class="wr-dates">' +
+          `<span><small>Boshlandi</small><b>${wrDate(w.start)}</b></span><i></i>` +
+          `<span><small>${w.state === "expired" ? "Tugadi" : "Tugaydi"}</small><b>${wrDate(w.end)}</b></span></div>`) +
+      `<button type="button" class="wr-cert" id="wr-cert"><small>Kafolat raqami</small><b>${esc(w.id)}</b>` +
+      `<span>${WR_IC.copy}</span></button>` +
+      "</div>"
+    );
+  }
+
+  function wrItem(w, sel) {
+    const frac = wrFrac(w);
+    const meta =
+      w.state === "active"
+        ? `${wrDaysLeft(w)} kun qoldi · ${wrDate(w.end)} gacha`
+        : w.state === "pending"
+          ? `${w.period} · topshirilgach boshlanadi`
+          : `${wrDate(w.end)} da tugagan`;
+    return (
+      `<button type="button" class="wr-item is-${w.state}${sel ? " is-sel" : ""}" data-id="${esc(w.id)}">` +
+      `<span class="wr-item-ic k-${esc(w.kind)}">${wrKindIc(w)}</span>` +
+      `<span class="wr-item-tx"><b>${esc(w.title)}${w.qty > 1 ? " ×" + w.qty : ""}</b>` +
+      `<small>${esc(meta)}</small>` +
+      `<i class="wr-bar"><em style="width:${(frac * 100).toFixed(1)}%"></em></i></span>` +
+      `<span class="wr-pill is-${w.state}">${esc(WR_STATE[w.state])}</span>` +
+      "</button>"
+    );
+  }
+
+  function wrSection(title, list, selId) {
+    if (!list.length) return "";
+    return (
+      `<div class="wr-sec">${esc(title)}<span>${list.length}</span></div>` +
+      '<div class="wr-list">' +
+      list.map((w) => wrItem(w, w.id === selId)).join("") +
+      "</div>"
+    );
+  }
+
+  function wrTerms() {
+    const cfg = window.ZIMMER_CONFIG || {};
+    const terms = Array.isArray(cfg.WARRANTY_TERMS) && cfg.WARRANTY_TERMS.length
+      ? cfg.WARRANTY_TERMS
+      : [
+          "Kafolat zavod nuqsonlari va o'rnatish sifatini qamraydi.",
+          "Murojaat qilganda kafolat raqamini (KF-…) ayting.",
+          "Hisob tovar qo'lingizga topshirilgan lahzadan boshlanadi.",
+        ];
+    return (
+      '<div class="wr-sec">Kafolat shartlari</div>' +
+      '<div class="wr-terms">' +
+      terms.map((t) => `<p>${WR_IC.shield}<span>${esc(t)}</span></p>`).join("") +
+      "</div>" +
+      '<div class="wr-acts">' +
+      `<button type="button" class="x-cta" id="wr-chat">${WR_IC.chat}Ustaga yozish</button>` +
+      `<button type="button" class="x-ghost" id="wr-call">${WR_IC.phone}Qo'ng'iroq</button>` +
+      "</div>"
+    );
+  }
+
+  function wrEmpty() {
+    return (
+      '<div class="wr-empty">' +
+      '<div class="wr-empty-art" aria-hidden="true"><i></i><i class="r2"></i>' +
+      `<span>${WR_IC.shield}</span></div>` +
+      "<h3>Kafolatli tovar hali yo'q</h3>" +
+      "<p>Bi-LED linza xarid qilsangiz yoki o'rnattirsangiz — 1 yillik kafolat shu yerda " +
+      "soniyalab sanala boshlaydi.</p>" +
+      `<button type="button" class="x-cta" id="wr-shop">${WR_IC.lens}Bi-LED tanlash</button>` +
+      `<button type="button" class="x-ghost" id="wr-flow">${WR_IC.wrench}O'rnatishga buyurtma</button>` +
+      "</div>"
+    );
+  }
+
+  function renderWarrantyPage() {
+    const body = $("wr-body");
+    if (!body) return;
+    const list = wrList();
+    const act = list.filter((w) => w.state === "active");
+    const pen = list.filter((w) => w.state === "pending");
+    const exp = list.filter((w) => w.state === "expired");
+    const sub = $("wr-sub");
+    if (sub) {
+      sub.textContent = list.length
+        ? `${act.length} ta faol` + (pen.length ? ` · ${pen.length} ta kutilmoqda` : "")
+        : S.myLoading
+          ? "Yuklanmoqda…"
+          : "";
+    }
+
+    if (!list.length) {
+      wrStop();
+      S.wr.hero = null;
+      body.innerHTML = S.myLoading && !S.wr.at ? '<div class="wr-skel"></div><div class="wr-skel s2"></div>' : wrEmpty();
+      const shop = $("wr-shop");
+      if (shop) shop.onclick = wrGoShop;
+      const flow = $("wr-flow");
+      if (flow) {
+        flow.onclick = () => {
+          haptic();
+          openFlow();
+        };
+      }
+      return;
+    }
+
+    const hero = list.find((w) => w.id === S.wr.sel) || wrPrimary(list);
+    S.wr.sel = hero.id;
+    S.wr.hero = hero;
+    body.innerHTML =
+      `<div id="wr-hero-box">${wrHero(hero)}</div>` +
+      (list.length > 1
+        ? wrSection("Faol kafolatlar", act, hero.id) +
+          wrSection("Faollashishi kutilmoqda", pen, hero.id) +
+          wrSection("Muddati tugagan", exp, hero.id)
+        : "") +
+      wrTerms();
+
+    body.querySelectorAll(".wr-item").forEach((b) => {
+      b.onclick = () => wrSelect(b.dataset.id);
+    });
+    wrWireHero();
+    $("wr-chat").onclick = () => {
+      haptic("medium");
+      openTelegram(shopTelegram());
+    };
+    $("wr-call").onclick = () => {
+      haptic();
+      callPhone(shopPhone());
+    };
+    wrStart();
+  }
+
+  function wrWireHero() {
+    const cert = $("wr-cert");
+    if (cert && S.wr.hero) cert.onclick = () => copyText(S.wr.hero.id, "📋 Kafolat raqami nusxalandi");
+    // Halqa 0 dan haqiqiy qiymatgacha bir marta «to'ladi» (keyin daqiqada bir yangilanadi)
+    const fg = $("wr-ring-fg");
+    if (fg) {
+      const target = WR_C * (1 - Number(fg.dataset.frac || 0));
+      if (reduceMotion()) fg.style.strokeDashoffset = target.toFixed(1);
+      else requestAnimationFrame(() => requestAnimationFrame(() => (fg.style.strokeDashoffset = target.toFixed(1))));
+    }
+  }
+
+  /** Ro'yxatdan boshqa kafolat tanlanadi — faqat katta kartochka almashadi. */
+  function wrSelect(id) {
+    if (!id || id === S.wr.sel) return;
+    const w = wrList().find((x) => x.id === id);
+    const box = $("wr-hero-box");
+    if (!w || !box) return;
+    haptic("selection");
+    S.wr.sel = id;
+    S.wr.hero = w;
+    box.innerHTML = wrHero(w);
+    document.querySelectorAll("#wr-body .wr-item").forEach((b) => b.classList.toggle("is-sel", b.dataset.id === id));
+    if (!reduceMotion() && box.firstChild && box.firstChild.animate) {
+      box.firstChild.animate(
+        [{ opacity: 0, transform: "translate3d(0,10px,0) scale(.985)" }, { opacity: 1, transform: "none" }],
+        { duration: 380, easing: "cubic-bezier(.22,.9,.24,1)" }
+      );
+    }
+    wrWireHero();
+    wrStart();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function wrGoShop() {
+    haptic("light");
+    const cats = [...new Set((S.shopProducts || []).map((p) => p._cat).filter(Boolean))];
+    S.shopCat = cats.find((n) => /bi[\s-]?led/i.test(n)) || null;
+    S.shopQ = "";
+    show("home");
+    renderCatalog();
+    setTimeout(() => {
+      const anchor = $("cats") || $("products");
+      if (anchor) anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+  }
+
+  /* ---------------------------------------------------- taymer */
+  function wrStart() {
+    wrStop();
+    const w = S.wr.hero;
+    if (!w || w.state !== "active") return;
+    S.wr.turn = 0;
+    wrTick(true);
+    S.wr.timer = setInterval(wrTick, 1000);
+  }
+
+  function wrStop() {
+    if (S.wr.timer) {
+      clearInterval(S.wr.timer);
+      S.wr.timer = 0;
+    }
+  }
+
+  /** Raqamni almashtiradi; o'zgargan bo'lsa yumshoq «aylanadi» (GPU, 0.3 s). */
+  function wrSet(id, val, quiet) {
+    const node = $(id);
+    if (!node || node.textContent === val) return;
+    node.textContent = val;
+    if (quiet || reduceMotion() || !node.animate) return;
+    node.animate(
+      [{ transform: "translate3d(0,-45%,0)", opacity: 0 }, { transform: "none", opacity: 1 }],
+      { duration: 300, easing: "cubic-bezier(.22,.9,.24,1)" }
+    );
+  }
+
+  function wrTick(first) {
+    if (S.page !== "warranty") return wrStop();
+    if (document.hidden) return; // fonda — hech narsa chizilmaydi
+    const w = S.wr.hero;
+    if (!w || w.state !== "active") return wrStop();
+    const left = w.end - wrNow();
+    if (left <= 0) return renderWarrantyPage(); // muddat shu lahzada tugadi
+    const s = Math.floor(left / 1000);
+    const sec = s % 60;
+    wrSet("wr-days", String(Math.floor(s / 86400)), first);
+    wrSet("wr-h", pad2(Math.floor((s % 86400) / 3600)), first);
+    wrSet("wr-m", pad2(Math.floor((s % 3600) / 60)), first);
+    wrSet("wr-s", pad2(sec), first);
+
+    // Soniya nuqtasi halqa bo'ylab soat mili kabi yuradi (bitta transform)
+    const orb = $("wr-orbit");
+    if (orb) {
+      if (first) {
+        S.wr.turn = (60 - sec) * 6;
+        orb.style.transition = "none";
+        orb.style.transform = `rotate(${S.wr.turn}deg)`;
+        void orb.offsetWidth;
+        orb.style.transition = "";
+      } else {
+        S.wr.turn += 6;
+        orb.style.transform = `rotate(${S.wr.turn}deg)`;
+      }
+    }
+    // Halqa — daqiqada bir marta
+    if (!first && sec === 59) {
+      const fg = $("wr-ring-fg");
+      if (fg) fg.style.strokeDashoffset = (WR_C * (1 - wrFrac(w))).toFixed(1);
+    }
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && S.page === "warranty" && S.wr.timer) wrTick(true);
+  });
 
   /** Bo'limni ALOHIDA oynada ochadi. Ro'yxat keshdan darhol chiziladi,
    *  kesh eskirgan bo'lsa fonda jimgina yangilanadi. */
@@ -6628,13 +7324,13 @@
       return;
     }
 
-    // Zaxira rejimda Bi-LED va navbat tarixi FAQAT serverda turadi —
+    // Eski Worker (2.0.0 dan past) Bi-LED va navbat tarixini bermaydi —
     // buni aytmasak, mijoz «buyurtmalarim yo'qolgan» deb o'ylaydi.
-    if (!list.length && S.offline && kind !== "order") {
+    if (!list.length && S.offline && !S.myFull && kind !== "order") {
       box.innerHTML = emptyStatePro({
         icon: "🌙",
         title: "Hozir ko'rsatib bo'lmaydi",
-        desc: "Bu bo'lim tarixi serverda saqlanadi. Server uyg'onganda ro'yxat o'zi paydo bo'ladi.",
+        desc: "Bu bo'lim tarixi Worker yangilangach ko'rinadi. Yangi buyurtmalar baribir qabul qilinadi.",
       });
       return;
     }
@@ -6891,9 +7587,12 @@
   /** Navbatni bekor qilish (server tasdiqlaydi). */
   async function cancelBooking(b) {
     if (!b || b.id == null) return toast("Navbat raqami topilmadi");
-    if (!(await ask(`#${b.id} navbatni bekor qilasizmi?`))) return;
+    const label = b.code || "#" + b.id;
+    if (!(await ask(`${label} navbatni bekor qilasizmi?`))) return;
     try {
-      await api(`/api/bookings/${b.id}/cancel`, { method: "POST" });
+      // Worker rejimi (Render'siz) — imzolangan `/booking-cancel`
+      if (S.offline || b._worker) await ZimmerOffline.cancelBooking(b.key || b.id);
+      else await api(`/api/bookings/${b.id}/cancel`, { method: "POST" });
       haptic("ok");
       toast("Navbat bekor qilindi");
       await refreshMyOrders({ silent: true });
@@ -9168,6 +9867,9 @@
     try {
       let cfg, me;
       try {
+        /* Python server yo'q (2.0.0 standarti) — uni so'rab vaqt yo'qotmaymiz:
+           to'g'ridan Worker yo'liga o'tamiz. Bu xato emas, oddiy ish holati. */
+        if (WORKER_ONLY) throw { code: "worker_only" };
         [cfg, me] = await Promise.all([api("/api/config"), api("/api/me")]);
       } catch (err) {
         // ============================================================
@@ -9196,13 +9898,15 @@
         // `enterOfflineMode()` false qaytarsa ham davom etamiz: `loadHome()`
         // katalogni zanjirdan (Firebase → kesh → statik nusxa) oladi, hech
         // biri bo'lmasa bo'sh holat ko'rsatiladi.
-        await enterOfflineMode();
+        /* Katalog (Firebase) va profil (Worker) BIR VAQTDA so'raladi —
+           ilgari ketma-ket kutilardi va splash-ekran uzayardi. */
+        const [, workerMe] = await Promise.all([enterOfflineMode(), offlineMeFromWorker()]);
         S.offline = true;
         scheduleServerRecheck();
-        cfg = offlineConfig();
-        // Avval Worker'dan so'raymiz (haqiqiy profil + buyurtma tarixi),
-        // bo'lmasa mahalliy keshdan.
-        me = (await offlineMeFromWorker()) || offlineMe();
+        // Avval Worker'dan (haqiqiy profil + buyurtma tarixi), bo'lmasa keshdan
+        me = workerMe || offlineMe();
+        // To'lov rekvizitlari Worker'dan (2.0.0) — Render `/api/config` o'rniga
+        cfg = Object.assign(offlineConfig(), S.workerConfig || {});
         if (S.blocked) return showBlocked();
       }
 
@@ -9302,6 +10006,26 @@
     $("splash").classList.add("leaving");
     await wait(280);
     enterHome();
+    openStartPage();
+  }
+
+  /** Bot tugmasi ilovani ma'lum bo'limda ochadi: `?p=kafolat|orders|biled|
+   *  bookings|services|admin` (yoki t.me havolasidagi `startapp=`). */
+  function openStartPage() {
+    let p = "";
+    try {
+      p = String(new URLSearchParams(location.search).get("p") || "").toLowerCase();
+      if (!p && tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
+        p = String(tg.initDataUnsafe.start_param).toLowerCase();
+      }
+    } catch (_) {}
+    if (!p) return;
+    if (p === "kafolat" || p === "warranty") return openWarranty();
+    if (p === "orders") return openMyOrders("order");
+    if (p === "biled") return openMyOrders("biled");
+    if (p === "bookings") return openMyOrders("booking");
+    if (p === "services" || p === "navbat") return show("services");
+    if (p === "admin" && S.me && S.me.is_admin) return show("admin");
   }
 
   /* ---------------------------------------------------- admin panel ko'prigi
@@ -9517,6 +10241,21 @@
   $("mo-refresh").onclick = () => {
     haptic("light");
     moRefresh();
+  };
+
+  /* ---------------------------------------- 🛡 TOVAR KAFOLATI */
+  $("pf-warranty").onclick = openWarranty;
+  $("wr-back").onclick = () => {
+    haptic();
+    show("profile");
+  };
+  $("wr-refresh").onclick = async () => {
+    haptic("light");
+    const btn = $("wr-refresh");
+    btn.classList.add("is-spin");
+    await refreshMyOrders({ silent: false });
+    btn.classList.remove("is-spin");
+    toast("↻ Yangilandi", 1500);
   };
 
   /* Qidiruv: har harfda qayta chizish o'rniga 180 ms kutamiz — uzun
@@ -10638,12 +11377,24 @@
     });
   }
 
+  /* Skroll hodisasi kadrda bir necha marta keladi — o'lchovni (layout
+     o'qish) kadrga BIR marta, rAF ichida qilamiz. */
+  let _pmScrollRaf = 0;
   function handleModalScroll() {
+    if (_pmScrollRaf) return;
+    _pmScrollRaf = requestAnimationFrame(() => {
+      _pmScrollRaf = 0;
+      modalScrollFrame();
+    });
+  }
+
+  function modalScrollFrame() {
     const slider = $("pm-slider");
+    if (!slider) return;
     const scrollLeft = slider.scrollLeft;
-    const width = slider.offsetWidth;
+    const width = slider.offsetWidth || 1;
     const newIndex = Math.round(scrollLeft / width);
-    
+
     if (newIndex !== currentImageIndex) {
       currentImageIndex = newIndex;
       updateModalDots();

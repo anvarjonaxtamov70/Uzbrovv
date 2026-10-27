@@ -5,7 +5,7 @@
    ISHLASH: SVG filtrlari (feGaussianBlur) ISHLATILMAYDI — ular mobil
    qurilmada har kadrda qayta hisoblanadi va telefonni qizdiradi. Yorug'lik
    effekti radial-gradientlar bilan yasalgan (GPU uchun arzon).
-   Cheksiz animatsiya faqat bitta: linzaning opacity "nafas olishi".
+   Cheksiz animatsiya YO'Q: linza va DRL bir marta yonadi.
 
    ZimmerHeadlight.render({ biled, shroud, color, power })
    ========================================================================== */
@@ -111,10 +111,13 @@ window.ZimmerHeadlight = (function () {
     return `
 <svg viewBox="0 0 440 230" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Fara ko'rinishi">
   <style>
-    .glow { animation: breathe 4.5s ease-in-out infinite; transform-origin: ${LENS.cx}px ${LENS.cy}px; }
+    /* «Nafas olish» endi BIR MARTA yonadi (ilgari cheksiz edi — SVG
+       kompozitorda emas, shuning uchun konfigurator ochiq turganda butun
+       rasm har kadrda qayta chizilib, telefon qizirdi). */
+    .glow { animation: glowOn 1.1s ease-out both; }
     .drl { animation: drlOn .7s cubic-bezier(.2,.8,.2,1) both; }
-    .lbl { fill: rgba(255,255,255,.45); font: 700 11px Inter, sans-serif; text-anchor: middle; letter-spacing: .5px; }
-    @keyframes breathe { 0%,100% { opacity: .75; } 50% { opacity: 1; } }
+    .lbl { fill: rgba(255,255,255,.45); font: 700 11px -apple-system, system-ui, sans-serif; text-anchor: middle; letter-spacing: .5px; }
+    @keyframes glowOn { 0% { opacity: .35; } 60% { opacity: 1; } 100% { opacity: .9; } }
     @keyframes drlOn { from { opacity: 0; } to { opacity: 1; } }
     @media (prefers-reduced-motion: reduce) { .glow, .drl { animation: none; } }
   </style>

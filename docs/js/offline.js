@@ -1228,15 +1228,22 @@
     var data = initData();
     if (!data) throw { code: "no_init_data", message: "Telegram imzosi yo'q" };
 
+    /* Vaqt chegarasi: tarmoq «osilib» qolsa tugma abadiy «Yuborilmoqda…»
+       bo'lib turmasin. Buyurtma idempotent — qayta urinish xavfsiz. */
+    var ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 25000) : 0;
     var res;
     try {
       res = await fetch(WORKER + path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(Object.assign({ initData: data }, payload || {})),
+        signal: ctrl ? ctrl.signal : undefined,
       });
     } catch (_) {
       throw { code: "network", message: "Internetga ulanmadi" };
+    } finally {
+      clearTimeout(timer);
     }
 
     var body = null;
@@ -1420,29 +1427,52 @@
   async function myOrders(uid) {
     var id = Number(uid) || 0;
     if (!id || !WORKER) return [];
+    var all = await myAll();
+    return all ? all.orders : [];
+  }
 
+  /** Worker `/me` — BITTA so'rovda hammasi: profil, do'kon buyurtmalari,
+   *  Bi-LED, navbatlar, KAFOLATLAR va to'lov sozlamalari (2.0.0+).
+   *  Eski Worker'da `biled`/`bookings`/`warranties` bo'lmaydi — `null`. */
+  async function myAll() {
+    if (!WORKER) return null;
     var res;
     try {
       res = await callWorker("/me", {});
     } catch (err) {
-      console.warn("[offline] buyurtmalar o'qilmadi:", err);
-      return [];
+      console.warn("[offline] /me o'qilmadi:", err);
+      if (err && err.code === "blocked") throw err;
+      return null;
     }
+    return {
+      raw: res || null,
+      me: (res && res.me) || null,
+      orders: mapOrders(res && res.orders),
+      biled: res && Array.isArray(res.biled) ? res.biled : null,
+      bookings: res && Array.isArray(res.bookings) ? res.bookings : null,
+      warranties: res && Array.isArray(res.warranties) ? res.warranties : null,
+      config: (res && res.config) || null,
+      now: Number(res && res.now) || 0,
+    };
+  }
 
-    var list = (res && res.orders) || [];
-    if (!Array.isArray(list)) list = [];
-
+  function mapOrders(raw) {
+    var list = Array.isArray(raw) ? raw : [];
     return list
       .map(function (r) {
         var total = Number(r.total) || 0;
         return {
           id: r.code || "", // profil kartochkasida ko'rinadigan belgi
+          key: r.key || "",
           code: r.code || "",
           sqlite_id: r.sqlite_id || null,
           total: total,
           total_label: r.total_label || priceLabel(total),
           status: r.status || "new",
+          status_at: Number(r.status_at) || 0,
+          warranty_from: Number(r.warranty_from) || 0,
           items: itemRows(r.items),
+          address: r.address || "",
           delivery_info: r.delivery_info || "",
           payment_method: r.payment_method || "",
           createdAt: Number(r.createdAt) || 0,
@@ -1452,6 +1482,11 @@
       .sort(function (a, b) {
         return b.createdAt - a.createdAt;
       });
+  }
+
+  /** Mijoz O'Z navbatini bekor qiladi (Worker 2.0.0+, Render'siz). */
+  function cancelBooking(key) {
+    return callWorker("/booking-cancel", { key: String(key || "") });
   }
 
   /** `items` ro'yxat yoki lug'at bo'lishi mumkin — ikkisini ham tekislaydi.
@@ -1470,6 +1505,9 @@
           qty: Number(i.qty) || 1,
           // Razmerli tovar: Worker buyurtma qatoriga `size` yozadi (v1.6.0+)
           size: i.size ? String(i.size) : null,
+          // Sotilgan paytdagi kafolat sharti va turkum (Worker 2.0.0+)
+          warranty: i.warranty ? String(i.warranty) : null,
+          cat: i.cat ? String(i.cat) : null,
         };
       });
   }
@@ -1577,6 +1615,9 @@
     adminBiledOrders: adminBiledOrders,
     adminBookings: adminBookings,
     myOrders: myOrders,
+    myAll: myAll,
+    mapOrders: mapOrders,
+    cancelBooking: cancelBooking,
     itemRows: itemRows,
     adminOrderStatus: adminOrderStatus,
     mediaUrl: mediaUrl,

@@ -1,14 +1,25 @@
 /**
  * Mini App sozlamalari.
  *
- * API_BASE — bot ishlab turgan Render manzili (oxirida / bo'lmasin).
- * Render'da xizmat nomi boshqa bo'lsa, shu qatorni o'zgartiring.
+ * API_BASE — ixtiyoriy Python server (Render/Oracle) manzili. 2.0.0 dan
+ * boshlab BO'SH: bot, buyurtma, navbat, Bi-LED va kafolat Cloudflare
+ * Worker'da (bepul, uxlamaydi). Bo'sh bo'lsa ilova Render'ni kutib
+ * o'tirmaydi — darhol Worker + Firebase bilan ochiladi.
  *
- * Vaqtincha boshqa manzilni sinash uchun ilovani shunday ochish mumkin:
- *   https://anvarjonaxtamov70.github.io/Uzbrovv/?api=https://boshqa.onrender.com
+ * Python serverni qaytarsangiz — manzilini shu yerga yozing
+ * (masalan "https://zimmer-bot.onrender.com", oxirida / bo'lmasin).
  */
 window.ZIMMER_CONFIG = {
-  API_BASE: "https://zimmer-bot.onrender.com",
+  API_BASE: "",
+
+  /* 🛡 Kafolat shartlari — Kabinet → «Tovar kafolati» oynasida chiqadi.
+     Matnni xohlagancha o'zgartiring (har qator — alohida band). */
+  WARRANTY_TERMS: [
+    "Kafolat zavod nuqsonlari va o'rnatish sifatini qamraydi.",
+    "Murojaat qilganda kafolat raqamini (KF-…) ayting — tekshiruv tez bo'ladi.",
+    "Mexanik shikast, avariya va boshqa ustaxonada ochilgan holatlar kafolatga kirmaydi.",
+    "Hisob tovar qo'lingizga topshirilgan lahzadan boshlanadi.",
+  ],
 
   /* ====================================================================
      ZAXIRA (OFFLINE) REJIM — Render o'chganda do'kon ishlashi uchun
