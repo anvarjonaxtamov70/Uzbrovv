@@ -1,26 +1,38 @@
 // =====================================================================
-//  ZIMMER — Cloudflare Worker
+//  UZBROVV — Cloudflare Worker (BOT + Mini App backend)
 //
-//  MAQSAD: Mini App Render'siz TO'LIQ ishlashi. Render faqat botni
-//  ishlatadi; do'kon, mijoz tanilishi va buyurtma berish shu Worker +
-//  Firebase orqali ishlaydi. Worker uxlamaydi va bepul.
+//  MAQSAD: hamma narsa BEPUL va uxlamasdan ishlashi. 2.0.0 dan boshlab
+//  Telegram BOTNING O'ZI ham shu yerda (webhook) — Render kerak emas.
+//  Do'kon, mijoz tanilishi, buyurtma, navbat, Bi-LED, kafolat va admin
+//  xabarlari shu Worker + Firebase orqali ishlaydi.
 //
-//  ENDPOINT'LAR
-//    GET  /health    — holat (tashxis workflow'i uchun)
-//    POST /auth      — Telegram initData -> Firebase custom token
-//    POST /profile   — mijoz profilini saqlash (ism/telefon/mashina)
-//    POST /order     — BUYURTMA YARATISH (summa server tomonda hisoblanadi)
-//    GET  /media?id= — Telegram fayl proksisi (file_id rasmlar uchun)
+//  ENDPOINT'LAR (asosiylari)
+//    POST /tg            — Telegram webhook (botga kelgan har xabar)
+//    GET  /setup         — botni ulash: webhook, buyruqlar, «Do'kon» tugmasi
+//    GET  /health        — holat (`?deep=1` — haqiqiy tekshiruv)
+//    POST /me            — profil, buyurtmalar, Bi-LED, navbatlar, KAFOLAT
+//    POST /profile       — mijoz profilini saqlash (ism/telefon/mashina)
+//    POST /order         — BUYURTMA (summa server tomonda hisoblanadi)
+//    POST /booking       — navbat; POST /booking-cancel — mijoz bekor qiladi
+//    POST /biled-order   — Bi-LED o'rnatish buyurtmasi
+//    POST /admin/*       — Mini App boshqaruv paneli
+//    GET  /media?id=     — Telegram fayl proksisi (file_id rasmlar uchun)
 //
 //  Secret'lar (Worker > Settings > Variables and Secrets):
 //     BOT_TOKEN               — BotFather tokeni
 //     FIREBASE_CLIENT_EMAIL   — serviceAccount.json dagi client_email
 //     FIREBASE_PRIVATE_KEY    — serviceAccount.json dagi private_key
+//     PAY_CARD_NUMBER         — (ixtiyoriy) to'lov kartasi raqami
+//     PAY_CARD_HOLDER         — (ixtiyoriy) karta egasi
 //  Oddiy o'zgaruvchilar:
 //     FIREBASE_DB_URL         — https://zimmer-42840-default-rtdb.firebaseio.com
 //     FIREBASE_ROOT           — zimmer
 //     ADMIN_IDS               — 5105291033,483425630,5302078
 //     INIT_DATA_MAX_AGE       — 86400 (soniya)
+//     MINI_APP_URL            — (ixtiyoriy) https://anvarjonaxtamov70.github.io/Uzbrovv/
+//     SHOP_PHONE, SHOP_TELEGRAM, DELIVERY_CITY — (ixtiyoriy) aloqa ma'lumotlari
+//     BOT_WEBHOOK             — "off" bo'lsa Worker botni O'ZI ulamaydi
+//                               (faqat Python botni qayta ishlatganda kerak)
 //
 //  ---------------------------------------------------------------------
 //  NEGA AVTO_A1 DAGIDAN BOSHQACHA (ataylab)
@@ -61,8 +73,18 @@ const DEFAULT_MAX_AGE = 86400; // 24 soat
 // berishga to'g'ri keladi).
 // Har deploy'da ko'tariladi — `/health` dagi bu raqam Cloudflare'da
 // YANGI nusxa turganini tasdiqlashning eng oson yo'li.
-const VERSION = "1.10.0";
+const VERSION = "2.0.0";
 const FEATURES = [
+  // 2.0.0 — BOT Worker'da: webhook, menyu, holat tugmalari, mijoz↔admin
+  // yozishmasi; /me — Bi-LED, navbat va KAFOLAT; mijoz navbatni bekor qiladi;
+  // to'lov rekvizitlari Worker'dan (Render'siz).
+  "telegram_bot",
+  "bot_status_buttons",
+  "notify_biled_booking",
+  "my_biled_bookings",
+  "warranty",
+  "booking_cancel",
+  "worker_config",
   "order",
   /* Razmerli tovarlar: buyurtma qatorida `size` bo'ladi va qoldiq AYNAN
      o'sha razmerdan kamayadi (`catalog/products/{id}/sizes`). Bu belgi
@@ -137,52 +159,67 @@ function cfg(env) {
 //  Kirish nuqtasi
 // =====================================================================
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
 
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
 
+    /* `return await` — ATAYLAB. Ilgari `return handleX()` edi va handler
+       ichidagi xato (Firebase o'qilmadi, token olinmadi...) bu `try` dan
+       QOCHIB chiqardi: Cloudflare CORS sarlavhasiz 500 qaytarardi, brauzer
+       esa buni «Internetga ulanmadi» deb ko'rsatardi. */
     try {
-      if (path === "/media" || path === "/file") return handleMedia(request, env);
+      // Telegram webhook — botga kelgan har bir xabar shu yerga tushadi
+      if (path === "/tg") return await handleTelegramWebhook(request, env, ctx);
+      // Botni ulash (webhook + buyruqlar + «Do'kon» tugmasi). Idempotent.
+      if (path === "/setup" || path === "/tg/setup") return await handleBotSetup(request, env);
+      if (path === "/media" || path === "/file") return await handleMedia(request, env);
       if (path === "/health" || path === "/") {
         // `?deep=1` — sozlamalar BOR-YO'QLIGINI emas, HAQIQATAN ISHLASHINI
         // tekshiradi: Firebase kalitini imzolab ko'radi va katalogni o'qiydi.
-        return handleHealth(env, url.searchParams.get("deep") === "1");
+        keepWebhook(ctx, env, url.origin);
+        return await handleHealth(env, url.searchParams.get("deep") === "1", url.origin);
       }
 
       if (request.method !== "POST") {
         return json({ ok: false, error: "Faqat POST" }, 405);
       }
-      if (path === "/auth") return handleAuth(request, env);
-      if (path === "/me") return handleMe(request, env);
-      if (path === "/profile") return handleProfile(request, env);
-      if (path === "/order") return handleOrder(request, env);
-      if (path === "/booking") return handleBooking(request, env);
-      if (path === "/biled-order") return handleBiledOrder(request, env);
+      if (path === "/auth") return await handleAuth(request, env);
+      if (path === "/me") {
+        // Mini App har ochilganda bot ulanganini tekshiramiz (fonda, bir marta)
+        keepWebhook(ctx, env, url.origin);
+        return await handleMe(request, env);
+      }
+      if (path === "/profile") return await handleProfile(request, env);
+      if (path === "/order") return await handleOrder(request, env);
+      if (path === "/booking") return await handleBooking(request, env);
+      if (path === "/booking-cancel") return await handleBookingCancel(request, env);
+      if (path === "/biled-order") return await handleBiledOrder(request, env);
       // Story'ga javob: adminga QAYSI story'dan kelganini bildirib yuboradi
-      if (path === "/story-reply") return handleStoryReply(request, env);
+      if (path === "/story-reply") return await handleStoryReply(request, env);
 
       // ---- Admin: Render'siz katalog boshqaruvi. Har biri imzoni tekshirib,
       // uid ni ADMIN_IDS bilan solishtiradi (`requireAdmin`).
-      if (path === "/admin/catalog") return handleAdminCatalog(request, env);
-      if (path === "/admin/product") return handleAdminProduct(request, env);
-      if (path === "/admin/edit") return handleAdminEdit(request, env);
-      if (path === "/admin/catalog-write") return handleAdminCatalogWrite(request, env);
+      if (path === "/admin/catalog") return await handleAdminCatalog(request, env);
+      if (path === "/admin/product") return await handleAdminProduct(request, env);
+      if (path === "/admin/edit") return await handleAdminEdit(request, env);
+      if (path === "/admin/catalog-write") return await handleAdminCatalogWrite(request, env);
       // Mini App ichidan video/rasm yuklash (bot orqali file_id olinadi)
-      if (path === "/admin/upload") return handleAdminUpload(request, env);
-      if (path === "/admin/orders") return handleAdminOrders(request, env);
-      if (path === "/admin/users") return handleAdminUsers(request, env);
-      if (path === "/admin/block") return handleAdminBlock(request, env);
-      if (path === "/admin/vip") return handleAdminVip(request, env);
-      if (path === "/admin/message") return handleAdminMessage(request, env);
-      if (path === "/admin/order-status") return handleAdminOrderStatus(request, env);
+      if (path === "/admin/upload") return await handleAdminUpload(request, env);
+      if (path === "/admin/orders") return await handleAdminOrders(request, env);
+      if (path === "/admin/users") return await handleAdminUsers(request, env);
+      if (path === "/admin/block") return await handleAdminBlock(request, env);
+      if (path === "/admin/vip") return await handleAdminVip(request, env);
+      if (path === "/admin/message") return await handleAdminMessage(request, env);
+      if (path === "/admin/order-status") return await handleAdminOrderStatus(request, env);
 
       return json({ ok: false, error: "Bunday manzil yo'q" }, 404);
     } catch (error) {
       // Xato YUTILMAYDI — mijoz sababni ko'rsin, aks holda buyurtma
       // "yo'qolgan" bo'lib qoladi va hech kim bilmaydi.
-      return json({ ok: false, error: "server_error", message: String(error) }, 500);
+      console.error("[worker]", path, error);
+      return json({ ok: false, error: "server_error", message: String((error && error.message) || error) }, 500);
     }
   },
 };
@@ -190,7 +227,7 @@ export default {
 // =====================================================================
 //  GET /health
 // =====================================================================
-async function handleHealth(env, deep) {
+async function handleHealth(env, deep, origin) {
   const c = cfg(env);
   const payload = {
     status: "ok",
@@ -284,6 +321,20 @@ async function handleHealth(env, deep) {
     } catch (error) {
       checks.bot_token = { ok: false, error: String(error).slice(0, 200) };
     }
+
+    // 4) Bot SHU Worker'ga ulanganmi (webhook)? Ulanmagan bo'lsa bot jim turadi.
+    const info = await tgCall(env, "getWebhookInfo", {});
+    const want = `${origin}/tg`;
+    const r = (info && info.result) || {};
+    checks.bot_webhook = info.ok && r.url === want
+      ? { ok: true, url: r.url, pending: r.pending_update_count || 0, last_error: r.last_error_message || undefined }
+      : {
+          ok: false,
+          url: r.url || "",
+          hint: r.url
+            ? "Bot boshqa joyga ulangan (eski Render/Python). Brauzerda " + origin + "/setup ni oching."
+            : "Bot ulanmagan. Brauzerda " + origin + "/setup ni bir marta oching.",
+        };
   }
 
   payload.checks = checks;
@@ -334,40 +385,26 @@ async function handleMe(request, env) {
   const user = verified.user;
   const token = await accessToken(env);
 
-  const profile = (await rtdbGet(c.dbUrl, `${c.root}/users/${uid}/profile`, token)) || {};
-
-  // Buyurtmalar: `orderBy="uid"` uchun qoidalarda `.indexOn: ["uid"]` bor.
-  // Indeks bo'lmasa Firebase xato qaytaradi — o'sha holatda bo'sh ro'yxat
-  // beramiz, ya'ni profil baribir ishlaydi (buyurtma tarixi ko'rinmaydi).
-  let orders = [];
-  try {
-    const query =
-      `${c.root}/pending_orders.json?orderBy=${encodeURIComponent('"uid"')}` +
-      `&equalTo=${encodeURIComponent(uid)}&limitToLast=30`;
-    const res = await fetch(`${c.dbUrl}/${query}`, { headers: authHeaders(token) });
-    if (res.ok) {
-      const node = await res.json();
-      if (node && typeof node === "object") {
-        orders = Object.values(node)
-          .filter((o) => o && typeof o === "object")
-          .filter((o) => o.status !== "processing" && o.status !== "failed")
-          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-          .map((o) => ({
-            code: o.code || "",
-            total: Number(o.total) || 0,
-            total_label: fmtPrice(o.total),
-            status: o.status || "new",
-            address: o.address || "",
-            items: Array.isArray(o.items) ? o.items : [],
-            createdAt: o.createdAt || 0,
-          }));
-      }
-    }
-  } catch (_) {
-    orders = [];
-  }
+  const [profile, data] = await Promise.all([
+    rtdbGet(c.dbUrl, `${c.root}/users/${uid}/profile`, token).then((p) => p || {}),
+    /* Buyurtmalar (Worker + eski SQLite nusxasi), Bi-LED va navbatlar —
+       hammasi `uid` bo'yicha. Biror manba o'qilmasa o'sha ro'yxat bo'sh
+       qoladi, profil esa baribir ishlaydi. */
+    customerData(c, token, uid),
+  ]);
+  // Kafolatlar SERVERDA hisoblanadi — bot (`/kafolat`) va Mini App bir xil
+  // sanani ko'rsatadi. Xato bo'lsa bo'sh ro'yxat (profil yiqilmasin).
+  const warranties = await warrantiesFor(c, token, data).catch(() => []);
 
   return json({
+    // Render `/api/config` o'rnini bosadi: to'lov rekvizitlari FAQAT imzosi
+    // tasdiqlangan mijozga beriladi (ochiq `config.js` ga yozilmaydi).
+    config: workerConfig(env),
+    biled: data.biled,
+    bookings: data.bookings,
+    warranties,
+    // Telefon soati noto'g'ri bo'lsa ham kafolat taymeri aniq ketsin
+    now: Date.now(),
     ok: true,
     me: {
       id: Number(uid),
@@ -396,7 +433,7 @@ async function handleMe(request, env) {
       // oshkor bo'lmaydi.
       is_admin: c.admins.includes(uid),
     },
-    orders,
+    orders: data.orders,
   });
 }
 
@@ -581,7 +618,7 @@ async function handleOrder(request, env) {
     if (current.reservation_state === "reserved" && current.status !== "failed") {
       let notified = !!current.notified_admin;
       if (!notified) {
-        notified = await notifyOrder(env, c, current);
+        notified = await notifyOrder(env, c, current, orderKey);
         if (notified) {
           current = await casPatchObject(c.dbUrl, orderPath, token, (row) => ({ ...row, notified_admin: true }));
         }
@@ -642,7 +679,7 @@ async function handleOrder(request, env) {
   const record = committed.record;
   let notified = !!record.notified_admin;
   if (!notified) {
-    notified = await notifyOrder(env, c, record);
+    notified = await notifyOrder(env, c, record, orderKey);
     if (notified) {
       await casPatchObject(c.dbUrl, orderPath, token, (row) => ({ ...row, notified_admin: true }));
     }
@@ -729,6 +766,13 @@ async function commitOrder(c, token, orderKey, requestHash, requested, finalizeF
       perProduct.set(pid, used + item.qty);
       const price = Number(product.price) || 0;
       const line = { product_id: Number(pid), name: String(product.name || ""), price, qty: item.qty };
+      /* KAFOLAT uchun sotilgan paytdagi holat saqlanadi: admin keyin
+         tovarni o'chirsa yoki kafolat matnini o'zgartirsa ham, mijozning
+         kafolati xarid qilingan shart bilan qoladi. */
+      const warrantyText = clean(product.warranty, 60);
+      if (warrantyText) line.warranty = warrantyText;
+      const catName = clean(productCategoryName(product, root.catalog && root.catalog.categories), 80);
+      if (catName) line.cat = catName;
       if (sizeRow) {
         line.size = sizeRow.size;
         line._sizeKey = sizeRow.key;
@@ -787,225 +831,6 @@ async function commitOrder(c, token, orderKey, requestHash, requested, finalizeF
     return { record: pending[orderKey], repeated: false };
   }
   throw new Error("Qoldiq band — qayta urinib ko'ring");
-}
-
-async function handleOrderLegacy(request, env) {
-  const c = cfg(env);
-  if (!c.dbUrl) return json({ ok: false, error: "FIREBASE_DB_URL sozlanmagan" }, 500);
-
-  const body = await readJson(request);
-  const verified = await verifyInitData(body.initData, env);
-  if (!verified.ok) return json({ ok: false, error: verified.error, blocked: !!verified.blocked }, verified.status || 401);
-
-  const uid = String(verified.user.id);
-  const user = verified.user;
-
-  // ---- Kiruvchi ma'lumotni tekshirish
-  const rawItems = Array.isArray(body.items) ? body.items : [];
-  if (!rawItems.length) return json({ ok: false, error: "Savatcha bo'sh" }, 400);
-  if (rawItems.length > 50) return json({ ok: false, error: "Juda ko'p tovar" }, 400);
-
-  const address = clean(body.address, 400);
-  if (!address || address.length < 5) {
-    return json({ ok: false, error: "Manzilni to'liqroq kiriting" }, 400);
-  }
-
-  const phone = normalizePhone(body.phone);
-  if (!phone) return json({ ok: false, error: "Telefon raqam noto'g'ri" }, 400);
-
-  const deliveryMethod = ["courier", "bts"].includes(body.delivery_method)
-    ? body.delivery_method
-    : null;
-  const deliveryInfo = clean(body.delivery_info, 400);
-  const paymentMethod = clean(body.payment_method, 120);
-
-  const token = await accessToken(env);
-
-  // ---- Katalogni o'qiymiz: narx va qoldiq FAQAT shu yerdan olinadi
-  const catalog = await rtdbGet(c.dbUrl, `${c.root}/catalog/products`, token);
-  if (!catalog || typeof catalog !== "object") {
-    return json(
-      { ok: false, error: "Katalog o'qilmadi — botga /firebase yuborilishi kerak" },
-      503
-    );
-  }
-
-  const lines = [];
-  const problems = [];
-  let total = 0;
-
-  for (const entry of rawItems) {
-    const pid = String(parseInt(entry && entry.product_id, 10));
-    const qty = Math.max(1, Math.min(999, parseInt(entry && entry.qty, 10) || 0));
-    const product = catalog[pid];
-
-    if (!product || product.deleted || product.is_active === 0 || product.is_active === false) {
-      problems.push({ product_id: pid, reason: "topilmadi" });
-      continue;
-    }
-
-    /* ---- RAZMERLI TOVAR
-       Razmerlar `catalog/products/{id}/sizes` da: `[{size, stock}]`.
-       Qoldiq TEKSHIRUVI umumiy `stock` dan EMAS, aynan tanlangan
-       razmerdan olinadi. Aks holda «H4 tugagan, H7 da 10 ta bor» holatida
-       umumiy qoldiq 10 bo'lib turadi va H4 uchun buyurtma o'tib ketardi —
-       ombor esa bo'sh. Narx kabi, bu ham FAQAT katalogdan o'qiladi. */
-    const sizeRows = sizesOfProduct(product);
-    const wantSize = clean(entry && entry.size, 40);
-    let sizeIndex = -1;
-
-    if (sizeRows.length) {
-      if (!wantSize) {
-        problems.push({ product_id: pid, name: product.name, reason: "razmer tanlanmagan" });
-        continue;
-      }
-      sizeIndex = sizeRows.findIndex((s) => s.size === wantSize);
-      if (sizeIndex === -1) {
-        problems.push({
-          product_id: pid,
-          name: product.name,
-          reason: "razmer topilmadi",
-          size: wantSize,
-        });
-        continue;
-      }
-      if (sizeRows[sizeIndex].stock < qty) {
-        problems.push({
-          product_id: pid,
-          name: product.name,
-          reason: "yetarli emas",
-          size: wantSize,
-          stock: sizeRows[sizeIndex].stock,
-        });
-        continue;
-      }
-    } else {
-      const stock = Number(product.stock) || 0;
-      if (stock < qty) {
-        problems.push({ product_id: pid, name: product.name, reason: "yetarli emas", stock });
-        continue;
-      }
-    }
-
-    // NARX KATALOGDAN — mijoz yuborgan narx umuman o'qilmaydi
-    const price = Number(product.price) || 0;
-    total += price * qty;
-    const line = { product_id: Number(pid), name: String(product.name || ""), price, qty };
-    // `size` faqat razmerli tovarda yoziladi: razmersiz qatorda bo'sh
-    // maydon turishi bot va admin panelini chalkashtiradi.
-    if (sizeIndex !== -1) {
-      line.size = sizeRows[sizeIndex].size;
-      // RTDB kaliti — qoldiqni kamaytirish uchun (buyurtma yozuviga
-      // TUSHMAYDI, pastda `stripLine()` bilan olib tashlanadi).
-      line._sizeKey = sizeRows[sizeIndex].key;
-    }
-    lines.push(line);
-  }
-
-  if (problems.length || !lines.length) {
-    return json(
-      {
-        ok: false,
-        error: "order_failed",
-        message: "Ba'zi mahsulotlar yetarli emas. Savatchani yangilang.",
-        problems,
-      },
-      409
-    );
-  }
-
-  // ---- Idempotent kalit: ikki marta bosilsa bitta buyurtma bo'ladi
-  const clientKey = clean(body.client_key, 40).replace(/[^A-Za-z0-9_-]/g, "") || null;
-  const code = orderCode(uid, clientKey);
-  // DIQQAT: ALOHIDA tugun — `{root}/orders` ni bot o'zi ishlatadi
-  // (`sync._put_order` raqamli SQLite id bilan yozadi, `restore_orders`
-  // esa raqamli id kutadi). Worker buyurtmalari hali SQLite'da yo'q va
-  // raqamli id ham yo'q, shuning uchun ularni aralashtirmaymiz.
-  const orderPath = `${c.root}/pending_orders/${uid}_${code}`;
-
-  const already = await rtdbGet(c.dbUrl, orderPath, token);
-  if (already && already.code) {
-    // Allaqachon yozilgan — qayta yozmaymiz va qoldiqni QAYTA kamaytirmaymiz
-    return json({ ok: true, order: { code: already.code, total: already.total }, repeated: true });
-  }
-
-  const record = {
-    code,
-    uid: Number(uid),
-    customer_name: clean(
-      body.full_name || [user.first_name, user.last_name].filter(Boolean).join(" "),
-      120
-    ) || "Mijoz",
-    username: clean(user.username, 60) || "",
-    phone,
-    address,
-    delivery_method: deliveryMethod,
-    delivery_info: deliveryInfo || null,
-    payment_method: paymentMethod || null,
-    /* `_sizeKey` — ICHKI maydon (RTDB kaliti). Buyurtma yozuviga tushmaydi:
-       u bazaning tuzilishi haqidagi tafsilot, botga ham, adminga ham
-       kerak emas va qoidalarda ruxsat etilgan maydonlar ro'yxatida yo'q. */
-    items: lines.map(({ _sizeKey, ...rest }) => rest),
-    total,
-    // Statusni FAQAT server qo'yadi — mijoz "yetkazildi" deb yozib qo'ya olmaydi
-    status: "new",
-    source: "miniapp_offline",
-    // Bu maydonni ham FAQAT server qo'yadi (Avto_A1 da mijoz yozib botning
-    // xabarini o'chirib qo'yardi)
-    notified_admin: false,
-    // Bot buni SQLite ga ko'chirgach true qo'yadi
-    imported: false,
-    createdAt: { ".sv": "timestamp" },
-  };
-
-  const put = await rtdbPut(c.dbUrl, orderPath, record, token);
-  if (!put.ok) {
-    const text = await put.text();
-    // Xato YUTILMAYDI
-    return json({ ok: false, error: "buyurtma saqlanmadi", detail: text.slice(0, 200) }, 502);
-  }
-
-  // ---- Qoldiqni atomik kamaytiramiz (server-side increment)
-  // Bu mirror nusxasi; asosiy manba SQLite. Bot ko'tarilganda moslashtiradi.
-  for (const line of lines) {
-    try {
-      await rtdbPatch(
-        c.dbUrl,
-        `${c.root}/catalog/products/${line.product_id}`,
-        { stock: { ".sv": { increment: -line.qty } } },
-        token
-      );
-      /* RAZMERLI TOVAR: umumiy qoldiqdan tashqari AYNAN o'sha razmerning
-         qoldig'i ham kamayadi. Ikkisi birga kamaymasa yig'indi qoidasi
-         buziladi (`stock` = razmerlar yig'indisi) va do'kon «12 ta bor»
-         deb turib, mijozning buyurtmasini rad etaverardi. */
-      if (line._sizeKey != null) {
-        await rtdbPatch(
-          c.dbUrl,
-          `${c.root}/catalog/products/${line.product_id}/sizes/${line._sizeKey}`,
-          { stock: { ".sv": { increment: -line.qty } } },
-          token
-        );
-      }
-    } catch (_) {
-      // Qoldiq kamaymasa ham buyurtma allaqachon saqlangan — bot tuzatadi
-    }
-  }
-
-  // ---- Telegram xabarlari
-  const notified = await notifyOrder(env, c, record);
-  if (notified) {
-    await rtdbPatch(c.dbUrl, orderPath, { notified_admin: true }, token).catch(() => {});
-  }
-
-  return json(
-    {
-      ok: true,
-      order: { code, total, total_label: fmtPrice(total) },
-      notified,
-    },
-    201
-  );
 }
 
 // =====================================================================
@@ -1191,6 +1016,10 @@ async function handleBooking(request, env) {
     const put = await rtdbPutIfMatch(c.dbUrl, c.root, root, token, snap.etag);
     if (put.status === 412) continue;
     await ensureOk(put, "Navbat band qilinmadi");
+    /* Ilgari Worker navbati haqida adminga HECH NARSA yuborilmasdi — xabarni
+       faqat Render'dagi bot (import paytida) berardi. Render o'chsa admin
+       yangi navbatni umuman bilmasdi. Endi darhol, holat tugmalari bilan. */
+    await notifyBooking(env, c, token, key, bookings[key], verified.user).catch(() => {});
     return json({ ok: true, booking: { id: key, date, time, label: date } }, claimed.created ? 201 : 200);
   }
   return json({ ok: false, error: "slot_busy", message: "Vaqtni band qilishda to'qnashuv" }, 409);
@@ -1261,15 +1090,22 @@ async function handleBiledOrder(request, env) {
     phone: record.phone,
   }));
   record.request_hash = requestHash;
+  // Kod endi yozuvda ham turadi — bot, admin va kafolat bir xil kodni ko'rsatadi
+  record.code = biledCode(key, record);
   const created = await rtdbCreate(c.dbUrl, `${c.root}/biled_orders/${key}`, record, token);
   if (!created.created) {
     if (!created.value || created.value.request_hash !== requestHash) {
       return json({ ok: false, error: "idempotency_conflict" }, 409);
     }
     const oldTotal = Number(created.value.total) || 0;
-    return json({ ok: true, order: { id: key, code: "BL-" + shortHash(key).toUpperCase(), total: oldTotal, total_label: fmtPrice(oldTotal) }, repeated: true });
+    if (!created.value.notified_admin) {
+      await notifyBiled(env, c, token, key, created.value, verified.user).catch(() => {});
+    }
+    return json({ ok: true, order: { id: key, code: biledCode(key, created.value), total: oldTotal, total_label: fmtPrice(oldTotal) }, repeated: true });
   }
-  return json({ ok: true, order: { id: key, code: "BL-" + shortHash(key).toUpperCase(), total, total_label: fmtPrice(total) } }, 201);
+  // Admin darhol biladi (holat tugmalari bilan), mijoz esa tasdiq oladi
+  await notifyBiled(env, c, token, key, record, verified.user).catch(() => {});
+  return json({ ok: true, order: { id: key, code: record.code, total, total_label: fmtPrice(total) } }, 201);
 }
 
 // =====================================================================
@@ -1742,14 +1578,21 @@ function entriesOf(node) {
 function itemsOf(raw) {
   return entriesOf(raw)
     .map((pair) => pair[1])
-    .map((i) => ({
-      product_id: i.product_id != null ? i.product_id : null,
-      name: String(i.name || ""),
-      price: Number(i.price || 0),
-      qty: Number(i.qty || 1),
-      // Razmer — admin ro'yxatida va «Buyurtmalarim» da ko'rinishi kerak
-      size: i.size ? String(i.size) : null,
-    }))
+    .map((i) => {
+      const line = {
+        // `productId` — SQLite nusxasi (`sync.py: _put_order`) camelCase yozadi
+        product_id: i.product_id != null ? i.product_id : i.productId != null ? i.productId : null,
+        name: String(i.name || ""),
+        price: Number(i.price || 0),
+        qty: Number(i.qty || 1),
+        // Razmer — admin ro'yxatida va «Buyurtmalarim» da ko'rinishi kerak
+        size: i.size ? String(i.size) : null,
+      };
+      // Sotilgan paytdagi kafolat sharti va turkum (2.0.0+ buyurtmalarda)
+      if (i.warranty) line.warranty = String(i.warranty);
+      if (i.cat) line.cat = String(i.cat);
+      return line;
+    })
     .filter((i) => i.name || i.product_id != null);
 }
 
@@ -1793,12 +1636,49 @@ function normStatus(value) {
  *  Shu sababli har maydon ikki nom bilan o'qiladi. */
 function mergeAdminOrders(pendingNode, dbNode) {
   const orders = [];
-
-  // 1) SQLite nusxasi (`orders`) — bot yozadi.
-  const dbIds = new Set();
+  const dbRows = new Map();
   for (const [key, row] of entriesOf(dbNode)) {
     const id = row.id != null ? row.id : key;
-    dbIds.add(String(id));
+    dbRows.set(String(id), { key: String(key), row });
+  }
+
+  /* 1) Worker qabul qilganlari (`pending_orders`).
+     2.0.0: Render endi kerak emas, shuning uchun bot SQLite'ga ko'chirgan
+     (`imported` + `sqlite_id`) buyurtma ham Worker yozuvi orqali
+     boshqariladi — ilgari ular «Render serveri kerak» deb qotib qolardi.
+     Holat ikki nusxadan ENG ILG'ORI olinadi (Python admin o'zgartirgan
+     bo'lsa ham yo'qolmaydi), o'zgarish esa ikkala nusxaga yoziladi. */
+  for (const [key, row] of entriesOf(pendingNode)) {
+    // Claim hali tugamagan yoki qoldiq xatosi bilan to'xtagan yozuv admin
+    // status amallariga chiqmaydi; aks holda processing order bekor qilinib
+    // reservation/finalize bilan poyga qilishi mumkin.
+    if (row.status === "processing" || row.status === "failed") continue;
+    const twin = row.sqlite_id ? dbRows.get(String(row.sqlite_id)) : null;
+    if (twin) dbRows.delete(String(row.sqlite_id));
+    const total = Number(row.total || (twin && twin.row.total) || 0);
+    orders.push({
+      key: String(key),
+      source: "pending", // holat `pending_orders/{key}` ga yoziladi
+      id: row.sqlite_id || null,
+      code: row.code || key,
+      uid: row.uid || null,
+      name: row.customer_name || row.name || "",
+      phone: row.phone || "",
+      address: row.address || "",
+      delivery_info: row.delivery_info || row.deliveryInfo || "",
+      payment_method: row.payment_method || row.paymentMethod || "",
+      total: total,
+      total_label: fmtPrice(total),
+      status: mergedOrderStatus(row.status, twin ? twin.row.status : null),
+      items: itemsOf(row.items),
+      created_at: Number(row.createdAt || 0) || null,
+      imported: !!row.imported,
+    });
+  }
+
+  // 2) Faqat SQLite nusxasida turgan eski (Render API orqali kelgan) buyurtmalar.
+  for (const { key, row } of dbRows.values()) {
+    const id = row.id != null ? row.id : key;
     const total = Number(row.total || 0);
     orders.push({
       key: String(key),
@@ -1820,39 +1700,20 @@ function mergeAdminOrders(pendingNode, dbNode) {
     });
   }
 
-  // 2) Worker qabul qilganlari (`pending_orders`).
-  //    Bot ularni SQLite'ga ko'chirgan bo'lsa (`imported` + `sqlite_id`),
-  //    yuqoridagi ro'yxatda allaqachon bor — TAKRORLAMAYMIZ.
-  for (const [key, row] of entriesOf(pendingNode)) {
-    // Claim hali tugamagan yoki qoldiq xatosi bilan to'xtagan yozuv admin
-    // status amallariga chiqmaydi; aks holda processing order bekor qilinib
-    // reservation/finalize bilan poyga qilishi mumkin.
-    if (row.status === "processing" || row.status === "failed") continue;
-    if (row.imported && row.sqlite_id && dbIds.has(String(row.sqlite_id))) continue;
-    const total = Number(row.total || 0);
-    orders.push({
-      key: String(key),
-      source: "pending", // holat `pending_orders/{key}` ga yoziladi
-      id: row.sqlite_id || null,
-      code: row.code || key,
-      uid: row.uid || null,
-      name: row.customer_name || row.name || "",
-      phone: row.phone || "",
-      address: row.address || "",
-      delivery_info: row.delivery_info || row.deliveryInfo || "",
-      payment_method: row.payment_method || row.paymentMethod || "",
-      total: total,
-      total_label: fmtPrice(total),
-      status: normStatus(row.status),
-      items: itemsOf(row.items),
-      created_at: Number(row.createdAt || 0) || null,
-      imported: !!row.imported,
-    });
-  }
-
   // Yangi buyurtma TEPADA turishi kerak.
   orders.sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0));
   return orders;
+}
+
+/** Do'kon buyurtmasi ikki nusxada bo'lsa (Worker + SQLite) — ENG ILG'OR holat.
+ *  Bekor qilingan bo'lsa (qaysi nusxada bo'lmasin) — bekor. */
+const ORDER_RANK = { new: 0, accepted: 1, delivering: 2, delivered: 3 };
+function mergedOrderStatus(a, b) {
+  const x = normStatus(a);
+  if (b == null || b === "") return x;
+  const y = normStatus(b);
+  if (x === "cancelled" || y === "cancelled") return "cancelled";
+  return (ORDER_RANK[y] || 0) > (ORDER_RANK[x] || 0) ? y : x;
 }
 
 /* ---------------------------------------------------------------------
@@ -2004,108 +1865,252 @@ async function handleAdminOrderStatus(request, env) {
   const gate = await requireAdmin(request, env);
   if (gate.error) return gate.error;
   const { c, body, uid } = gate;
-  const kind = KIND_STATUSES[clean(body.kind, 12)] ? clean(body.kind, 12) : "order";
-  const key = clean(body.key, 120);
-  if (!key || !/^[A-Za-z0-9_-]+$/.test(key)) return json({ ok: false, error: "Buyurtma kaliti noto'g'ri" }, 400);
-  const status = kind === "order" ? normStatus(clean(body.status, 20)) : clean(body.status, 20);
-  if (!KIND_STATUSES[kind].includes(status)) return json({ ok: false, error: "Holat noto'g'ri", allowed: KIND_STATUSES[kind] }, 400);
-
-  /* `orders` — Render/SQLite'ning faqat MIRROR nusxasi. Uni Worker'da
-     patch qilish haqiqiy buyurtmani o'zgartirmaydi, shuning uchun yolg'on
-     success o'rniga canonical server talab qilinadi. */
-  if (kind === "order" && clean(body.source, 12) === "db") {
-    return json({ ok: false, error: "server_required", message: "SQLite buyurtmasi uchun Render serveri kerak" }, 409);
-  }
-  const node = kind === "order" ? "pending_orders" : KIND_NODES[kind];
-  const path = `${c.root}/${node}/${key}`;
   const token = await accessToken(env);
-  let row = null;
-  let repeated = false;
-  let committed = false;
+  const res = await applyStatusChange(env, c, token, {
+    kind: clean(body.kind, 12),
+    key: body.key,
+    status: body.status,
+    source: clean(body.source, 12),
+    by: uid,
+  });
+  if (res.error) {
+    const { http, ...rest } = res.error;
+    return json({ ok: false, ...rest, error: rest.code }, http || 409);
+  }
+  return json({ ok: true, kind: res.kind, key: res.key, status: res.status, node: res.node, repeated: res.repeated });
+}
+
+/* =====================================================================
+   HOLAT O'ZGARTIRISH — YAGONA YADRO
+
+   Ikki joydan chaqiriladi: Mini App boshqaruv paneli (`/admin/order-status`)
+   va bot xabaridagi tugmalar (`s|...` va eski Python `adm:ordst:...`).
+   Ikkalasi AYNAN bir xil tekshiruvdan o'tadi: ruxsat etilgan o'tish,
+   atomik yozuv, bekor qilinganda qoldiq/slot qaytarish, mijozga xabar va
+   — yakunlanganda — KAFOLAT boshlanishi.
+
+   Natija: `{ ok, kind, key, status, node, repeated, row }` yoki
+           `{ error: { http, code, message, allowed?, current? } }`.
+   ===================================================================== */
+function statusErr(http, code, message, extra) {
+  return { error: { http, code, message, ...(extra || {}) } };
+}
+
+/** Bi-LED va navbat holatlari ham bir nechta nom bilan uchraydi
+ *  (SQLite nusxasi, eski panel) — ularni shu bo'lim lug'atiga keltiramiz. */
+function normKindStatus(kind, value) {
+  const s = String(value || "new").toLowerCase();
+  if (kind === "order") return normStatus(s);
+  if (kind === "biled") {
+    if (s === "delivered" || s === "done") return "done";
+    if (s === "delivering" || s === "in_progress" || s === "in_work") return "in_work";
+    if (s === "confirmed") return "accepted";
+    return ["new", "accepted", "cancelled"].includes(s) ? s : s;
+  }
+  if (s === "accepted") return "confirmed";
+  if (s === "delivered") return "done";
+  if (s === "delivering") return "confirmed";
+  return s;
+}
+
+/** Kafolat shu holatda BOSHLANADI: tovar yetkazildi / Bi-LED topshirildi. */
+function isWarrantyStart(kind, status) {
+  return (kind === "order" && status === "delivered") || (kind === "biled" && status === "done");
+}
+
+async function applyStatusChange(env, c, token, opts) {
+  const kind = KIND_STATUSES[opts.kind] ? opts.kind : "order";
+  const source = kind === "order" && opts.source === "db" ? "db" : "pending";
+  const key = clean(opts.key, 120);
+  if (!key || !/^[A-Za-z0-9_-]+$/.test(key)) return statusErr(400, "bad_key", "Buyurtma kaliti noto'g'ri");
+  const status = normKindStatus(kind, clean(opts.status, 20));
+  if (!KIND_STATUSES[kind].includes(status)) {
+    return statusErr(400, "bad_status", "Holat noto'g'ri", { allowed: KIND_STATUSES[kind] });
+  }
+  const by = Number(opts.by) || 0;
+  const node = kind === "order" ? (source === "db" ? "orders" : "pending_orders") : KIND_NODES[kind];
 
   /* BEKOR QILISH — do'kon buyurtmasi va navbat uchun status o'zgarishi VA
      kompensatsiya (qoldiq qaytarish / slot o'chirish) BITTA root ETag CAS
      ichida bajariladi. Aks holda oraliq crash "cancelled, lekin qoldiq
-     qaytmagan (yoki slot band qolgan)" holatini qoldirar edi. Import
-     qilingan (server-owned) yozuv kompensatsiyani chetlab o'tmaydi —
-     helper avval imported'ni aniqlab server_required qaytaradi. */
-  if (status === "cancelled" && (kind === "order" || kind === "booking")) {
-    const outcome = kind === "order"
-      ? await cancelOrderAtomic(c, token, key, uid)
-      : await cancelBookingAtomic(c, token, key, uid);
-    if (outcome.error) return outcome.error;
-    row = outcome.row;
-    repeated = !!outcome.repeated;
-    committed = true;
-  } else {
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const snap = await rtdbGetEtag(c.dbUrl, path, token);
-      row = snap.value;
-      if (!row || typeof row !== "object") return json({ ok: false, error: "Bunday buyurtma yo'q" }, 404);
-      if (row.imported) {
-        return json({ ok: false, error: "server_required", message: "Import qilingan yozuv uchun canonical server kerak" }, 409);
-      }
-      const rawStatus = clean(row.status || "new", 20);
-      const current = kind === "order" ? normStatus(rawStatus) : rawStatus;
-      const knownOrderStatus = ["new", "accepted", "delivering", "delivered", "cancelled", "done", "shipped"].includes(rawStatus);
-      if ((kind === "order" && !knownOrderStatus) || !(current in ALLOWED_STATUS_TRANSITIONS[kind])) {
-        return json({ ok: false, error: "order_not_ready", message: "Buyurtma hali status o'zgarishiga tayyor emas" }, 409);
-      }
-      if (current === status) {
-        repeated = true;
-        committed = true;
-        break;
-      }
-      const allowed = (ALLOWED_STATUS_TRANSITIONS[kind] || {})[current] || [];
-      if (!allowed.includes(status)) {
-        return json({ ok: false, error: "invalid_transition", message: `${current} → ${status} mumkin emas`, allowed }, 409);
-      }
-      const next = { ...row, status, status_by: Number(uid), status_at: Date.now() };
-      const put = await rtdbPutIfMatch(c.dbUrl, path, next, token, snap.etag);
-      if (put.status === 412) continue;
-      await ensureOk(put, "Holat saqlanmadi");
-      row = next;
-      committed = true;
-      break;
-    }
-  }
-  if (!committed) return json({ ok: false, error: "status_busy", message: "Holat bir vaqtda o'zgardi — qayta urinib ko'ring" }, 409);
+     qaytmagan (yoki slot band qolgan)" holatini qoldirar edi. */
+  let outcome;
+  if (status === "cancelled" && kind === "order") outcome = await cancelOrderAtomic(c, token, key, by, source);
+  else if (status === "cancelled" && kind === "booking") outcome = await cancelBookingAtomic(c, token, key, by);
+  else outcome = await setStatusCas(c, token, kind, node, key, status, by, source);
+  if (outcome.error) return outcome;
 
-  const text = (KIND_TEXT[kind] || {})[status];
-  const label = row.code ? String(row.code) : "#" + (row.id != null ? row.id : key);
-  if (!repeated && text && row.uid) {
-    await sendMessage(env, row.uid, `${text}\n\n🧾 ${escHtml(label)}`).catch(() => {});
+  const row = outcome.row || {};
+  const repeated = !!outcome.repeated;
+  if (!repeated) {
+    // Egizak nusxa (Worker yozuvi ↔ SQLite nusxasi) ham shu holatga keladi
+    if (kind === "order" && status !== "cancelled") {
+      await syncOrderTwin(c, token, source, key, row, status, by).catch(() => {});
+    }
+    await afterStatusChange(env, c, token, { kind, key, source, status, row }).catch((e) =>
+      console.error("[status] xabar yuborilmadi:", e)
+    );
   }
-  return json({ ok: true, kind, key, status, node, repeated });
+  return { ok: true, kind, key, status, node, repeated, row };
+}
+
+/** Bitta yozuvning holatini CAS bilan o'zgartiradi (bekor qilishdan boshqa). */
+async function setStatusCas(c, token, kind, node, key, status, by, source) {
+  const path = `${c.root}/${node}/${key}`;
+  let twinStatus;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const snap = await rtdbGetEtag(c.dbUrl, path, token);
+    const row = snap.value;
+    if (!row || typeof row !== "object") return statusErr(404, "not_found", "Bunday buyurtma yo'q");
+    const rawStatus = clean(row.status || "new", 20);
+    let current = normKindStatus(kind, rawStatus);
+    if (kind === "order") {
+      const known = ["new", "accepted", "delivering", "delivered", "cancelled", "done", "shipped"].includes(rawStatus);
+      if (!known) {
+        return statusErr(409, "order_not_ready", "Buyurtma hali status o'zgarishiga tayyor emas");
+      }
+      // Ikki nusxadan eng ilg'or holat — haqiqiy holat
+      if (twinStatus === undefined) twinStatus = await orderTwinStatus(c, token, source, key, row).catch(() => null);
+      current = mergedOrderStatus(current, twinStatus);
+    }
+    if (!(current in ALLOWED_STATUS_TRANSITIONS[kind])) {
+      return statusErr(409, "order_not_ready", "Buyurtma hali status o'zgarishiga tayyor emas");
+    }
+    if (current === status) return { row: { ...row, status: current }, repeated: true };
+    const allowed = (ALLOWED_STATUS_TRANSITIONS[kind] || {})[current] || [];
+    if (!allowed.includes(status)) {
+      return statusErr(409, "invalid_transition", `Holat allaqachon «${statusName(kind, current)}» — bu amal mumkin emas`, {
+        allowed,
+        current,
+      });
+    }
+    const next = { ...row, status, status_by: by, status_at: Date.now() };
+    // Kafolat aynan shu lahzadan sanaladi (keyingi tahrirlar uni siljitmaydi)
+    if (isWarrantyStart(kind, status) && !row.warranty_from) next.warranty_from = next.status_at;
+    const put = await rtdbPutIfMatch(c.dbUrl, path, next, token, snap.etag);
+    if (put.status === 412) continue;
+    await ensureOk(put, "Holat saqlanmadi");
+    return { row: next, repeated: false };
+  }
+  return statusErr(409, "status_busy", "Holat bir vaqtda o'zgardi — qayta urinib ko'ring");
+}
+
+/** `pending_orders` qatoriga mos `orders/{sqlite_id}` (yoki aksincha). */
+async function findPendingTwin(c, token, sqliteId, uid) {
+  if (!uid) return null;
+  const node = await queryByChild(c, token, "pending_orders", "uid", Number(uid), 60);
+  for (const [k, row] of entriesOf(node)) {
+    if (String(row.sqlite_id || "") === String(sqliteId)) return { key: k, row };
+  }
+  return null;
+}
+
+async function orderTwinStatus(c, token, source, key, row) {
+  if (source === "pending") {
+    if (!row.sqlite_id) return null;
+    const twin = await rtdbGet(c.dbUrl, `${c.root}/orders/${row.sqlite_id}`, token);
+    return twin && twin.status ? twin.status : null;
+  }
+  const twin = await findPendingTwin(c, token, key, row.uid);
+  return twin ? twin.row.status : null;
+}
+
+async function syncOrderTwin(c, token, source, key, row, status, by) {
+  const patch = { status, status_by: by, status_at: Number(row.status_at) || Date.now() };
+  if (row.warranty_from) patch.warranty_from = row.warranty_from;
+  if (source === "pending") {
+    if (!row.sqlite_id) return;
+    const path = `${c.root}/orders/${row.sqlite_id}`;
+    if (await rtdbGet(c.dbUrl, path, token)) await rtdbPatch(c.dbUrl, path, patch, token);
+    return;
+  }
+  const twin = await findPendingTwin(c, token, key, row.uid);
+  if (twin) await rtdbPatch(c.dbUrl, `${c.root}/pending_orders/${twin.key}`, patch, token);
+}
+
+/** Holat o'zgargach: mijozga xabar va (yakunlansa) KAFOLAT boshlangani. */
+async function afterStatusChange(env, c, token, ev) {
+  const { kind, key, status, row } = ev;
+  const text = (KIND_TEXT[kind] || {})[status];
+  if (!text || !row || !row.uid) return;
+  const label = row.code
+    ? String(row.code)
+    : kind === "biled"
+      ? biledCode(key, row)
+      : "#" + (row.id != null ? row.id : key);
+  let body = `${text}\n\n🧾 ${escHtml(label)}`;
+  const extra = {};
+  if (isWarrantyStart(kind, status)) {
+    const one = kind === "order"
+      ? { orders: [customerOrderView(key, ev.source, row, null)], biled: [] }
+      : { orders: [], biled: [customerBiledView(key, row)] };
+    const list = (await warrantiesFor(c, token, one).catch(() => [])).filter((w) => w.state === "active");
+    if (list.length) {
+      body +=
+        "\n\n🛡 <b>Kafolat boshlandi!</b>\n" +
+        list.map((w) => `• ${escHtml(w.title)} — <b>${escHtml(w.period)}</b> (${fmtDate(w.end)} gacha)`).join("\n") +
+        "\n\nQolgan muddat «Kabinet → Tovar kafolati» bo'limida soniyalab sanaladi.";
+      extra.reply_markup = {
+        inline_keyboard: [[{ text: "🛡 Kafolatni ko'rish", web_app: { url: appUrl(env, "kafolat") } }]],
+      };
+    }
+  } else if (kind === "order" && status === "delivering") {
+    extra.reply_markup = {
+      inline_keyboard: [[{ text: "📦 Buyurtmani kuzatish", web_app: { url: appUrl(env, "orders") } }]],
+    };
+  }
+  await sendMessage(env, row.uid, body, extra);
 }
 
 /** Do'kon buyurtmasini bekor qiladi: status→cancelled, qoldiqni qaytarish
     (umumiy + razmer) va rezerv markerini bo'shatish — BARCHASI bitta root
-    ETag CAS ichida. Import qilingan (server-owned) yozuv kompensatsiyani
-    CHETLAB O'TMAYDI: u avval aniqlanadi va server_required qaytariladi. */
-async function cancelOrderAtomic(c, token, key, uid) {
+    ETag CAS ichida. 2.0.0: SQLite'ga ko'chirilgan (`imported`) yozuv ham
+    shu yerda bekor qilinadi — egizak nusxasi bilan birga. */
+async function cancelOrderAtomic(c, token, key, uid, source) {
   for (let attempt = 0; attempt < 10; attempt++) {
     const snap = await rtdbGetEtag(c.dbUrl, c.root, token);
     const root = snap.value && typeof snap.value === "object" ? snap.value : {};
-    const pending = root.pending_orders && typeof root.pending_orders === "object" ? root.pending_orders : {};
-    const row = pending[key];
-    if (!row || typeof row !== "object") return { error: json({ ok: false, error: "Bunday buyurtma yo'q" }, 404) };
-    if (row.imported) {
-      return { error: json({ ok: false, error: "server_required", message: "Import qilingan yozuv uchun canonical server kerak" }, 409) };
+    const pending = root.pending_orders && typeof root.pending_orders === "object" ? root.pending_orders : (root.pending_orders = {});
+    const dbNode = root.orders && typeof root.orders === "object" ? root.orders : null;
+
+    // Asosiy yozuv va uning egizagi
+    let row;
+    let pendingKey = null;
+    let dbKey = null;
+    if (source === "db") {
+      row = dbNode && dbNode[key];
+      dbKey = key;
+      for (const [k, r] of entriesOf(pending)) {
+        if (String(r.sqlite_id || "") === String(key)) {
+          pendingKey = k;
+          break;
+        }
+      }
+    } else {
+      row = pending[key];
+      pendingKey = key;
+      if (row && row.sqlite_id && dbNode && dbNode[String(row.sqlite_id)]) dbKey = String(row.sqlite_id);
     }
+    if (!row || typeof row !== "object") return statusErr(404, "not_found", "Bunday buyurtma yo'q");
+    const pRow = pendingKey ? pending[pendingKey] : null;
+    const dRow = dbKey && dbNode ? dbNode[dbKey] : null;
+
     const rawStatus = clean(row.status || "new", 20);
-    const current = normStatus(rawStatus);
     const knownOrderStatus = ["new", "accepted", "delivering", "delivered", "cancelled", "done", "shipped"].includes(rawStatus);
-    if (!knownOrderStatus || !(current in ALLOWED_STATUS_TRANSITIONS.order)) {
-      return { error: json({ ok: false, error: "order_not_ready", message: "Buyurtma hali status o'zgarishiga tayyor emas" }, 409) };
+    if (!knownOrderStatus) {
+      return statusErr(409, "order_not_ready", "Buyurtma hali status o'zgarishiga tayyor emas");
     }
+    const current = mergedOrderStatus(pRow ? pRow.status : null, dRow ? dRow.status : null);
     if (current === "cancelled") {
       /* Allaqachon bekor qilingan — qoldiq avvalgi CAS'da qaytarilgan.
          Ikki marta qaytarmaslik uchun kompensatsiyani takrorlamaymiz. */
       return { row, repeated: true };
     }
     if (!(ALLOWED_STATUS_TRANSITIONS.order[current] || []).includes("cancelled")) {
-      return { error: json({ ok: false, error: "invalid_transition", message: `${current} → cancelled mumkin emas`, allowed: ALLOWED_STATUS_TRANSITIONS.order[current] || [] }, 409) };
+      return statusErr(409, "invalid_transition", `Holat allaqachon «${statusName("order", current)}» — bekor qilib bo'lmaydi`, {
+        allowed: ALLOWED_STATUS_TRANSITIONS.order[current] || [],
+        current,
+      });
     }
 
     const products = root.catalog && root.catalog.products;
@@ -2113,10 +2118,11 @@ async function cancelOrderAtomic(c, token, key, uid) {
     const markers = root.order_reservations && typeof root.order_reservations === "object"
       ? root.order_reservations
       : (root.order_reservations = {});
-    let marker = markers[key];
-    /* Eski Worker yozuvlarida marker yo'q — qatorlardan bir marta tiklaymiz. */
+    const markerKey = pendingKey || `db_${dbKey}`;
+    let marker = markers[markerKey];
+    /* Marker yo'q (eski yozuv yoki Render buyurtmasi) — qatorlardan tiklaymiz. */
     if (!marker) {
-      const legacyLines = itemsOf(row.items).map((line) => {
+      const legacyLines = itemsOf((pRow || row).items).map((line) => {
         const product = products[String(line.product_id)];
         const sizeRow = line.size && product ? sizesOfProduct(product).find((s) => s.size === line.size) : null;
         return { ...line, _sizeKey: sizeRow ? sizeRow.key : null };
@@ -2136,39 +2142,39 @@ async function cancelOrderAtomic(c, token, key, uid) {
     }
     marker.state = "released";
     marker.releasedAt = Date.now();
-    markers[key] = marker;
+    markers[markerKey] = marker;
 
-    pending[key] = { ...row, status: "cancelled", status_by: Number(uid), status_at: Date.now() };
-    root.pending_orders = pending;
+    const stamp = { status: "cancelled", status_by: Number(uid), status_at: Date.now() };
+    if (pRow) pending[pendingKey] = { ...pRow, ...stamp };
+    if (dRow) dbNode[dbKey] = { ...dRow, ...stamp };
 
     const put = await rtdbPutIfMatch(c.dbUrl, c.root, root, token, snap.etag);
     if (put.status === 412) continue;
     await ensureOk(put, "Buyurtma bekor qilinmadi");
-    return { row: pending[key], repeated: false };
+    return { row: pRow ? pending[pendingKey] : dbNode[dbKey], repeated: false };
   }
   throw new Error("Bekor qilish band — qayta urinib ko'ring");
 }
 
 /** Navbatni bekor qiladi: status→cancelled va `slots/{date}/{key}` slotini
-    O'CHIRISH — bitta root ETag CAS ichida (Worker'ga tegishli yozuvlar).
-    Import qilingan yozuv server_required qaytaradi. */
+    O'CHIRISH — bitta root ETag CAS ichida. */
 async function cancelBookingAtomic(c, token, key, uid) {
   for (let attempt = 0; attempt < 10; attempt++) {
     const snap = await rtdbGetEtag(c.dbUrl, c.root, token);
     const root = snap.value && typeof snap.value === "object" ? snap.value : {};
     const bookings = root.bookings && typeof root.bookings === "object" ? root.bookings : {};
     const row = bookings[key];
-    if (!row || typeof row !== "object") return { error: json({ ok: false, error: "Bunday buyurtma yo'q" }, 404) };
-    if (row.imported) {
-      return { error: json({ ok: false, error: "server_required", message: "Import qilingan yozuv uchun canonical server kerak" }, 409) };
-    }
-    const current = clean(row.status || "new", 20);
+    if (!row || typeof row !== "object") return statusErr(404, "not_found", "Bunday navbat yo'q");
+    const current = normKindStatus("booking", clean(row.status || "new", 20));
     if (!(current in ALLOWED_STATUS_TRANSITIONS.booking)) {
-      return { error: json({ ok: false, error: "order_not_ready", message: "Navbat hali status o'zgarishiga tayyor emas" }, 409) };
+      return statusErr(409, "order_not_ready", "Navbat hali status o'zgarishiga tayyor emas");
     }
     if (current === "cancelled") return { row, repeated: true };
     if (!(ALLOWED_STATUS_TRANSITIONS.booking[current] || []).includes("cancelled")) {
-      return { error: json({ ok: false, error: "invalid_transition", message: `${current} → cancelled mumkin emas`, allowed: ALLOWED_STATUS_TRANSITIONS.booking[current] || [] }, 409) };
+      return statusErr(409, "invalid_transition", `Navbat allaqachon «${statusName("booking", current)}» — bekor qilib bo'lmaydi`, {
+        allowed: ALLOWED_STATUS_TRANSITIONS.booking[current] || [],
+        current,
+      });
     }
     if (row.date) {
       const slots = root.slots && typeof root.slots === "object" ? root.slots : null;
@@ -2183,61 +2189,6 @@ async function cancelBookingAtomic(c, token, key, uid) {
     return { row: bookings[key], repeated: false };
   }
   throw new Error("Bekor qilish band — qayta urinib ko'ring");
-}
-
-async function handleAdminOrderStatusLegacy(request, env) {
-  const gate = await requireAdmin(request, env);
-  if (gate.error) return gate.error;
-  const { c, body, uid } = gate;
-
-  const kind = KIND_STATUSES[clean(body.kind, 12)] ? clean(body.kind, 12) : "order";
-
-  const key = clean(body.key, 120);
-  if (!key || !/^[A-Za-z0-9_-]+$/.test(key)) {
-    return json({ ok: false, error: "Buyurtma kaliti noto'g'ri" }, 400);
-  }
-  // Faqat do'kon buyurtmalarida eski nomlar (`done`/`shipped`) uchraydi.
-  const status = kind === "order" ? normStatus(clean(body.status, 20)) : clean(body.status, 20);
-  if (!KIND_STATUSES[kind].includes(status)) {
-    return json({ ok: false, error: "Holat noto'g'ri", allowed: KIND_STATUSES[kind] }, 400);
-  }
-
-  // Qaysi tugun?
-  //   order + db      -> `orders` (SQLite nusxasi)
-  //   order + pending -> `pending_orders` (Worker qabul qilgani)
-  //   biled / booking -> o'z tuguni
-  let node;
-  if (kind === "order") {
-    node = clean(body.source, 12) === "db" ? "orders" : "pending_orders";
-  } else {
-    node = KIND_NODES[kind];
-  }
-
-  const token = await accessToken(env);
-  const path = `${c.root}/${node}/${key}`;
-  const row = await rtdbGet(c.dbUrl, path, token);
-  if (!row || typeof row !== "object") {
-    return json({ ok: false, error: "Bunday buyurtma yo'q" }, 404);
-  }
-
-  const res = await rtdbPatch(
-    c.dbUrl,
-    path,
-    { status, status_by: Number(uid), status_at: { ".sv": "timestamp" } },
-    token
-  );
-  if (!res.ok) {
-    return json({ ok: false, error: "Firebase yozmadi", status: res.status }, 502);
-  }
-
-  // Mijozga xabar — buyurtma holatini bilmay qolmasin.
-  const text = (KIND_TEXT[kind] || {})[status];
-  const label = row.code ? String(row.code) : "#" + (row.id != null ? row.id : key);
-  if (text && row.uid) {
-    await sendMessage(env, row.uid, `${text}\n\n🧾 ${escHtml(label)}`).catch(() => {});
-  }
-
-  return json({ ok: true, kind, key, status, node });
 }
 
 /** Barcha adminlarga bir xil xabar. */
@@ -2422,7 +2373,9 @@ async function handleStoryReply(request, env) {
   if (c.dbUrl) {
     try {
       const token = await accessToken(env);
-      const res = await fetch(rtdbUrl(c.dbUrl, "story_replies"), {
+      // `{root}/story_replies` — ilgari ildizsiz yozilardi va qoidalardagi
+      // tugundan (zimmer/story_replies) tashqariga, baza ildiziga tushardi.
+      const res = await fetch(rtdbUrl(c.dbUrl, `${c.root}/story_replies`), {
         method: "POST", // push — kalitni Firebase o'zi beradi
         headers: authHeaders(token, { "Content-Type": "application/json" }),
         body: JSON.stringify({
@@ -2498,10 +2451,29 @@ function orderCode(uid, clientKey) {
   return "ZM-" + out;
 }
 
-async function notifyOrder(env, c, order) {
+/** Mijoz havolasi: username bo'lsa t.me, bo'lmasa tg://user. */
+function userLink(uid, name, username) {
+  const label = escHtml(name || "Mijoz");
+  return username
+    ? `<a href="https://t.me/${escHtml(username)}">${label}</a>`
+    : `<a href="tg://user?id=${Number(uid) || 0}">${label}</a>`;
+}
+
+/** Adminlarga bir xil xabar va holat tugmalari. Kamida bittasiga yetsa — true. */
+async function sendToAdmins(env, c, text, keyboard) {
+  if (!env.BOT_TOKEN || !c.admins.length) return false;
+  let anyOk = false;
+  for (const chatId of c.admins) {
+    const ok = await sendMessage(env, chatId, text, keyboard ? { reply_markup: keyboard } : undefined);
+    anyOk = anyOk || ok;
+  }
+  return anyOk;
+}
+
+async function notifyOrder(env, c, order, key) {
   if (!env.BOT_TOKEN || !c.admins.length) return false;
 
-  const itemLines = order.items
+  const itemLines = itemsOf(order.items)
     .map(
       (i) =>
         // Razmer nom bilan yonma-yon: admin buyurtmani o'qib darhol
@@ -2515,44 +2487,104 @@ async function notifyOrder(env, c, order) {
   if (order.delivery_info) meta.push(`🚚 ${escHtml(order.delivery_info)}`);
   if (order.payment_method) meta.push(`💳 To'lov: <b>${escHtml(order.payment_method)}</b>`);
 
-  const who = order.username
-    ? `<a href="https://t.me/${escHtml(order.username)}">${escHtml(order.customer_name)}</a>`
-    : `<a href="tg://user?id=${order.uid}">${escHtml(order.customer_name)}</a>`;
-
+  /* «Mijoz ID» qatori ATAYLAB: admin shu xabarga «Reply» qilsa javob
+     to'g'ridan mijozga boradi (bot mijoz↔admin yozishmasi). */
   const adminText =
-    "🔔 <b>Yangi buyurtma</b> (Mini App — server o'chiq)\n\n" +
-    `🆔 <code>${order.code}</code>\n` +
-    `👤 ${who}\n` +
+    "🔔 <b>Yangi buyurtma</b>\n\n" +
+    `🆔 <code>${escHtml(order.code)}</code>\n` +
+    `👤 ${userLink(order.uid, order.customer_name, order.username)}\n` +
     `📞 ${escHtml(order.phone)}\n` +
     `📍 ${escHtml(order.address)}\n` +
     (meta.length ? meta.join("\n") + "\n" : "") +
     "\n" +
     itemLines +
-    `\n\n💰 Jami: <b>${fmtPrice(order.total)}</b>\n\n` +
-    "<i>Bot ko'tarilganda buyurtma bazaga o'zi ko'chiriladi.</i>";
+    `\n\n💰 Jami: <b>${fmtPrice(order.total)}</b>\n` +
+    `👤 Mijoz ID: <code>${Number(order.uid) || 0}</code>\n\n` +
+    "<i>↩️ Mijozga yozish uchun shu xabarga «Reply» qiling.</i>";
 
-  let anyOk = false;
-  for (const chatId of c.admins) {
-    const ok = await sendMessage(env, chatId, adminText);
-    anyOk = anyOk || ok;
-  }
+  const anyOk = await sendToAdmins(env, c, adminText, key ? statusKeyboard("order", key, "pending", "new") : null);
 
-  // Mijozga tasdiq
+  // Mijozga tasdiq — holatni kuzatish tugmasi bilan
   await sendMessage(
     env,
     String(order.uid),
     "✅ <b>Buyurtmangiz qabul qilindi!</b>\n\n" +
-      `🆔 <code>${order.code}</code>\n` +
+      `🆔 <code>${escHtml(order.code)}</code>\n` +
       itemLines +
       `\n\n💰 Jami: <b>${fmtPrice(order.total)}</b>\n` +
       `📍 ${escHtml(order.address)}\n\n` +
-      "Operator tez orada bog'lanadi."
+      "Operator tez orada bog'lanadi. Holat o'zgarishi shu yerga keladi 🔔",
+    { reply_markup: { inline_keyboard: [[{ text: "📦 Buyurtmani kuzatish", web_app: { url: appUrl(env, "orders") } }]] } }
   );
 
   return anyOk;
 }
 
-async function sendMessage(env, chatId, text) {
+/** Bi-LED o'rnatish buyurtmasi — adminga (tugmalar bilan) va mijozga. */
+async function notifyBiled(env, c, token, key, rec, user) {
+  const parts = [rec.biled_name, rec.shroud_name, rec.color_name].filter(Boolean).map(escHtml);
+  const name = rec.name || [user && user.first_name, user && user.last_name].filter(Boolean).join(" ");
+  const adminText =
+    "🔥 <b>Yangi Bi-LED buyurtma</b>\n\n" +
+    `🆔 <code>${escHtml(rec.code || biledCode(key, rec))}</code>\n` +
+    `👤 ${userLink(rec.uid, name, user && user.username)}\n` +
+    `📞 ${escHtml(rec.phone || "")}\n` +
+    `🚗 ${escHtml(rec.car_name || "")}\n` +
+    `💡 ${parts.join(" · ")}\n` +
+    (rec.comment ? `💬 ${escHtml(rec.comment)}\n` : "") +
+    `\n💰 Jami: <b>${fmtPrice(rec.total)}</b>\n` +
+    `👤 Mijoz ID: <code>${Number(rec.uid) || 0}</code>\n\n` +
+    "<i>↩️ Mijozga yozish uchun shu xabarga «Reply» qiling.</i>";
+  const ok = await sendToAdmins(env, c, adminText, statusKeyboard("biled", key, "pending", "new"));
+  if (ok) await rtdbPatch(c.dbUrl, `${c.root}/biled_orders/${key}`, { notified_admin: true }, token).catch(() => {});
+  await sendMessage(
+    env,
+    String(rec.uid),
+    "✅ <b>Bi-LED buyurtmangiz qabul qilindi!</b>\n\n" +
+      `🆔 <code>${escHtml(rec.code || biledCode(key, rec))}</code>\n` +
+      `🚗 ${escHtml(rec.car_name || "")}\n💡 ${parts.join(" · ")}\n` +
+      `💰 Taxminiy narx: <b>${fmtPrice(rec.total)}</b>\n\n` +
+      "Usta tez orada bog'lanib, o'rnatish vaqtini kelishadi 🔧\n" +
+      "🛡 O'rnatish topshirilgach 1 yillik kafolat shu botda boshlanadi.",
+    { reply_markup: { inline_keyboard: [[{ text: "📦 Buyurtmani kuzatish", web_app: { url: appUrl(env, "biled") } }]] } }
+  );
+  return ok;
+}
+
+/** Navbat — adminga (tugmalar bilan) va mijozga. */
+async function notifyBooking(env, c, token, key, rec, user) {
+  const when = `${fmtDayIso(rec.date)} · ${escHtml(rec.time || "")}`;
+  const adminText =
+    "🗓 <b>Yangi navbat</b>\n\n" +
+    `🔧 ${escHtml(rec.service_name || "Xizmat")}\n` +
+    `📅 ${when}\n` +
+    `👤 ${userLink(rec.uid, rec.name, user && user.username)}\n` +
+    `📞 ${escHtml(rec.phone || "")}\n` +
+    (rec.price ? `💰 ${fmtPrice(rec.price)}\n` : "") +
+    `👤 Mijoz ID: <code>${Number(rec.uid) || 0}</code>\n\n` +
+    "<i>↩️ Mijozga yozish uchun shu xabarga «Reply» qiling.</i>";
+  const ok = await sendToAdmins(env, c, adminText, statusKeyboard("booking", key, "pending", "new"));
+  if (ok) await rtdbPatch(c.dbUrl, `${c.root}/bookings/${key}`, { notified_admin: true }, token).catch(() => {});
+  await sendMessage(
+    env,
+    String(rec.uid),
+    "✅ <b>Navbat so'rovingiz qabul qilindi!</b>\n\n" +
+      `🔧 ${escHtml(rec.service_name || "Xizmat")}\n📅 ${when}\n\n` +
+      "Usta vaqtni tasdiqlagach shu yerga xabar keladi 🔔",
+    { reply_markup: { inline_keyboard: [[{ text: "🗓 Navbatlarim", web_app: { url: appUrl(env, "bookings") } }]] } }
+  );
+  return ok;
+}
+
+/** Bi-LED buyurtma kodi: yozuvdagi `code`, bo'lmasa kalitdan (eski yozuvlar). */
+function biledCode(key, row) {
+  if (row && row.code) return String(row.code);
+  const k = String(key || "");
+  return k.startsWith("bl_") ? "BL-" + shortHash(k).toUpperCase() : "#" + (row && row.id != null ? row.id : k);
+}
+
+/** `extra` — `reply_markup`, `reply_parameters` va h.k. (ixtiyoriy). */
+async function sendMessage(env, chatId, text, extra) {
   try {
     const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
       method: "POST",
@@ -2562,6 +2594,7 @@ async function sendMessage(env, chatId, text) {
         text,
         parse_mode: "HTML",
         disable_web_page_preview: true,
+        ...(extra || {}),
       }),
     });
     const data = await res.json();
@@ -3062,4 +3095,1165 @@ function escHtml(text) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+// =====================================================================
+//  TELEGRAM BOT — WEBHOOK (2.0.0)
+//
+//  NEGA BOT ENDI SHU YERDA
+//  Render bepul tarifi pul so'ray boshladi. Botga alohida server kerak
+//  emas: Telegram har xabarni shu Worker'ga (webhook) yuboradi. Worker
+//  uxlamaydi, bepul (kuniga 100 000 so'rov) va karta talab qilmaydi.
+//
+//  ULASH: kod Cloudflare'ga qo'yilgach Mini App bir marta ochilsa (yoki
+//  brauzerda `/setup`) webhook O'ZI o'rnatiladi. Python bot (bot.py) endi
+//  shart emas — u ishga tushsa ham Worker webhook'ini o'chirmaydi.
+//
+//  Bot nimalarni qiladi:
+//    • /start — salomlashish, menyu, raqamni ulashish (bir marta);
+//    • 📦 buyurtmalar holati, 🛡 kafolat (qolgan muddat), ☎ aloqa;
+//    • adminga yangi buyurtma/Bi-LED/navbat — HOLAT TUGMALARI bilan;
+//    • mijoz yozgan xabar adminga boradi, admin «Reply» qilsa — mijozga.
+// =====================================================================
+
+const BOT_APP_URL = "https://anvarjonaxtamov70.github.io/Uzbrovv/";
+const BOT_DEFAULT_PHONE = "+998 95 370 74 71";
+const BOT_DEFAULT_TG = "Mehroj088";
+
+function botConf(env) {
+  const app = clean(env.MINI_APP_URL, 300);
+  return {
+    app: /^https:\/\//.test(app) ? app : BOT_APP_URL,
+    name: clean(env.SHOP_NAME, 40) || "Uzbrovv",
+    phone: clean(env.SHOP_PHONE, 40) || BOT_DEFAULT_PHONE,
+    telegram: clean(env.SHOP_TELEGRAM || env.PAY_ADMIN_USERNAME, 40).replace(/^@+/, "") || BOT_DEFAULT_TG,
+    city: clean(env.DELIVERY_CITY, 60) || "Samarqand",
+  };
+}
+
+/** Mini App manzili; `page` — ochilganda darhol ko'rsatiladigan bo'lim. */
+function appUrl(env, page) {
+  const base = botConf(env).app;
+  if (!page) return base;
+  return base + (base.indexOf("?") === -1 ? "?" : "&") + "p=" + encodeURIComponent(page);
+}
+
+/** Render `/api/config` o'rnini bosuvchi sozlamalar (faqat imzolangan /me da). */
+function workerConfig(env) {
+  const b = botConf(env);
+  return {
+    currency: clean(env.CURRENCY, 12) || "so'm",
+    pay_card_number: clean(env.PAY_CARD_NUMBER, 40),
+    pay_card_holder: clean(env.PAY_CARD_HOLDER, 80),
+    pay_admin_username: clean(env.PAY_ADMIN_USERNAME || env.SHOP_TELEGRAM, 40).replace(/^@+/, "") || b.telegram,
+    shop_phone: b.phone,
+    delivery_city: b.city,
+    ai_enabled: false,
+  };
+}
+
+async function tgCall(env, method, payload) {
+  if (!env.BOT_TOKEN) return { ok: false, description: "BOT_TOKEN sozlanmagan" };
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    });
+    const data = await res.json().catch(() => null);
+    return data && typeof data === "object" ? data : { ok: false, description: "bo'sh javob" };
+  } catch (error) {
+    return { ok: false, description: String(error).slice(0, 200) };
+  }
+}
+
+/** Webhook siri — BOT_TOKEN dan hosil qilinadi (alohida sozlash shart emas).
+ *  Telegram uni har so'rovda sarlavhada yuboradi; begona so'rov o'tmaydi. */
+async function webhookSecret(env) {
+  const own = clean(env.WEBHOOK_SECRET, 256).replace(/[^A-Za-z0-9_-]/g, "");
+  if (own.length >= 16) return own;
+  return (await sha256Hex("uzbrovv-webhook:" + String(env.BOT_TOKEN || ""))).slice(0, 48);
+}
+
+const BOT_COMMANDS = [
+  { command: "start", description: "Bosh menyu" },
+  { command: "app", description: "Do'konni ochish" },
+  { command: "buyurtmalarim", description: "Buyurtmalarim holati" },
+  { command: "kafolat", description: "Tovar kafolati — qolgan muddat" },
+  { command: "aloqa", description: "Biz bilan aloqa" },
+  { command: "id", description: "Telegram ID" },
+];
+const ADMIN_COMMANDS = [{ command: "admin", description: "Boshqaruv: yangi buyurtmalar" }];
+
+let _hookOkUntil = 0;
+let _hookBusy = null;
+
+/** Fonda (javobni kechiktirmasdan) bot ulanganini tekshiradi. */
+function keepWebhook(ctx, env, origin) {
+  if (!ctx || typeof ctx.waitUntil !== "function") return;
+  if (!env.BOT_TOKEN || String(env.BOT_WEBHOOK || "").trim().toLowerCase() === "off") return;
+  if (Date.now() < _hookOkUntil) return;
+  ctx.waitUntil(ensureWebhook(env, origin));
+}
+
+async function ensureWebhook(env, origin) {
+  if (_hookBusy) return _hookBusy;
+  _hookBusy = (async () => {
+    const info = await tgCall(env, "getWebhookInfo", {});
+    if (!info.ok) {
+      _hookOkUntil = Date.now() + 60 * 1000;
+      return;
+    }
+    if ((info.result || {}).url === `${origin}/tg`) {
+      _hookOkUntil = Date.now() + 30 * 60 * 1000;
+      return;
+    }
+    const out = await setupBot(env, origin);
+    _hookOkUntil = Date.now() + (out.webhook && out.webhook.ok ? 30 * 60 * 1000 : 60 * 1000);
+  })()
+    .catch((error) => {
+      console.error("[bot] webhook tekshirilmadi:", error);
+      _hookOkUntil = Date.now() + 60 * 1000;
+    })
+    .finally(() => {
+      _hookBusy = null;
+    });
+  return _hookBusy;
+}
+
+async function setupBot(env, origin) {
+  const c = cfg(env);
+  const out = {};
+  out.webhook = await tgCall(env, "setWebhook", {
+    url: `${origin}/tg`,
+    secret_token: await webhookSecret(env),
+    allowed_updates: ["message", "callback_query"],
+    max_connections: 40,
+  });
+  out.commands = await tgCall(env, "setMyCommands", { commands: BOT_COMMANDS });
+  out.admin_commands = 0;
+  for (const id of c.admins) {
+    const r = await tgCall(env, "setMyCommands", {
+      commands: BOT_COMMANDS.concat(ADMIN_COMMANDS),
+      scope: { type: "chat", chat_id: Number(id) },
+    });
+    if (r.ok) out.admin_commands++;
+  }
+  out.menu = await tgCall(env, "setChatMenuButton", {
+    menu_button: { type: "web_app", text: "Do'kon", web_app: { url: botConf(env).app } },
+  });
+  return out;
+}
+
+/** GET /setup — botni shu Worker'ga ulaydi. Takror ochilsa zarari yo'q. */
+async function handleBotSetup(request, env) {
+  if (!env.BOT_TOKEN) return json({ ok: false, error: "BOT_TOKEN sozlanmagan" }, 500);
+  const origin = new URL(request.url).origin;
+  const out = await setupBot(env, origin);
+  const ok = !!(out.webhook && out.webhook.ok);
+  _hookOkUntil = ok ? Date.now() + 30 * 60 * 1000 : 0;
+  const [info, me] = await Promise.all([tgCall(env, "getWebhookInfo", {}), tgCall(env, "getMe", {})]);
+  const r = info.result || {};
+  return json(
+    {
+      ok,
+      message: ok
+        ? `✅ Bot ulandi: @${(me.result && me.result.username) || "bot"} — Telegram'da /start yuboring.`
+        : "❌ Ulanmadi: " + ((out.webhook && out.webhook.description) || "noma'lum xato"),
+      webhook: { url: r.url || "", pending: r.pending_update_count || 0, last_error: r.last_error_message || null },
+      commands: !!(out.commands && out.commands.ok),
+      admin_commands: out.admin_commands,
+      menu_button: !!(out.menu && out.menu.ok),
+      version: VERSION,
+    },
+    ok ? 200 : 502
+  );
+}
+
+/** POST /tg — Telegram yangilanishi. Javob DARHOL qaytadi, ish fonda. */
+async function handleTelegramWebhook(request, env, ctx) {
+  if (request.method !== "POST") return new Response("ok");
+  if (!env.BOT_TOKEN) return new Response("BOT_TOKEN yo'q", { status: 500 });
+  const got = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
+  if (!got || !constantTimeEqual(got, await webhookSecret(env))) {
+    return new Response("forbidden", { status: 401 });
+  }
+  const update = await readJson(request);
+  const origin = new URL(request.url).origin;
+  const job = processUpdate(update, env, origin).catch((error) => console.error("[bot] update:", error));
+  if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job);
+  else await job;
+  return new Response("ok");
+}
+
+/* Eski (Python) bot klaviaturasidagi yozuvlar ham shu yerda tanilad —
+   mijozning chatida eski tugmalar qolgan bo'lsa ular ishlayveradi. */
+const BOT_TEXT_ROUTES = {
+  "do'konni ochish": "app",
+  "do'kon": "app",
+  dokon: "app",
+  savatcha: "app",
+  "do'konga o'tish": "app",
+  buyurtmalarim: "buyurtmalarim",
+  "mening navbatlarim": "buyurtmalarim",
+  navbatlarim: "buyurtmalarim",
+  kafolatim: "kafolat",
+  kafolat: "kafolat",
+  "tovar kafolati": "kafolat",
+  aloqa: "aloqa",
+  "biz bilan aloqa": "aloqa",
+  "admin panel": "admin",
+  boshqaruv: "admin",
+  "navbat olish": "navbat",
+  keyinroq: "later",
+  "bekor qilish": "later",
+  menyu: "menu",
+  "bosh menyu": "menu",
+};
+
+function normBtn(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[‘’ʼʻ`´]/g, "'")
+    .replace(/[^\p{L}\p{N}' ]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function processUpdate(update, env, origin) {
+  if (!update || typeof update !== "object") return;
+  if (update.callback_query) return botCallback(update.callback_query, env);
+
+  const msg = update.message;
+  if (!msg || !msg.from || !msg.chat || msg.chat.type !== "private" || msg.from.is_bot) return;
+  const c = cfg(env);
+  const uid = String(msg.from.id);
+  const admin = c.admins.includes(uid);
+  // ⛔ Bloklangan mijozga bot javob bermaydi (Mini App'dagi kabi)
+  if (!admin && (await isBlockedUid(uid, env))) return;
+
+  try {
+    if (msg.contact) return await botContact(msg, env, c);
+    const text = typeof msg.text === "string" ? msg.text.trim() : "";
+
+    if (text.startsWith("/")) {
+      const [raw, ...rest] = text.split(/\s+/);
+      const cmd = raw.slice(1).split("@")[0].toLowerCase();
+      return await botCommand(cmd, rest.join(" ").trim(), msg, env, c, admin);
+    }
+    const route = text ? BOT_TEXT_ROUTES[normBtn(text)] : null;
+    if (route) return await botCommand(route, "", msg, env, c, admin);
+
+    // Admin mijoz xabariga (yoki buyurtma xabariga) «Reply» qildi — javob mijozga
+    if (admin && msg.reply_to_message) {
+      const target = relayTarget(msg.reply_to_message);
+      if (target) return await botAdminReply(msg, target, env);
+    }
+    if (admin) return await botAdminHint(uid, env);
+    return await botRelayToAdmins(msg, env, c);
+  } catch (error) {
+    console.error("[bot] xabar ishlanmadi:", error);
+    await sendMessage(env, uid, "⚠️ Vaqtinchalik xatolik — birozdan keyin qayta urinib ko'ring.");
+  }
+}
+
+async function botCommand(cmd, arg, msg, env, c, admin) {
+  const uid = String(msg.from.id);
+  switch (cmd) {
+    case "start":
+      return botStart(msg, env, c, admin, arg);
+    case "app":
+    case "dokon":
+    case "shop":
+    case "savatcha":
+      return botOpenApp(uid, env);
+    case "menu":
+    case "help":
+    case "yordam":
+      return botMenu(uid, env, admin);
+    case "buyurtmalarim":
+    case "buyurtma":
+    case "orders":
+    case "navbatlarim":
+      return botOrders(uid, env, c);
+    case "kafolat":
+    case "kafolatim":
+    case "warranty":
+      return botWarranty(uid, env, c);
+    case "aloqa":
+    case "contact":
+      return botContactInfo(uid, env);
+    case "navbat":
+      return botOpenApp(uid, env, "services", "🗓 Xizmat va qulay vaqtni tanlang — 3 qadamda navbat olasiz 👇");
+    case "id":
+      return sendMessage(
+        env,
+        uid,
+        `🆔 Telegram ID: <code>${uid}</code>` + (admin ? "\n👑 Siz adminsiz." : "")
+      );
+    case "admin":
+      return admin
+        ? botAdmin(uid, env, c)
+        : sendMessage(env, uid, `⛔ Bu bo'lim faqat adminlar uchun.\n🆔 ID: <code>${uid}</code>`);
+    case "katalog":
+    case "stories":
+    case "adminlar":
+    case "firebase":
+    case "ai":
+      if (admin) {
+        return sendMessage(env, uid, "⚙ Bu amallar endi Mini App «Boshqaruv» panelida — bir bosishda 👇", {
+          reply_markup: { inline_keyboard: [[{ text: "⚙ Boshqaruv paneli", web_app: { url: appUrl(env, "admin") } }]] },
+        });
+      }
+      return botMenu(uid, env, false, "Bunday buyruq yo'q. Quyidagilardan birini tanlang 👇");
+    case "later":
+      await sendMessage(env, uid, "Mayli 🙂 Raqamni keyin ham ulashishingiz mumkin.", {
+        reply_markup: { remove_keyboard: true },
+      });
+      return botMenu(uid, env, admin);
+    default:
+      return botMenu(uid, env, admin, "Bunday buyruq yo'q. Quyidagilardan birini tanlang 👇");
+  }
+}
+
+function menuKeyboard(env, admin) {
+  const rows = [
+    [{ text: "🛍 Do'konni ochish", web_app: { url: appUrl(env) } }],
+    [
+      { text: "📦 Buyurtmalarim", callback_data: "m|orders" },
+      { text: "🛡 Kafolatim", callback_data: "m|kafolat" },
+    ],
+    [
+      { text: "🗓 Navbat olish", web_app: { url: appUrl(env, "services") } },
+      { text: "☎ Aloqa", callback_data: "m|aloqa" },
+    ],
+  ];
+  if (admin) rows.push([{ text: "⚙ Boshqaruv paneli", web_app: { url: appUrl(env, "admin") } }]);
+  return { inline_keyboard: rows };
+}
+
+function contactKeyboard() {
+  return {
+    keyboard: [[{ text: "📱 Raqamni ulashish", request_contact: true }], [{ text: "Keyinroq" }]],
+    resize_keyboard: true,
+    one_time_keyboard: true,
+    input_field_placeholder: "Raqamni ulashing",
+  };
+}
+
+function botMenu(uid, env, admin, lead) {
+  return sendMessage(env, uid, lead || "Quyidagilardan birini tanlang 👇", { reply_markup: menuKeyboard(env, admin) });
+}
+
+function botOpenApp(uid, env, page, lead) {
+  const label = page === "services" ? "🗓 Xizmatni tanlash" : "🛍 Do'konni ochish";
+  return sendMessage(env, uid, lead || "Do'kon bir bosishda ochiladi 👇", {
+    reply_markup: { inline_keyboard: [[{ text: label, web_app: { url: appUrl(env, page) } }]] },
+  });
+}
+
+/** Mijozni eslab qoladi: `users/{uid}/profile` (ism va telefon USTIDAN yozilmaydi). */
+async function rememberUser(c, token, from) {
+  const uid = String(from.id);
+  const path = `${c.root}/users/${uid}/profile`;
+  const existing = (await rtdbGet(c.dbUrl, path, token)) || {};
+  const patch = {};
+  const tgName = clean([from.first_name, from.last_name].filter(Boolean).join(" "), 120);
+  if (!existing.uid) patch.uid = Number(uid);
+  if (!existing.name && tgName) patch.name = tgName;
+  const username = clean(from.username, 60);
+  if (username && existing.username !== username) patch.username = username;
+  if (!existing.source) patch.source = "bot";
+  if (Object.keys(patch).length) {
+    patch.updatedAt = { ".sv": "timestamp" };
+    await rtdbPatch(c.dbUrl, path, patch, token).catch(() => {});
+  }
+  return { ...existing, ...patch };
+}
+
+async function botStart(msg, env, c, admin, payload) {
+  const uid = String(msg.from.id);
+  let profile = {};
+  try {
+    profile = await rememberUser(c, await accessToken(env), msg.from);
+  } catch (_) {}
+  const b = botConf(env);
+  const first = escHtml(String(msg.from.first_name || profile.name || "").split(" ")[0] || "do'stim");
+  await sendMessage(
+    env,
+    uid,
+    `👋 Assalomu alaykum, <b>${first}</b>!\n\n` +
+      `<b>${escHtml(b.name)}</b> — avtotuning: Bi-LED linzalar, lampalar, aksessuarlar va professional o'rnatish.\n\n` +
+      "🛍 Do'konni oching — tanlang va buyurtma bering.\n" +
+      "🔔 Buyurtma holati va 🛡 kafolat muddati shu chatga keladi.",
+    { reply_markup: menuKeyboard(env, admin) }
+  );
+  if (!profile.phone) {
+    await sendMessage(
+      env,
+      uid,
+      "📱 Raqamingizni ulashing — buyurtma va kafolat shu raqamga bog'lanadi (bir marta).",
+      { reply_markup: contactKeyboard() }
+    );
+  }
+  const p = String(payload || "").toLowerCase();
+  if (p === "kafolat" || p === "warranty") return botWarranty(uid, env, c);
+  if (p === "orders" || p === "buyurtmalarim") return botOrders(uid, env, c);
+}
+
+async function botContact(msg, env, c) {
+  const uid = String(msg.from.id);
+  const ct = msg.contact;
+  if (!ct || (ct.user_id && String(ct.user_id) !== uid)) {
+    return sendMessage(env, uid, "Iltimos, o'zingizning raqamingizni «📱 Raqamni ulashish» tugmasi orqali yuboring.");
+  }
+  const digits = String(ct.phone_number || "").replace(/\D/g, "");
+  const phone = normalizePhone(digits) || (digits ? "+" + digits.slice(0, 15) : null);
+  if (!phone) return sendMessage(env, uid, "Raqam o'qilmadi — qayta urinib ko'ring.");
+  const token = await accessToken(env);
+  const path = `${c.root}/users/${uid}/profile`;
+  const existing = (await rtdbGet(c.dbUrl, path, token)) || {};
+  const name =
+    existing.name ||
+    clean([ct.first_name || msg.from.first_name, ct.last_name || msg.from.last_name].filter(Boolean).join(" "), 120) ||
+    "Mijoz";
+  const res = await rtdbPatch(
+    c.dbUrl,
+    path,
+    {
+      uid: Number(uid),
+      name,
+      phone,
+      username: clean(msg.from.username, 60) || existing.username || "",
+      source: existing.source || "bot",
+      updatedAt: { ".sv": "timestamp" },
+    },
+    token
+  );
+  if (!res.ok) return sendMessage(env, uid, "⚠️ Raqam saqlanmadi — birozdan keyin qayta urinib ko'ring.");
+  await sendMessage(env, uid, `✅ Rahmat! Raqamingiz saqlandi: <code>${escHtml(phone)}</code>`, {
+    reply_markup: { remove_keyboard: true },
+  });
+  if (!existing.phone) {
+    await sendToAdmins(
+      env,
+      c,
+      `👤 <b>Yangi mijoz</b>\n${userLink(uid, name, msg.from.username)}\n📞 ${escHtml(phone)}\n👤 Mijoz ID: <code>${uid}</code>`
+    );
+  }
+  return botMenu(uid, env, c.admins.includes(uid));
+}
+
+function botContactInfo(uid, env) {
+  const b = botConf(env);
+  const lines = ["☎ <b>Biz bilan aloqa</b>", ""];
+  if (b.phone) lines.push(`📞 ${escHtml(b.phone)}`);
+  if (b.telegram) lines.push(`✈️ @${escHtml(b.telegram)}`);
+  lines.push(`📍 ${escHtml(b.city)}`, "", "💬 Savolingizni shu chatga yozing — admin shu yerda javob beradi.");
+  const kb = b.telegram ? { inline_keyboard: [[{ text: "✈️ Telegramda yozish", url: `https://t.me/${b.telegram}` }]] } : undefined;
+  return sendMessage(env, uid, lines.join("\n"), kb ? { reply_markup: kb } : undefined);
+}
+
+function trimText(text, max) {
+  const s = String(text || "");
+  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
+
+async function botOrders(uid, env, c) {
+  const data = await customerData(c, await accessToken(env), uid);
+  const lines = [];
+  for (const o of data.orders.slice(0, 5)) {
+    const names = o.items.map((i) => i.name).filter(Boolean).join(", ");
+    lines.push(
+      `📦 <b>${escHtml(o.code)}</b> · ${escHtml(statusName("order", o.status))}\n` +
+        `<i>${escHtml(trimText(names, 70) || "Tovarlar")} — ${fmtPrice(o.total)}</i>`
+    );
+  }
+  for (const b of data.biled.slice(0, 3)) {
+    lines.push(
+      `🔥 <b>${escHtml(b.code)}</b> · ${escHtml(statusName("biled", b.status))}\n` +
+        `<i>${escHtml(b.car_name || "Mashina")} — ${escHtml(b.biled_name || "Bi-LED")}</i>`
+    );
+  }
+  for (const k of data.bookings.slice(0, 3)) {
+    lines.push(
+      `🗓 <b>${escHtml(k.service_name)}</b> · ${escHtml(statusName("booking", k.status))}\n` +
+        `<i>${fmtDayIso(k.date)} · ${escHtml(k.time)}</i>`
+    );
+  }
+  const text = lines.length
+    ? "🧾 <b>Buyurtmalaringiz</b>\n\n" + lines.join("\n\n")
+    : "📭 Hozircha buyurtma yo'q.\n\nDo'kondan tanlab, birinchi buyurtmangizni bering 🛍";
+  return sendMessage(env, uid, text, {
+    reply_markup: {
+      inline_keyboard: [[
+        lines.length
+          ? { text: "📦 Batafsil — ilovada", web_app: { url: appUrl(env, "orders") } }
+          : { text: "🛍 Do'konni ochish", web_app: { url: appUrl(env) } },
+      ]],
+    },
+  });
+}
+
+/** Qolgan vaqt — inson tilida: «364 kun 5 soat» / «3 soat 12 daqiqa». */
+function leftText(ms) {
+  const m = Math.max(0, Math.floor(ms / 60000));
+  const d = Math.floor(m / 1440);
+  const h = Math.floor((m % 1440) / 60);
+  return d > 0 ? `${d} kun ${h} soat` : `${h} soat ${m % 60} daqiqa`;
+}
+
+async function botWarranty(uid, env, c) {
+  const token = await accessToken(env);
+  const list = await warrantiesFor(c, token, await customerData(c, token, uid));
+  const now = Date.now();
+  const out = ["🛡 <b>Tovar kafolati</b>"];
+  const act = list.filter((w) => w.state === "active");
+  const pen = list.filter((w) => w.state === "pending");
+  const exp = list.filter((w) => w.state === "expired");
+  if (!list.length) {
+    out.push(
+      "",
+      "Hozircha kafolatli tovar yo'q.",
+      "Bi-LED linza xarid qilsangiz yoki o'rnattirsangiz — 1 yillik kafolat shu yerda soniyalab sanala boshlaydi."
+    );
+  }
+  act.forEach((w) =>
+    out.push(
+      "",
+      `✅ <b>${escHtml(w.title)}</b>${w.qty > 1 ? " ×" + w.qty : ""}`,
+      `⏳ Qoldi: <b>${leftText(w.end - now)}</b>`,
+      `📅 ${fmtDate(w.start)} → ${fmtDate(w.end)} · ${escHtml(w.period)}`,
+      `🔖 <code>${escHtml(w.id)}</code>`
+    )
+  );
+  pen.forEach((w) =>
+    out.push("", `⏳ <b>${escHtml(w.title)}</b> — kutilmoqda`, `<i>Topshirilgach ${escHtml(w.period)}lik kafolat boshlanadi.</i>`)
+  );
+  if (exp.length) out.push("", "⌛ Muddati tugagan: " + exp.map((w) => escHtml(w.title)).join(", "));
+  return sendMessage(env, uid, out.join("\n"), {
+    reply_markup: { inline_keyboard: [[{ text: "🛡 Kafolatni ochish", web_app: { url: appUrl(env, "kafolat") } }]] },
+  });
+}
+
+/** Admin uchun qisqa holat: nechta yangi yozuv kutib turibdi. */
+async function botAdmin(uid, env, c) {
+  const token = await accessToken(env);
+  const fresh = async (node, child, kind) => {
+    try {
+      const res = await fetch(
+        `${c.dbUrl}/${c.root}/${node}.json?orderBy=${encodeURIComponent(JSON.stringify(child))}&limitToLast=100`,
+        { headers: authHeaders(token) }
+      );
+      if (!res.ok) return "—";
+      return entriesOf(await res.json()).filter(([, r]) => normKindStatus(kind, r.status) === "new").length;
+    } catch (_) {
+      return "—";
+    }
+  };
+  const [o, b, k] = await Promise.all([
+    fresh("pending_orders", "createdAt", "order"),
+    fresh("biled_orders", "createdAt", "biled"),
+    fresh("bookings", "$key", "booking"),
+  ]);
+  return sendMessage(
+    env,
+    uid,
+    "⚙ <b>Boshqaruv</b>\n\n" +
+      `🆕 Yangi buyurtma: <b>${o}</b>\n🔥 Yangi Bi-LED: <b>${b}</b>\n🗓 Kutilayotgan navbat: <b>${k}</b>\n\n` +
+      "• Har yangi buyurtma shu chatga <b>holat tugmalari</b> bilan keladi.\n" +
+      "• «🎉 Yetkazildi» / «✨ Topshirildi» bosilsa — mijozning 🛡 kafolati boshlanadi.\n" +
+      "• Mijoz xabariga «Reply» qilsangiz — javob to'g'ridan mijozga boradi.",
+    { reply_markup: { inline_keyboard: [[{ text: "⚙ Boshqaruv paneli", web_app: { url: appUrl(env, "admin") } }]] } }
+  );
+}
+
+/* --------------------------------------------- mijoz ↔ admin yozishmasi */
+const _relayHits = new Map();
+const _ackAt = new Map();
+
+function capMap(map, max) {
+  if (map.size > max) map.clear();
+}
+
+/** Admin javob berayotgan xabardan mijoz ID'sini topadi. */
+function relayTarget(reply) {
+  const text = String((reply && (reply.text || reply.caption)) || "");
+  const m = /Mijoz ID:\s*(\d{5,20})/.exec(text);
+  return m ? m[1] : null;
+}
+
+async function botRelayToAdmins(msg, env, c) {
+  const uid = String(msg.from.id);
+  if (!c.admins.length) return botMenu(uid, env, false, "Quyidagilardan birini tanlang 👇");
+
+  // Spamdan himoya: 10 daqiqada ko'pi bilan 15 ta xabar adminga o'tadi
+  const now = Date.now();
+  const hit = _relayHits.get(uid) || { n: 0, t: now };
+  if (now - hit.t > 10 * 60 * 1000) {
+    hit.n = 0;
+    hit.t = now;
+  }
+  hit.n++;
+  capMap(_relayHits, 5000);
+  _relayHits.set(uid, hit);
+  if (hit.n > 15) return;
+
+  const head =
+    "💬 <b>Mijozdan xabar</b>\n" +
+    `👤 ${userLink(uid, [msg.from.first_name, msg.from.last_name].filter(Boolean).join(" "), msg.from.username)}` +
+    (msg.from.username ? ` (@${escHtml(msg.from.username)})` : "") +
+    `\n👤 Mijoz ID: <code>${uid}</code>`;
+  const foot = "\n\n<i>↩️ Javob berish uchun shu xabarga «Reply» qiling.</i>";
+
+  let delivered = false;
+  if (typeof msg.text === "string") {
+    delivered = await sendToAdmins(env, c, head + `\n\n<blockquote>${escHtml(msg.text.slice(0, 3500))}</blockquote>` + foot);
+  } else {
+    // Rasm, video, ovoz... — asl xabar nusxasi, sarlavha bilan
+    const cap = head + (msg.caption ? `\n\n<blockquote>${escHtml(msg.caption.slice(0, 700))}</blockquote>` : "") + foot;
+    for (const id of c.admins) {
+      const r = await tgCall(env, "copyMessage", {
+        chat_id: Number(id),
+        from_chat_id: msg.chat.id,
+        message_id: msg.message_id,
+        caption: cap,
+        parse_mode: "HTML",
+      });
+      if (r.ok) {
+        delivered = true;
+        continue;
+      }
+      // Stiker/dumaloq video izoh olmaydi — avval sarlavha, keyin nusxa
+      const h = await sendMessage(env, id, head + foot);
+      const r2 = await tgCall(env, "copyMessage", { chat_id: Number(id), from_chat_id: msg.chat.id, message_id: msg.message_id });
+      delivered = delivered || h || !!r2.ok;
+    }
+  }
+
+  // Mijozga tasdiq — 10 daqiqada bir marta (har xabarga emas)
+  if (!(Number(_ackAt.get(uid)) > now - 10 * 60 * 1000)) {
+    capMap(_ackAt, 5000);
+    _ackAt.set(uid, now);
+    await sendMessage(
+      env,
+      uid,
+      delivered
+        ? "✅ Xabaringiz adminga yetkazildi. Javob shu chatga keladi."
+        : "Xabar yetkazilmadi — iltimos, birozdan keyin qayta yozing.",
+      { reply_markup: menuKeyboard(env, false) }
+    );
+  }
+}
+
+async function botAdminReply(msg, target, env) {
+  const name = botConf(env).name;
+  let ok;
+  if (typeof msg.text === "string") {
+    ok = await sendMessage(env, target, `💬 <b>${escHtml(name)}</b>\n\n${escHtml(msg.text.slice(0, 3800))}`);
+  } else {
+    ok = !!(await tgCall(env, "copyMessage", { chat_id: Number(target), from_chat_id: msg.chat.id, message_id: msg.message_id })).ok;
+  }
+  return sendMessage(env, msg.from.id, ok ? "✅ Javob mijozga yuborildi." : "❌ Yuborilmadi — mijoz botni bloklagan bo'lishi mumkin.", {
+    reply_parameters: { message_id: msg.message_id, allow_sending_without_reply: true },
+  });
+}
+
+async function botAdminHint(uid, env) {
+  const key = "a:" + uid;
+  const now = Date.now();
+  if (Number(_ackAt.get(key)) > now - 5 * 60 * 1000) return;
+  _ackAt.set(key, now);
+  return sendMessage(
+    env,
+    uid,
+    "ℹ️ Mijozga javob berish uchun uning xabariga (yoki buyurtma xabariga) «Reply» qiling.\n⚙ Holat: /admin"
+  );
+}
+
+/* ---------------------------------------------------------- tugmalar */
+const STATUS_NAME = {
+  order: { new: "🆕 Yangi", accepted: "✅ Qabul qilindi", delivering: "🚚 Yo'lda", delivered: "🎉 Yetkazildi", cancelled: "❌ Bekor qilingan" },
+  biled: { new: "🆕 Yangi", accepted: "✅ Qabul qilindi", in_work: "🔧 Ishda", done: "✨ Topshirildi", cancelled: "❌ Bekor qilingan" },
+  booking: { new: "⏳ Kutilmoqda", confirmed: "✅ Tasdiqlangan", done: "✔️ Bajarilgan", cancelled: "❌ Bekor qilingan" },
+};
+const STATUS_BTN = {
+  order: { accepted: "✅ Qabul qilish", delivering: "🚚 Yo'lga chiqdi", delivered: "🎉 Yetkazildi", cancelled: "❌ Bekor" },
+  biled: { accepted: "✅ Qabul qilish", in_work: "🔧 Ish boshlandi", done: "✨ Topshirildi", cancelled: "❌ Bekor" },
+  booking: { confirmed: "✅ Tasdiqlash", done: "✔️ Bajarildi", cancelled: "❌ Bekor" },
+};
+const KIND_CODE = { o: "order", b: "biled", k: "booking" };
+const KIND_LETTER = { order: "o", biled: "b", booking: "k" };
+const ST_CODE = { a: "accepted", d: "delivering", v: "delivered", w: "in_work", n: "done", c: "confirmed", x: "cancelled" };
+const ST_LETTER = Object.fromEntries(Object.entries(ST_CODE).map(([k, v]) => [v, k]));
+
+function statusName(kind, status) {
+  return (STATUS_NAME[kind] || {})[status] || String(status || "");
+}
+
+/** Admin xabari ostidagi tugmalar: joriy holat + keyingi qadamlar.
+ *  callback_data: `s|<tur>|<manba>|<kalit>|<holat>` (≤ 64 bayt). */
+function statusKeyboard(kind, key, source, status) {
+  const rows = [[{ text: "Holat: " + statusName(kind, status), callback_data: "noop" }]];
+  const next = (ALLOWED_STATUS_TRANSITIONS[kind] || {})[status] || [];
+  const src = source === "db" ? "d" : "p";
+  const btns = next.map((st) => ({
+    text: (STATUS_BTN[kind] || {})[st] || st,
+    callback_data: `s|${KIND_LETTER[kind]}|${src}|${key}|${ST_LETTER[st]}`,
+  }));
+  if (!btns.length || btns.some((b) => new TextEncoder().encode(b.callback_data).length > 64)) {
+    return { inline_keyboard: rows };
+  }
+  rows.push(btns);
+  return { inline_keyboard: rows };
+}
+
+/** Yangi format va eski Python bot tugmalari (`adm:ordst:12:accepted`). */
+function parseStatusCallback(data) {
+  let m = /^s\|([obk])\|([dp])\|([A-Za-z0-9_-]{1,80})\|([adwvncx])$/.exec(data);
+  if (m) return { kind: KIND_CODE[m[1]], source: m[2] === "d" ? "db" : "pending", key: m[3], status: ST_CODE[m[4]] };
+  m = /^adm:(ordst|bilst|bkst):(\d{1,12}):([a-z_]{3,12})$/.exec(data);
+  if (m) {
+    const kind = m[1] === "ordst" ? "order" : m[1] === "bilst" ? "biled" : "booking";
+    return { kind, source: kind === "order" ? "db" : "pending", key: m[2], status: m[3] };
+  }
+  return null;
+}
+
+async function botCallback(cq, env) {
+  const data = String(cq.data || "");
+  const uid = String((cq.from && cq.from.id) || "");
+  const c = cfg(env);
+  const admin = c.admins.includes(uid);
+  const answer = (text, alert) =>
+    tgCall(env, "answerCallbackQuery", {
+      callback_query_id: cq.id,
+      text: text ? String(text).slice(0, 190) : undefined,
+      show_alert: !!alert,
+    });
+
+  try {
+    if (data === "noop") return await answer();
+    if (data.startsWith("m|")) {
+      await answer();
+      if (!admin && (await isBlockedUid(uid, env))) return;
+      const what = data.slice(2);
+      if (what === "orders") return await botOrders(uid, env, c);
+      if (what === "kafolat") return await botWarranty(uid, env, c);
+      if (what === "aloqa") return await botContactInfo(uid, env);
+      return await botMenu(uid, env, admin);
+    }
+
+    const parsed = parseStatusCallback(data);
+    if (!parsed) return await answer("Bu tugma eskirgan — /start ni bosing");
+    if (!admin) return await answer("⛔ Faqat admin uchun", true);
+
+    const res = await applyStatusChange(env, c, await accessToken(env), { ...parsed, by: uid });
+    const msg = cq.message;
+    if (res.error) {
+      // Boshqa admin allaqachon o'zgartirgan bo'lsa — tugmalarni haqiqiy holatga keltiramiz
+      if (res.error.current && msg) {
+        await tgCall(env, "editMessageReplyMarkup", {
+          chat_id: msg.chat.id,
+          message_id: msg.message_id,
+          reply_markup: statusKeyboard(parsed.kind, parsed.key, parsed.source, res.error.current),
+        });
+      }
+      return await answer(res.error.message || "Bajarilmadi", true);
+    }
+    if (msg) {
+      await tgCall(env, "editMessageReplyMarkup", {
+        chat_id: msg.chat.id,
+        message_id: msg.message_id,
+        reply_markup: statusKeyboard(parsed.kind, parsed.key, parsed.source, res.status),
+      });
+    }
+    const warrantyNote = isWarrantyStart(parsed.kind, res.status) ? " · 🛡 kafolat boshlandi" : "";
+    return await answer(res.repeated ? "Holat allaqachon shu" : statusName(parsed.kind, res.status) + warrantyNote);
+  } catch (error) {
+    console.error("[bot] tugma:", error);
+    return answer("⚠️ Xatolik — qayta urinib ko'ring", true);
+  }
+}
+
+// =====================================================================
+//  MIJOZ MA'LUMOTLARI — /me va bot uchun BITTA manba
+//
+//  Do'kon buyurtmalari ikki nusxada bo'lishi mumkin: Worker yozuvi
+//  (`pending_orders`) va eski botning SQLite nusxasi (`orders/{id}`).
+//  Ular `sqlite_id` orqali birlashtiriladi, holat esa eng ilg'ori olinadi.
+// =====================================================================
+async function queryByChild(c, token, node, child, value, limit) {
+  const eq = typeof value === "number" ? String(value) : JSON.stringify(String(value));
+  const url =
+    `${c.dbUrl}/${c.root}/${node}.json?orderBy=${encodeURIComponent(JSON.stringify(child))}` +
+    `&equalTo=${encodeURIComponent(eq)}` +
+    (limit ? `&limitToLast=${limit}` : "");
+  const res = await fetch(url, { headers: authHeaders(token) });
+  if (!res.ok) {
+    const error = new Error(`${node} so'rovi: ${res.status}`);
+    error.status = res.status;
+    throw error;
+  }
+  return res.json();
+}
+
+let _dbOrdersCache = { at: 0, rows: null };
+
+/** Mijozning eski (SQLite nusxasidagi) buyurtmalari. `orders` da uid indeksi
+ *  bo'lmasa — oxirgi 300 tasi o'qilib, xotirada saralanadi (60 s kesh). */
+async function userDbOrders(c, token, uid) {
+  try {
+    return entriesOf(await queryByChild(c, token, "orders", "uid", Number(uid), 50));
+  } catch (error) {
+    if (!error || error.status !== 400) throw error;
+  }
+  if (!_dbOrdersCache.rows || Date.now() - _dbOrdersCache.at > 60 * 1000) {
+    const res = await fetch(
+      `${c.dbUrl}/${c.root}/orders.json?orderBy=${encodeURIComponent('"$key"')}&limitToLast=300`,
+      { headers: authHeaders(token) }
+    );
+    if (!res.ok) return [];
+    _dbOrdersCache = { at: Date.now(), rows: entriesOf(await res.json()) };
+  }
+  return _dbOrdersCache.rows.filter(([, r]) => Number(r.uid) === Number(uid));
+}
+
+async function customerData(c, token, uid) {
+  const n = Number(uid);
+  const [pendingNode, biledNode, bookingNode, dbRows] = await Promise.all([
+    queryByChild(c, token, "pending_orders", "uid", n, 50).catch(() => null),
+    queryByChild(c, token, "biled_orders", "uid", n, 30).catch(() => null),
+    queryByChild(c, token, "bookings", "uid", n, 30).catch(() => null),
+    userDbOrders(c, token, n).catch(() => []),
+  ]);
+
+  const dbById = new Map();
+  for (const [k, r] of dbRows) dbById.set(String(r.id != null ? r.id : k), [k, r]);
+
+  const orders = [];
+  for (const [key, row] of entriesOf(pendingNode)) {
+    if (row.status === "processing" || row.status === "failed") continue;
+    const twin = row.sqlite_id ? dbById.get(String(row.sqlite_id)) : null;
+    if (twin) dbById.delete(String(row.sqlite_id));
+    orders.push(customerOrderView(key, "pending", row, twin ? twin[1] : null));
+  }
+  for (const [key, row] of dbById.values()) orders.push(customerOrderView(key, "db", row, null));
+  orders.sort((a, b) => b.createdAt - a.createdAt);
+
+  const live = ([, r]) => r.status !== "processing" && r.status !== "failed";
+  const biled = entriesOf(biledNode).filter(live).map(([k, r]) => customerBiledView(k, r));
+  biled.sort((a, b) => b.createdAt - a.createdAt);
+  const bookings = entriesOf(bookingNode).filter(live).map(([k, r]) => customerBookingView(k, r));
+  bookings.sort((a, b) => b.createdAt - a.createdAt);
+
+  return { orders, biled, bookings };
+}
+
+function customerOrderView(key, source, row, twin) {
+  const t = twin || {};
+  const total = Number(row.total || t.total || 0);
+  const id = row.id != null ? row.id : key;
+  const rawItems = row.items && typeof row.items === "object" && Object.keys(row.items).length ? row.items : t.items;
+  return {
+    key: String(key),
+    source,
+    code: row.code || (source === "db" ? "#" + id : String(key)),
+    sqlite_id: row.sqlite_id || (source === "db" ? id : null),
+    total,
+    total_label: fmtPrice(total),
+    status: mergedOrderStatus(row.status, twin ? t.status : null),
+    status_at: Number(row.status_at || t.status_at || 0) || null,
+    warranty_from: Number(row.warranty_from || t.warranty_from || 0) || null,
+    address: row.address || t.address || "",
+    delivery_info: row.delivery_info || row.deliveryInfo || t.deliveryInfo || "",
+    payment_method: row.payment_method || row.paymentMethod || t.paymentMethod || "",
+    items: itemsOf(rawItems),
+    createdAt: Number(row.createdAt || t.createdAt || 0) || 0,
+  };
+}
+
+function customerBiledView(key, row) {
+  const total = Number(row.total || 0);
+  const parts = [row.biled_name || row.biled, row.shroud_name || row.shroud, row.color_name || row.color].filter(Boolean);
+  return {
+    key: String(key),
+    id: row.id != null ? row.id : String(key),
+    code: biledCode(key, row),
+    car_name: row.car_name || row.car || "",
+    biled_name: row.biled_name || row.biled || "",
+    biled_id: row.biled_id != null ? row.biled_id : null,
+    shroud_name: row.shroud_name || row.shroud || "",
+    color_name: row.color_name || row.color || "",
+    summary: parts.join(" · "),
+    comment: row.comment || "",
+    total,
+    total_label: fmtPrice(total),
+    status: normKindStatus("biled", row.status),
+    status_at: Number(row.status_at || 0) || null,
+    warranty_from: Number(row.warranty_from || 0) || null,
+    createdAt: Number(row.createdAt || 0) || 0,
+  };
+}
+
+function customerBookingView(key, row) {
+  const status = normKindStatus("booking", row.status);
+  return {
+    key: String(key),
+    id: String(key),
+    service_name: row.service_name || row.service || "Xizmat",
+    date: row.date || "",
+    time: row.time || "",
+    price: Number(row.price || 0) || 0,
+    status,
+    createdAt: Number(row.createdAt || 0) || 0,
+    can_cancel: (status === "new" || status === "confirmed") && !!row.date && row.date >= tashkentToday(),
+  };
+}
+
+/** POST /booking-cancel — mijoz O'Z navbatini bekor qiladi (Render'siz). */
+async function handleBookingCancel(request, env) {
+  const c = cfg(env);
+  if (!c.dbUrl) return json({ ok: false, error: "FIREBASE_DB_URL sozlanmagan" }, 500);
+  const body = await readJson(request);
+  const verified = await verifyInitData(body.initData, env);
+  if (!verified.ok) return json({ ok: false, error: verified.error, blocked: !!verified.blocked }, verified.status || 401);
+  const uid = String(verified.user.id);
+  const key = clean(body.key, 120);
+  if (!key || !/^[A-Za-z0-9_-]+$/.test(key)) {
+    return json({ ok: false, error: "bad_key", message: "Navbat raqami noto'g'ri" }, 400);
+  }
+  const token = await accessToken(env);
+  const row = await rtdbGet(c.dbUrl, `${c.root}/bookings/${key}`, token);
+  // Faqat O'Z navbati — uid imzodan olinadi, mijoz yuborgan qiymatga ishonilmaydi
+  if (!row || String(row.uid) !== uid) return json({ ok: false, error: "not_found", message: "Navbat topilmadi" }, 404);
+  const view = customerBookingView(key, row);
+  if (!view.can_cancel) {
+    return json({ ok: false, error: "not_cancellable", message: "Bu navbatni endi bekor qilib bo'lmaydi" }, 409);
+  }
+  const out = await cancelBookingAtomic(c, token, key, Number(uid));
+  if (out.error) {
+    const { http, ...rest } = out.error;
+    return json({ ok: false, ...rest, error: rest.code }, http || 409);
+  }
+  if (!out.repeated) {
+    await sendToAdmins(
+      env,
+      c,
+      "❌ <b>Mijoz navbatni bekor qildi</b>\n\n" +
+        `🔧 ${escHtml(view.service_name)}\n📅 ${fmtDayIso(view.date)} · ${escHtml(view.time)}\n` +
+        `👤 ${userLink(uid, row.name || verified.user.first_name, verified.user.username)}\n📞 ${escHtml(row.phone || "")}`
+    ).catch(() => {});
+  }
+  return json({ ok: true, repeated: !!out.repeated });
+}
+
+// =====================================================================
+//  🛡 KAFOLAT — qachon boshlanadi va qancha davom etadi
+//
+//  • Bi-LED linza (do'kon tovari, turkumi «BI-led...») va Bi-LED O'RNATISH
+//    buyurtmasi — 1 YIL (yoki admin tovarga yozgan muddat: «6 oy», «2 yil»).
+//  • Boshqa tovar — faqat admin kafolat yozgan bo'lsa (masalan «1 yil»).
+//  • Hisob tovar MIJOZGA TOPSHIRILGAN lahzadan boshlanadi:
+//      do'kon buyurtmasi → «Yetkazildi», Bi-LED o'rnatish → «Topshirildi».
+//    Shu lahza `warranty_from` ga yoziladi va boshqa o'zgarmaydi.
+//    Undan oldin kafolat «kutilmoqda» bo'lib turadi.
+//  • Bekor qilingan buyurtma kafolat bermaydi.
+//
+//  Shu mantiq `docs/js/app.js` da (`wrBuild`) AYNAN takrorlangan — eski
+//  Worker turgan paytda ham Mini App kafolatni ko'rsata olsin.
+// =====================================================================
+const WARRANTY_BILED_MONTHS = 12;
+
+/** «1 yil», «12 oy», «6 oylik», «14 kun», «2 hafta» → {months} yoki {days}. */
+function wParse(text) {
+  const s = String(text || "").toLowerCase().replace(",", ".").trim();
+  if (!s) return null;
+  const num = (re) => {
+    const m = re.exec(s);
+    return m ? parseFloat(m[1]) : null;
+  };
+  let n = num(/(\d+(?:\.\d+)?)\s*-?\s*(?:yil|year|йил|год|лет)/);
+  if (n != null && n > 0) return { months: Math.round(n * 12) };
+  n = num(/(\d+(?:\.\d+)?)\s*-?\s*(?:oy|month|ой|мес)/);
+  if (n != null && n > 0) return { months: Math.round(n) };
+  n = num(/(\d+)\s*-?\s*(?:hafta|week|ҳафта|недел)/);
+  if (n != null && n > 0) return { days: n * 7 };
+  n = num(/(\d+)\s*-?\s*(?:kun|day|кун|дн|ден)/);
+  if (n != null && n > 0) return { days: n };
+  if (/bir\s*yil/.test(s)) return { months: 12 };
+  if (/yarim\s*yil/.test(s)) return { months: 6 };
+  if (/^\d{1,2}$/.test(s) && Number(s) > 0) return { months: Number(s) };
+  return null;
+}
+
+/** Bi-LED linzami? Avval turkum, turkum yo'q bo'lsa — nom (maska/lenta emas). */
+function wIsBiled(name, cat) {
+  const c = String(cat || "").toLowerCase();
+  if (c) return /bi[\s-]?led|bi[\s-]?lens|linza|линз/.test(c);
+  const n = String(name || "").toLowerCase();
+  if (/mas+ka|mask|ochki|lenta|germet|rgb|chexol|lampa|лампа/.test(n)) return false;
+  return /bi[\s-]?led|bi[\s-]?lens|linza|линз/.test(n);
+}
+
+function wAddPeriod(start, p) {
+  if (p.months) {
+    const d = new Date(start);
+    const day = d.getUTCDate();
+    d.setUTCMonth(d.getUTCMonth() + p.months);
+    if (d.getUTCDate() < day) d.setUTCDate(0); // 31-yanvar + 1 oy → 28/29-fevral
+    return d.getTime();
+  }
+  return start + (p.days || 0) * 86400000;
+}
+
+function wLabel(p) {
+  if (p.months) return p.months % 12 === 0 ? `${p.months / 12} yil` : `${p.months} oy`;
+  return p.days >= 7 && p.days % 7 === 0 ? `${p.days / 7} hafta` : `${p.days} kun`;
+}
+
+function productCategoryName(product, categories) {
+  if (!product) return "";
+  if (product.categoryName) return String(product.categoryName);
+  if (product.category) return String(product.category);
+  if (product.category_id != null && categories && typeof categories === "object") {
+    const cat = catalogRowById(categories, product.category_id);
+    if (cat && cat.name) return String(cat.name);
+  }
+  return "";
+}
+
+function wStartOf(o) {
+  return Number(o.warranty_from) || Number(o.status_at) || Number(o.createdAt) || null;
+}
+
+function wRecord(x, now) {
+  const start = x.start ? Number(x.start) : null;
+  const end = start ? wAddPeriod(start, x.period) : null;
+  return {
+    id: x.id,
+    kind: x.kind,
+    title: x.title,
+    sub: x.sub,
+    qty: x.qty,
+    size: x.size,
+    months: x.period.months || 0,
+    days: x.period.days || 0,
+    period: wLabel(x.period),
+    start,
+    end,
+    created: x.created || 0,
+    state: !start ? "pending" : end > now ? "active" : "expired",
+    order_code: x.order_code,
+    order_kind: x.order_kind,
+    order_status: x.order_status,
+  };
+}
+
+function buildWarranties(input) {
+  const now = Number(input.now) || Date.now();
+  const out = [];
+  for (const o of input.orders || []) {
+    const st = normStatus(o.status);
+    if (st === "cancelled") continue;
+    (Array.isArray(o.items) ? o.items : []).forEach((it, idx) => {
+      const p = it.product_id != null ? catalogRowById(input.products, it.product_id) : null;
+      const name = clean(it.name || (p && p.name) || "Tovar", 120);
+      const cat = it.cat || productCategoryName(p, input.categories);
+      const biled = wIsBiled(name, cat);
+      const period = wParse(it.warranty || (p && p.warranty)) || (biled ? { months: WARRANTY_BILED_MONTHS } : null);
+      if (!period) return;
+      out.push(
+        wRecord(
+          {
+            id: "KF-" + String(o.code || o.key || "").replace(/^ZM-/, "").replace(/^#/, "") + "-" + (idx + 1),
+            kind: biled ? "biled" : "product",
+            title: name,
+            sub: biled ? "Bi-LED linza" : clean(cat, 60) || "Do'kon tovari",
+            qty: Number(it.qty) || 1,
+            size: it.size || null,
+            period,
+            start: st === "delivered" ? wStartOf(o) : null,
+            created: Number(o.createdAt) || 0,
+            order_code: o.code || "",
+            order_kind: "order",
+            order_status: st,
+          },
+          now
+        )
+      );
+    });
+  }
+  for (const b of input.biled || []) {
+    const st = normKindStatus("biled", b.status);
+    if (st === "cancelled") continue;
+    const t = b.biled_id != null ? catalogRowById(input.biledTypes, b.biled_id) : null;
+    const period = wParse(b.warranty || (t && t.warranty)) || { months: WARRANTY_BILED_MONTHS };
+    out.push(
+      wRecord(
+        {
+          id: "KF-" + String(b.code || b.key || "").replace(/^#/, "").replace(/-/g, ""),
+          kind: "install",
+          title: b.biled_name ? clean(b.biled_name, 120) : "Bi-LED linza o'rnatish",
+          sub: b.car_name ? "O'rnatish · " + clean(b.car_name, 60) : "Bi-LED o'rnatish",
+          qty: 1,
+          size: null,
+          period,
+          start: st === "done" ? wStartOf(b) : null,
+          created: Number(b.createdAt) || 0,
+          order_code: b.code || "",
+          order_kind: "biled",
+          order_status: st,
+        },
+        now
+      )
+    );
+  }
+  // Tartib: faol (eng oz qolgani tepada) → kutilmoqda → muddati tugagan
+  const rank = { active: 0, pending: 1, expired: 2 };
+  out.sort(
+    (a, b) =>
+      rank[a.state] - rank[b.state] ||
+      (a.state === "active" ? a.end - b.end : (b.start || b.created) - (a.start || a.created))
+  );
+  return out;
+}
+
+const _nodeCache = new Map();
+/** Katalog tugunlari (ochiq ma'lumot) — 60 soniya keshlanadi. */
+async function cachedNode(c, token, path) {
+  const hit = _nodeCache.get(path);
+  if (hit && Date.now() - hit.at < 60 * 1000) return hit.v;
+  const v = await rtdbGet(c.dbUrl, `${c.root}/${path}`, token).catch(() => null);
+  _nodeCache.set(path, { at: Date.now(), v });
+  return v;
+}
+
+async function warrantiesFor(c, token, data) {
+  const [products, categories, biledTypes] = await Promise.all([
+    cachedNode(c, token, "catalog/products"),
+    cachedNode(c, token, "catalog/categories"),
+    cachedNode(c, token, "catalog/biled_types"),
+  ]);
+  return buildWarranties({
+    orders: (data && data.orders) || [],
+    biled: (data && data.biled) || [],
+    products: products || {},
+    categories: categories || {},
+    biledTypes: biledTypes || {},
+    now: Date.now(),
+  });
+}
+
+/** Sana — Toshkent vaqti bilan: 24.10.2027 */
+function fmtDate(ms) {
+  if (!ms) return "—";
+  const d = new Date(Number(ms) + 5 * 3600 * 1000);
+  return `${String(d.getUTCDate()).padStart(2, "0")}.${String(d.getUTCMonth() + 1).padStart(2, "0")}.${d.getUTCFullYear()}`;
+}
+
+/** "2026-10-24" → "24.10.2026" */
+function fmtDayIso(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : escHtml(String(iso || ""));
 }

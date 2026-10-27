@@ -51,11 +51,14 @@ jobs:
           echo "API:      ${api:-(yo'q)}"
           echo "Worker:   ${worker:-(sozlanmagan)}"
 
-      - name: 1) Render (bot API)
+      - name: 1) Render (ixtiyoriy Python server)
         run: |
           set -uo pipefail
           API="${{ steps.cfg.outputs.api }}"
-          if [ -z "$API" ]; then echo "::warning::API_BASE topilmadi"; exit 0; fi
+          if [ -z "$API" ]; then
+            echo "✅ Render ishlatilmaydi (API_BASE bo'sh) — bot va do'kon Cloudflare Worker'da."
+            exit 0
+          fi
 
           code=$(curl -sS -o /tmp/health.txt -L -w '%{http_code}' --max-time 90 "$API/health" || echo 000)
           echo "GET $API/health -> $code"
@@ -149,6 +152,16 @@ jobs:
             echo "✅ Worker'ning YANGI nusxasi turibdi — kodni qayta qo'yish kerak emas."
           fi
 
+          # ---- Bot shu Worker'ga ulanganmi (webhook)? ----
+          # `/health?deep=1` botni ulanmagan bo'lsa O'ZI ham ulaydi.
+          curl -sS -o /tmp/wd.json -L --max-time 60 "${W%/}/health?deep=1" || true
+          bot=$(python3 scripts/check_worker_bot.py /tmp/wd.json || true)
+          if [ -n "$bot" ]; then
+            echo "::error title=Bot Worker'ga ulanmagan::$bot"
+          else
+            echo "✅ Bot Worker'ga ulangan (webhook) — /start ishlaydi."
+          fi
+
       - name: 4) GitHub Pages — ilova fayllari
         run: |
           set -uo pipefail
@@ -175,4 +188,4 @@ jobs:
           echo "- **Firebase 401/403** → qoidalarni Console'ga qo'yish (\`database.rules.json\`)" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Firebase 200 + null** → bot ishga tushganda \`/firebase\` yuborish (katalogni bulutga yuklaydi)" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Firebase 404** → \`docs/config.js\` dagi \`FIREBASE_DB_URL\` ni tuzatish" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Render 503** → Billing (kvota) yoki Events (yiqilgan deploy)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Bot jim** → brauzerda \`<WORKER_URL>/setup\` ni bir marta oching (WORKER_SETUP.md)" >> "$GITHUB_STEP_SUMMARY"
