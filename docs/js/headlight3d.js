@@ -1170,6 +1170,7 @@ window.ZimmerHeadlight3D = (function () {
       t: 0,
       ready: false,
       skip: false,
+      haze: 0, // 0..1 — oksidlangan (sarg'aygan) shisha, polirovka ko'rinishi uchun
     };
 
     const VIEWS = {
@@ -1276,13 +1277,20 @@ window.ZimmerHeadlight3D = (function () {
       ringLight.intensity = ringOn * 55;
       // shisha: 0 — hozirgi (xira), 1 — yangi (tiniq)
       const gl = st.lv.glass;
-      glassTint.opacity = 0.12 * (1 - gl) + 0.025 * gl;
-      glassTint.color.setRGB(1, 1, 1);
-      glassTint.map = gl > 0.985 ? null : T.haze;
+      const hz = st.haze;
+      // hz — kuchli oksidlanish: sarg'ish-sutsimon qatlam ichki qismlarni yopadi
+      glassTint.opacity = (0.12 * (1 - gl) + 0.025 * gl) * (1 - hz) + 0.58 * hz;
+      glassTint.color.setRGB(1, 1 - 0.12 * hz, 1 - 0.45 * hz);
+      glassTint.map = gl > 0.985 && hz < 0.01 ? null : T.haze;
       glassTint.needsUpdate = glassTint.userData.hadMap !== !!glassTint.map;
       glassTint.userData.hadMap = !!glassTint.map;
-      glassSpec.roughness = 0.32 * (1 - gl) + 0.03 * gl;
-      glassSpec.envMapIntensity = 1.1 + gl * 1.4;
+      glassSpec.roughness = (0.32 * (1 - gl) + 0.03 * gl) * (1 - hz) + 0.6 * hz;
+      glassSpec.envMapIntensity = (1.1 + gl * 1.4) * (1 - hz * 0.6);
+      if (hz > 0 && pjParts.glow) {
+        // xira shisha nurni sochadi: dog' kattaroq, lekin xiraroq
+        pjParts.glow.scale.multiplyScalar(1 + hz * 0.9);
+        pjParts.glow.material.opacity *= 1 - hz * 0.3;
+      }
       // yaltiroq chiziq
       if (st.lv.sweep > -1) {
         T.sweep.offset.x = st.lv.sweep;
@@ -1529,13 +1537,55 @@ window.ZimmerHeadlight3D = (function () {
     }
     function dispose() {
       pause();
+      cnv.removeEventListener("webglcontextlost", onLost);
       if (ro) ro.disconnect();
       else window.removeEventListener("resize", resize);
       if (pj) disposeTree(pj);
       disposables.forEach((d) => d && d.dispose && d.dispose());
       if (scene.environment) scene.environment.dispose();
       renderer.dispose();
+      // WebGL kontekstini darhol bo'shatamiz (brauzerda ularning soni cheklangan)
+      try {
+        renderer.forceContextLoss();
+      } catch (_) {}
       if (cnv.parentNode) cnv.parentNode.removeChild(cnv);
+    }
+
+    /** Bitta kadrni darhol chizib, rasm (data URL) qaytaradi — animatsiyasiz.
+     *  Polirovka «oldin/keyin» surgichi shu bilan ikki holatni oladi:
+     *    snapshot({cfg, mode, view, haze, yaw, pitch, zoom}). */
+    function snapshot(o) {
+      const opt = o || {};
+      pause();
+      set(opt.cfg || {});
+      st.mode = ["off", "drl", "low", "high"].includes(opt.mode) ? opt.mode : "off";
+      st.haze = clamp(Number(opt.haze) || 0, 0, 1);
+      const lv = st.lv;
+      const on = st.mode !== "off";
+      lv.drl = on ? 1 : 0;
+      lv.low = st.mode === "low" || st.mode === "high" ? 1 : 0;
+      lv.high = st.mode === "high" ? 1 : 0;
+      lv.ring = st.cfg.ring === "glow" && on ? 1 : 0;
+      lv.glass = st.cfg.glass ? 1 : 0;
+      lv.housing = st.cfg.housing ? 1 : 0;
+      lv.pop = 1;
+      lv.flash = 0;
+      lv.sweep = -1;
+      lv.wall = opt.view === "beam" ? 1 : 0;
+      if (pj) pj.scale.setScalar(1);
+      st.ringColor.copy(st.ringTarget);
+      st.yaw = Number(opt.yaw) || 0;
+      st.pitch = Number(opt.pitch) || 0;
+      rig.rotation.set(st.pitch, st.yaw, 0);
+      lamp.position.y = 0;
+      st.zoomT = st.zoom = Number(opt.zoom) || 1;
+      aimView(opt.view || "front", true);
+      camera.position.copy(st.camPos);
+      camera.lookAt(st.camAt);
+      applyMaterialTargets(10);
+      applyLights();
+      renderer.render(scene, camera);
+      return cnv.toDataURL(opt.type || "image/png");
     }
 
     rebuildProjector();
@@ -1553,6 +1603,7 @@ window.ZimmerHeadlight3D = (function () {
       resume: start,
       resize: resize,
       dispose: dispose,
+      snapshot: snapshot,
       get mode() {
         return st.mode;
       },

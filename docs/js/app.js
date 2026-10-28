@@ -2799,7 +2799,7 @@
      yuklanadi: takror chaqiruv o'sha Promise'ni qaytaradi.
      ==================================================================== */
 
-  const SCRIPT_VERSION = "78"; // index.html dagi `?v=` bilan bir xil bo'lsin
+  const SCRIPT_VERSION = "79"; // index.html dagi `?v=` bilan bir xil bo'lsin
   const _scripts = new Map();
 
   function loadScript(src) {
@@ -9046,25 +9046,31 @@
       facts.push('<div class="sd-fact"><i>⏱</i><b>' + esc(dur) + "</b><small>Davomiyligi</small></div>");
     }
 
+    const isPolish = key === "polish" && !soon;
     box.innerHTML =
-      /* --- sarlavha bloki: katta ikonka + tavsif --- */
-      '<div class="sd-hero sv-a-' + t.accent + " sd-l-" + t.layout +
+      /* --- sarlavha bloki: katta ikonka + tavsif.
+             Polirovkada uning o'rnida «oldin / keyin» surgichi turadi. --- */
+      (isPolish ? pzBlock(desc) : "") +
+      (isPolish ? "" : '<div class="sd-hero sv-a-' + t.accent + " sd-l-" + t.layout +
       (soon ? " is-soon" : "") + '">' +
       '<div class="sd-hero-glow"></div>' +
       (soon ? '<div class="sd-soon-tag">' + esc(SOON_TEXT) + "</div>" : "") +
       '<div class="sd-ic">' + t.icon + "</div>" +
       "<h2>" + esc(s.name || "Xizmat") + "</h2>" +
       "<p>" + esc(desc) + "</p>" +
-      "</div>" +
+      "</div>") +
       /* --- xulosa plitkalari --- */
       '<div class="sd-facts">' + facts.join("") + "</div>" +
       /* --- VIDEO (faqat uchta fara xizmatida, server ruxsat bersa) --- */
       svcVideoBlock(s, t) +
-      /* --- temaga xos blok (dizaynlarni aynan shu joy ajratadi) --- */
-      '<div class="sd-block sv-a-' + t.accent + " sv-l-" + t.layout + '">' +
-      '<div class="sd-block-h">' + esc(t.blockTitle || "Xizmat haqida") + "</div>" +
-      svcThemeBlock(t) +
-      "</div>" +
+      /* --- temaga xos blok (dizaynlarni aynan shu joy ajratadi).
+             Polirovkada uning o'rnini yuqoridagi surgich egallaydi. --- */
+      (isPolish
+        ? ""
+        : '<div class="sd-block sv-a-' + t.accent + " sv-l-" + t.layout + '">' +
+          '<div class="sd-block-h">' + esc(t.blockTitle || "Xizmat haqida") + "</div>" +
+          svcThemeBlock(t) +
+          "</div>") +
       /* --- «Tez kunda» tushuntirishi (navbat tugmasi o'rniga) --- */
       (soon
         ? '<div class="sd-soon-note">' +
@@ -9075,6 +9081,7 @@
         : "");
 
     bindServiceVideo();
+    if (isPolish) pzBind();
 
     /* --- pastdagi yakka tugma ---
        «Tez kunda» xizmatda navbat OLINMAYDI (server ham 409 qaytaradi).
@@ -9189,6 +9196,246 @@
       // konsolga chiqmasin, mijoz o'zi bosib qo'yadi.
       if (p && p.catch) p.catch(() => {});
     };
+  }
+
+  /* ==================================================================
+     POLIROVKA — «OLDIN / KEYIN» SURGICHI
+
+     Oynaga kirganda fara XIRA va SARG'AYGAN turadi, ustida tayoqcha.
+     Tayoqcha CHAPGA surilsa uning o'ng tomoni TOZA bo'lib ochiladi,
+     O'NGGA surilsa xiralik qaytadi. Ya'ni:
+         chap qism (0 … x)   — xira (oldin)
+         o'ng qism (x … 100) — toza (keyin)
+
+     Rasmlar 3D studiyadagi o'sha faradan olinadi (`headlight3d.js ->
+     snapshot`): bir xil burchak, faqat shisha holati farq qiladi —
+     `haze: 1` (oksidlangan) va `haze: 0` (polirovkadan keyin). WebGL
+     bo'lmasa — SVG chizma, xira qatlam CSS filtr bilan.
+     «Kunduzi / Kechasi» — chiroq yoqilganda xira shisha nurni qanday
+     sochishi ham ko'rinadi.
+     ================================================================== */
+  const PZ_START = 86; // tayoqchaning boshlang'ich joyi (%) — deyarli hammasi xira
+
+  function pzBlock(desc) {
+    const mode = S.pzMode || "off";
+    return (
+      '<div class="pz" id="pz">' +
+      '<div class="pz-head"><b>Oldin va keyin</b><small>Tayoqchani chapga suring — fara tozalanadi</small></div>' +
+      '<div class="pz-stage" id="pz-stage" style="--x:' + PZ_START + '%">' +
+      '<div class="pz-layer is-clean" id="pz-clean"></div>' +
+      '<div class="pz-layer is-hazy" id="pz-hazy"></div>' +
+      '<span class="pz-tag is-before">Oldin</span>' +
+      '<span class="pz-tag is-after">Keyin</span>' +
+      '<div class="pz-handle" id="pz-handle" role="slider" tabindex="0" aria-label="Polirovka: oldin va keyin" ' +
+      'aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + (100 - PZ_START) + '">' +
+      '<i class="pz-line"></i>' +
+      '<span class="pz-knob"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 7 4.5 12l5 5M14.5 7l5 5-5 5"/></svg></span>' +
+      "</div>" +
+      '<div class="pz-load" id="pz-load"><span class="st-loader-ring"></span></div>' +
+      '<div class="pz-done" id="pz-done">✨ Fara toza</div>' +
+      "</div>" +
+      '<div class="pz-bar">' +
+      '<div class="pz-meter"><small>Tozalandi</small><b id="pz-pct">' + (100 - PZ_START) + "%</b>" +
+      '<span class="pz-track"><i id="pz-fill" style="width:' + (100 - PZ_START) + '%"></i></span></div>' +
+      '<div class="st-seg pz-mode" role="radiogroup">' +
+      [["off", "Kunduzi"], ["low", "Kechasi"]]
+        .map(
+          ([k, t]) =>
+            '<button type="button" role="radio" aria-checked="' + (mode === k) + '" class="' +
+            (mode === k ? "is-on" : "") + '" data-pzmode="' + k + '">' + t + "</button>"
+        )
+        .join("") +
+      "</div></div>" +
+      (desc ? '<p class="pz-desc">' + esc(desc) + "</p>" : "") +
+      "</div>"
+    );
+  }
+
+  /** Surgichni joylaydi: x — xira qismning o'ng cheti (0…100). */
+  function pzSet(x, opts) {
+    const stage = $("pz-stage");
+    if (!stage) return;
+    x = Math.max(0, Math.min(100, x));
+    S.pzX = x;
+    stage.style.setProperty("--x", x.toFixed(2) + "%");
+    // Tutqich chetga yetganda ham to'liq ko'rinsin (chiziq esa chetgacha boradi)
+    const w = stage.clientWidth || 1;
+    const px = (x / 100) * w;
+    stage.style.setProperty("--kx", (Math.max(28, Math.min(w - 28, px)) - px).toFixed(1) + "px");
+    const clean = Math.round(100 - x);
+    const pct = $("pz-pct");
+    if (pct) pct.textContent = clean + "%";
+    const fill = $("pz-fill");
+    if (fill) fill.style.width = clean + "%";
+    const handle = $("pz-handle");
+    if (handle) handle.setAttribute("aria-valuenow", String(clean));
+    if (opts && opts.quiet) return;
+    // Har 20% da yengil «tik» — barmoq ostida haqiqiy polirovka hissi
+    const step = Math.floor(clean / 20);
+    if (step !== S.pzStep) {
+      S.pzStep = step;
+      haptic("light");
+    }
+    const done = clean >= 96;
+    stage.classList.toggle("is-clean", done);
+    if (done && !S.pzDone) haptic("ok");
+    S.pzDone = done;
+  }
+
+  /** Kirishdagi ishora: tayoqcha biroz chapga borib qaytadi. */
+  function pzNudge() {
+    const stage = $("pz-stage");
+    if (!stage || S.pzTouched) return;
+    const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) return;
+    const t0 = performance.now();
+    const run = (now) => {
+      if (S.pzTouched || !$("pz-stage")) return;
+      const k = Math.min(1, (now - t0) / 1600);
+      // 86 → 64 → 86, yumshoq
+      const x = PZ_START - Math.sin(k * Math.PI) * 22 * (1 - k * 0.15);
+      pzSet(x, { quiet: true });
+      if (k < 1) requestAnimationFrame(run);
+      else pzSet(PZ_START, { quiet: true });
+    };
+    requestAnimationFrame(run);
+  }
+
+  /** Ikki holatning rasmi (3D) — keshlanadi, rejim bo'yicha. */
+  async function pzShots(stage, mode) {
+    await ensureStudio3D();
+    if (!window.ZimmerHeadlight3D || !window.ZimmerHeadlight3D.supported()) return null;
+    const host = document.createElement("div");
+    host.className = "pz-gl";
+    stage.appendChild(host);
+    let studio = null;
+    try {
+      studio = window.ZimmerHeadlight3D.create(host, {
+        lite: document.documentElement.classList.contains("lite"),
+        accent: stAccentColor(),
+      });
+      const base = {
+        cfg: { lens: "r80", inner: "chrome", ring: "plain", finish: "chrome", glass: true, housing: true },
+        mode: mode,
+        view: "front",
+        yaw: 0.1,
+        zoom: 1.12,
+      };
+      return {
+        clean: studio.snapshot(Object.assign({ haze: 0 }, base)),
+        hazy: studio.snapshot(Object.assign({ haze: 1 }, base)),
+      };
+    } finally {
+      try {
+        if (studio) studio.dispose();
+      } catch (_) {}
+      host.remove();
+    }
+  }
+
+  /** WebGL yo'q bo'lsa: SVG fara, xira qatlam CSS filtr bilan. */
+  function pzSvg(mode) {
+    if (!window.ZimmerHeadlight) return;
+    const svg = window.ZimmerHeadlight.render({
+      biled: { glow: mode === "low" ? "#eef5ff" : "#5d6470", size: '3.0"' },
+      shroud: { style: "classic", ring_color: "#d9dee6" },
+      color: { hex_from: "#e7ebf1", hex_to: "#8b929c" },
+      power: mode === "low" ? 3 : 1,
+    });
+    $("pz-clean").innerHTML = '<div class="pz-svg">' + svg + "</div>";
+    $("pz-hazy").innerHTML = '<div class="pz-svg is-haze">' + svg + "</div>";
+  }
+
+  async function pzPaint() {
+    const stage = $("pz-stage");
+    if (!stage) return;
+    const mode = S.pzMode === "low" ? "low" : "off";
+    const token = (S.pzToken = (S.pzToken || 0) + 1);
+    stage.classList.remove("is-ready");
+    S.pzShots = S.pzShots || {};
+    let shots = S.pzShots[mode];
+    if (!shots && !S.pzNoGl) {
+      try {
+        shots = await pzShots(stage, mode);
+      } catch (err) {
+        console.warn("[polirovka] 3D rasm olinmadi — SVG:", err);
+        shots = null;
+      }
+      if (shots) S.pzShots[mode] = shots;
+      else S.pzNoGl = true;
+    }
+    // Kutish paytida mijoz boshqa oynaga o'tgan yoki rejimni almashtirgan bo'lsa
+    if (token !== S.pzToken || !$("pz-stage")) return;
+    if (shots) {
+      $("pz-clean").innerHTML = '<img src="' + shots.clean + '" alt="Polirovkadan keyin — tiniq fara" draggable="false">';
+      $("pz-hazy").innerHTML = '<img src="' + shots.hazy + '" alt="Polirovkadan oldin — xira, sarg\'aygan fara" draggable="false">';
+    } else {
+      pzSvg(mode);
+    }
+    stage.classList.add("is-ready");
+    if (!S.pzNudged) {
+      S.pzNudged = true;
+      setTimeout(pzNudge, 350);
+    }
+  }
+
+  function pzBind() {
+    const stage = $("pz-stage");
+    if (!stage) return;
+    S.pzTouched = false;
+    S.pzNudged = false;
+    S.pzDone = false;
+    S.pzStep = Math.floor((100 - PZ_START) / 20);
+    pzSet(PZ_START, { quiet: true });
+
+    let dragging = false;
+    const xOf = (e) => {
+      const r = stage.getBoundingClientRect();
+      return ((e.clientX - r.left) / Math.max(1, r.width)) * 100;
+    };
+    stage.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      S.pzTouched = true;
+      stage.classList.add("is-drag");
+      try {
+        stage.setPointerCapture(e.pointerId);
+      } catch (_) {}
+      pzSet(xOf(e));
+    });
+    stage.addEventListener("pointermove", (e) => {
+      if (dragging) pzSet(xOf(e));
+    });
+    const end = () => {
+      dragging = false;
+      stage.classList.remove("is-drag");
+    };
+    stage.addEventListener("pointerup", end);
+    stage.addEventListener("pointercancel", end);
+    // Klaviatura (ekran o'quvchi): ← toza, → xira
+    const handle = $("pz-handle");
+    if (handle) {
+      handle.addEventListener("keydown", (e) => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        e.preventDefault();
+        S.pzTouched = true;
+        pzSet((S.pzX == null ? PZ_START : S.pzX) + (e.key === "ArrowLeft" ? -5 : 5));
+      });
+    }
+    document.querySelectorAll("#pz [data-pzmode]").forEach((b) => {
+      b.onclick = () => {
+        const m = b.dataset.pzmode;
+        if (m === S.pzMode || (!S.pzMode && m === "off")) return;
+        S.pzMode = m;
+        haptic("light");
+        document.querySelectorAll("#pz [data-pzmode]").forEach((x) => {
+          const on = x.dataset.pzmode === m;
+          x.classList.toggle("is-on", on);
+          x.setAttribute("aria-checked", String(on));
+        });
+        pzPaint();
+      };
+    });
+    pzPaint();
   }
 
   /** Temaga xos ichki blok. Yetti tema — yetti xil tuzilish. */
