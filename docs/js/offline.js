@@ -1016,6 +1016,77 @@
     return row ? Number(row.price) || 0 : 0;
   }
 
+  /* ==================================================================
+     CHEXOL VA NAVBAT SOZLAMALARI (2.3.0)
+       catalog/wheel_materials — rul chexol materiallari (ranglari bilan)
+       catalog/seat_designs    — o'rindiq dizaynlari (20 qism)
+       catalog/settings/booking — zalog: {deposit, deposit_on}
+     Hammasi ochiq o'qiladi; narxni Worker yana katalogdan oladi.
+     ================================================================== */
+  var BOOKING_DEFAULTS = { deposit: 100000, deposit_on: 1 };
+
+  function listRows(raw) {
+    if (Array.isArray(raw)) return raw.filter(function (x) { return x && typeof x === "object"; });
+    if (raw && typeof raw === "object") {
+      return Object.keys(raw)
+        .map(function (k) { return raw[k]; })
+        .filter(function (x) { return x && typeof x === "object"; });
+    }
+    return [];
+  }
+
+  /** Jadval: kalit -> id, o'chirilgan/nofaol tashlanadi, `sort` bo'yicha. */
+  async function keyedRows(table, all) {
+    var node = await readNode(table);
+    var out = [];
+    if (node && typeof node === "object") {
+      Object.keys(node).forEach(function (k) {
+        var r = node[k];
+        if (!r || typeof r !== "object" || r.deleted) return;
+        if (!all && (r.is_active === 0 || r.is_active === false)) return;
+        out.push(Object.assign({}, r, { id: k, key: k }));
+      });
+    }
+    out.sort(function (a, b) {
+      return (Number(a.sort) || 0) - (Number(b.sort) || 0) || String(a.name || "").localeCompare(String(b.name || ""));
+    });
+    return out;
+  }
+
+  async function wheelMaterials(all) {
+    var rows = await keyedRows("wheel_materials", all);
+    return rows.map(function (r) {
+      r.price = Math.max(0, Number(r.price) || 0);
+      r.price_label = priceLabel(r.price);
+      r.colors = listRows(r.colors).filter(function (c) { return /^#[0-9a-f]{6}$/i.test(String(c.hex || "")); });
+      return r;
+    });
+  }
+
+  async function seatDesigns(all) {
+    var rows = await keyedRows("seat_designs", all);
+    return rows.map(function (r) {
+      r.price = Math.max(0, Number(r.price) || 0);
+      r.price_label = priceLabel(r.price);
+      r.zones = r.zones && typeof r.zones === "object" ? r.zones : {};
+      return r;
+    });
+  }
+
+  async function bookingSettings() {
+    try {
+      var node = await readNode("settings");
+      var r = (node && node.booking) || {};
+      var dep = Number(r.deposit);
+      return {
+        deposit: Number.isFinite(dep) && dep >= 0 ? Math.round(dep) : BOOKING_DEFAULTS.deposit,
+        deposit_on: r.deposit_on === undefined ? BOOKING_DEFAULTS.deposit_on : r.deposit_on ? 1 : 0,
+      };
+    } catch (_) {
+      return Object.assign({}, BOOKING_DEFAULTS);
+    }
+  }
+
   /* Videoga ruxsat etilgan xizmat temalari — `config.py:
      VIDEO_SERVICE_THEMES` bilan AYNAN bir xil bo'lishi kerak.
      Odatda bu qoida faqat serverda turadi va `video_allowed` sifatida
@@ -1283,6 +1354,9 @@
     await ensureWorkerFeature("secure_booking");
     // Mashinaga qarab narx (shisha almashtirish) — Worker 2.2.0+
     if (payload && payload.car_id != null) await ensureWorkerFeature("booking_car_price");
+    // Rul/o'rindiq tanlovi va zalog cheki — Worker 2.3.0+
+    if (payload && payload.deposit_receipt) await ensureWorkerFeature("booking_deposit");
+    if (payload && payload.options) await ensureWorkerFeature("service_options");
     var attempt = attemptFor(BOOKING_ATTEMPT_STORE, "bk_", payload);
     var body = Object.assign({}, payload || {}, { client_key: attempt.key });
     var result = await callWorker("/booking", body);
@@ -1677,13 +1751,37 @@
   /** Buyurtma holatini o'zgartirish — mijozga xabar Worker yuboradi.
    *  `kind`   : "order" | "biled" | "booking"
    *  `source` : do'kon buyurtmasi uchun "pending" yoki "db". */
-  function adminOrderStatus(key, status, source, kind) {
-    return callWorker("/admin/order-status", {
-      key: key,
-      status: status,
-      source: source || "pending",
-      kind: kind || "order",
-    });
+  function adminOrderStatus(key, status, source, kind, extra) {
+    return callWorker(
+      "/admin/order-status",
+      Object.assign(
+        {
+          key: key,
+          status: status,
+          source: source || "pending",
+          kind: kind || "order",
+        },
+        extra || {}
+      )
+    );
+  }
+
+  /** Barcha kafolatlar (admin) — Worker 2.3.0+. */
+  async function adminWarranties() {
+    await ensureWorkerFeature("admin_warranties");
+    var res = await callWorker("/admin/warranties", {});
+    return { list: (res && res.warranties) || [], now: Number(res && res.now) || Date.now() };
+  }
+
+  /** Bajarilgan ish kafolatini o'zgartirish (admin). */
+  function adminWarrantySet(kind, key, warranty) {
+    return callWorker("/admin/warranty-set", { kind: kind, key: key, warranty: warranty });
+  }
+
+  /** «Tez kunda» xizmat: ishga tushganda xabar berish. */
+  async function serviceNotify(serviceId) {
+    await ensureWorkerFeature("service_notify");
+    return callWorker("/service-notify", { service_id: serviceId });
   }
 
   /* ==================================================================
@@ -1751,6 +1849,12 @@
     createBooking: createBooking,
     createBiledOrder: createBiledOrder,
     createStudioOrder: createStudioOrder,
+    wheelMaterials: wheelMaterials,
+    seatDesigns: seatDesigns,
+    bookingSettings: bookingSettings,
+    serviceNotify: serviceNotify,
+    adminWarranties: adminWarranties,
+    adminWarrantySet: adminWarrantySet,
     freeSlots: freeSlots,
     dateLabel: dateLabel,
     shortDateLabel: shortDateLabel,

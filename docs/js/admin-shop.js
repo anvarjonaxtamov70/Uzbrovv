@@ -291,6 +291,10 @@ window.ZimmerShop = (function () {
       cam: '<path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.2l1.1-1.7a1 1 0 0 1 .8-.5h4.8a1 1 0 0 1 .8.5L16.3 6h1.2A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z"/><circle cx="12" cy="12.2" r="3.4"/>',
       wrench: '<path d="M14.6 6.1a4.2 4.2 0 0 0-5.3 5.4l-5.6 5.6a1.9 1.9 0 0 0 2.7 2.7l5.6-5.6a4.2 4.2 0 0 0 5.4-5.3l-2.6 2.6-2.5-.6-.6-2.5z"/>',
       img: '<rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18 5-5 4 4 2.5-2.5L20 19"/>',
+      shield: '<path d="M12 3.2 5 6v5.4c0 4.4 3 8 7 9.4 4-1.4 7-5 7-9.4V6z"/><path d="m8.8 12.2 2.3 2.3 4.3-4.6"/>',
+      wheel: '<circle cx="12" cy="12" r="8.3"/><circle cx="12" cy="12" r="2.4"/><path d="M4 12.6c3 .2 5.4 0 5.6-.6M20 12.6c-3 .2-5.4 0-5.6-.6M12 14.4v5.8"/>',
+      seat: '<path d="M8.5 3.5h5a1.5 1.5 0 0 1 1.5 1.6l-.8 8.4H8l-1-8.4a1.5 1.5 0 0 1 1.5-1.6z"/><path d="M6 13.5h12l-1 4.5H7z"/><path d="M8 18v2.5M16 18v2.5"/>',
+      card: '<rect x="3" y="5.5" width="18" height="13" rx="2.6"/><path d="M3 10h18M7 15h4"/>',
     };
     const C = {
       green: "linear-gradient(180deg,#3ad37f,#22a35c)",
@@ -328,6 +332,7 @@ window.ZimmerShop = (function () {
         tile("shop-biled", "amber", "bolt", KINDS.biled.title, KINDS.biled.sub, "shop-badge-biled"),
         tile("shop-book", "blue", "cal", KINDS.booking.title, KINDS.booking.sub, "shop-badge-booking"),
         tile("shop-board", "indigo", "board", "Navbatlar doskasi", "Fara va chexol — ketma-ketlik", "shop-badge-board"),
+        tile("shop-war", "teal", "shield", "Kafolatlar", "Barcha mijozlar · muddatni o'zgartirish"),
       ]) +
       group("Mijozlar va hisobot", [
         tile("shop-cust", "teal", "users", "Mijozlar", "Foydalanuvchilar bazasi"),
@@ -340,6 +345,9 @@ window.ZimmerShop = (function () {
       ]) +
       group("Xizmatlar", [
         tile("shop-studio", "amber", "bolt", "Bi-LED konfigurator", "Linza, ochki, shisha va korpus narxlari"),
+        tile("shop-wheel", "brown", "wheel", "Rul chexol materiallari", "Material, narx va ranglar"),
+        tile("shop-seat", "purple", "seat", "O'rindiq dizaynlari", "20 qism · ip rangi · narx"),
+        tile("shop-dep", "green", "card", "Navbat zalogi", "Oldindan to'lov summasi"),
         tile("shop-srv", "gray", "wrench", "Xizmatlar va narxlar", "Narx, kafolat, video va «Tez kunda»"),
       ]) +
       "</div>";
@@ -395,6 +403,10 @@ window.ZimmerShop = (function () {
 
     bind("shop-banners", openBanners);
     bind("shop-studio", openStudioAdmin);
+    bind("shop-wheel", openWheelAdmin);
+    bind("shop-seat", openSeatAdmin);
+    bind("shop-dep", openDepositAdmin);
+    bind("shop-war", openWarrantiesAdmin);
 
     // Sanoqchilar FONDA yuklanadi — menyu darhol ochiladi.
     refreshBadges();
@@ -532,6 +544,7 @@ window.ZimmerShop = (function () {
           ["🧱", r.housing ? "Yangi korpus · " + money(r.housing_price) : ""],
           ["💬", r.comment],
         ],
+        warranty: r.warranty || "",
       }));
     }
 
@@ -559,11 +572,18 @@ window.ZimmerShop = (function () {
           // Worker navbat yozuvi `service_name` ni ishlatadi; eski yozuvlar
           // `service` — ikkalasini ham qo'llab-quvvatlaymiz (item 6).
           ["🛠", r.service_name || r.service],
+          ["🎨", r.details],
           ["🚗", r.car_name],
           ["📅", r.date],
           ["🕐", r.time],
           ["💰", Number(r.price) > 0 ? money(r.price) : ""],
+          ["💳", Number(r.deposit_amount) > 0
+            ? "Zalog " + money(r.deposit_amount) + (r.deposit_status === "paid" ? " · qabul qilingan" : " · chekni tekshiring")
+            : ""],
+          ["🛡", r.warranty && r.status === "done" ? "Kafolat: " + r.warranty : ""],
         ],
+        receipt: r.deposit_receipt || "",
+        warranty: r.warranty || "",
       }));
     }
 
@@ -1116,6 +1136,10 @@ window.ZimmerShop = (function () {
         : "") +
       (goods ? '<div class="ord-goods">' + goods + "</div>" : "") +
       (meta ? '<div class="ord-meta">' + meta + "</div>" : "") +
+      (o.receipt && /^https:\/\//i.test(o.receipt)
+        ? '<a class="ord-receipt" href="' + esc(o.receipt) + '" target="_blank" rel="noopener">' +
+          '<img src="' + esc(o.receipt) + '" alt="" loading="lazy"><span>🧾 Zalog cheki — kattalashtirish</span></a>'
+        : "") +
       (o.total
         ? '<div class="ord-foot"><span>Jami</span><b>' + esc(o.total_label) + "</b></div>"
         : "") +
@@ -1126,6 +1150,14 @@ window.ZimmerShop = (function () {
 
   async function setOrderStatus(order, status, after) {
     if (S.busy) return;
+    /* Xizmat va Bi-LED yakunlanganda — kafolat muddatini so'raymiz
+       (standart: yozuvdagi muddat; Bi-LED uchun 1 yil). */
+    let extra;
+    if (status === "done" && (order.kind === "booking" || order.kind === "biled")) {
+      const w = await askWarranty("Kafolat muddati", order.warranty || (order.kind === "biled" ? "1 yil" : ""));
+      if (w == null) return;
+      extra = { warranty: w };
+    }
     S.busy = true;
     const cfg = KINDS[order.kind] || KINDS.order;
     const label = (cfg.statuses[status] || {}).label || status;
@@ -1141,7 +1173,7 @@ window.ZimmerShop = (function () {
       return toast("❌ Holatni o'zgartirish uchun Worker kerak", 5000);
     }
     try {
-      await off.adminOrderStatus(order.key, status, order.source, order.kind);
+      await off.adminOrderStatus(order.key, status, order.source, order.kind, extra);
       haptic("ok");
       toast("✅ " + label + " — mijozga xabar ketdi");
       S.busy = false;
@@ -4783,6 +4815,669 @@ window.ZimmerShop = (function () {
     }
   }
 
+  /* ==================================================================
+     KAFOLAT MUDDATI SO'ROVI — «Bajarildi / Topshirildi» bosilganda
+
+     Admin muddatni tanlaydi (chiplar yoki o'zi yozadi). Worker uni
+     tekshiradi va yozuvga saqlaydi; kafolat shu lahzadan boshlanadi va
+     mijozga «🛡 Kafolat boshlandi» xabari ketadi.
+     `null` — admin bekor qildi (holat o'zgarmaydi).
+     ================================================================== */
+  const WA_CHIPS = ["yo'q", "1 oy", "3 oy", "6 oy", "1 yil", "2 yil"];
+
+  function askWarranty(title, current) {
+    return new Promise((resolve) => {
+      const ov = document.createElement("div");
+      ov.className = "wa-ov";
+      ov.innerHTML =
+        '<div class="wa-card" role="dialog" aria-modal="true">' +
+        "<b>" + esc(title || "Kafolat muddati") + "</b>" +
+        "<small>Mijoz Kabinet → Kafolat bo'limida teskari sanoqni ko'radi.</small>" +
+        '<div class="wa-chips">' +
+        WA_CHIPS.map((c) => '<button type="button" class="wa-chip" data-w="' + esc(c) + '">' + esc(c === "yo'q" ? "Kafolatsiz" : c) + "</button>").join("") +
+        "</div>" +
+        '<input type="text" class="admin-input" id="wa-in" maxlength="30" placeholder="Yoki yozing: 45 kun, 8 oy, 1.5 yil" value="' + esc(current || "") + '">' +
+        '<div class="wa-acts"><button type="button" class="btn btn-ghost" id="wa-no">Bekor</button>' +
+        '<button type="button" class="btn btn-primary" id="wa-ok">Saqlash</button></div></div>';
+      document.body.appendChild(ov);
+      const input = ov.querySelector("#wa-in");
+      const paint = () =>
+        ov.querySelectorAll(".wa-chip").forEach((c) => c.classList.toggle("is-on", c.dataset.w === input.value.trim()));
+      paint();
+      input.oninput = paint;
+      ov.querySelectorAll(".wa-chip").forEach((c) => {
+        c.onclick = () => {
+          haptic("light");
+          input.value = c.dataset.w;
+          paint();
+        };
+      });
+      const done = (v) => {
+        ov.remove();
+        resolve(v);
+      };
+      ov.querySelector("#wa-no").onclick = () => done(null);
+      ov.querySelector("#wa-ok").onclick = () => {
+        const v = input.value.trim();
+        if (!v) return toast("Muddatni tanlang yoki «Kafolatsiz»");
+        haptic("medium");
+        done(v);
+      };
+      ov.onclick = (e) => {
+        if (e.target === ov) done(null);
+      };
+    });
+  }
+
+  /** Worker yangi imkoniyatni biladimi (bilmasa — aniq xabar). */
+  async function needFeature(feature, ver) {
+    const off = window.ZimmerOffline;
+    try {
+      const sup = off && off.workerSupports ? await off.workerSupports(feature) : null;
+      if (sup && sup.ok === false) {
+        toast("⚠️ Worker eski (" + sup.version + "). cloudflare-worker.js ni qayta qo'ying (" + ver + "+).");
+        return false;
+      }
+    } catch (_) {}
+    return true;
+  }
+
+  const newKey = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const HEX_OK = (v) => /^#[0-9a-f]{6}$/i.test(String(v || ""));
+
+  /* ==================================================================
+     RUL CHEXOL MATERIALLARI — `catalog/wheel_materials/{kalit}`
+     ================================================================== */
+  const WM_P = "catalog/wheel_materials";
+  const WM_TEX = (window.ZimmerCovers && window.ZimmerCovers.TEXTURES) || [["leather", "Teri"]];
+
+  async function openWheelAdmin() {
+    S.view = "wheel";
+    setHead("🕹 Rul chexol materiallari", "Yuklanmoqda...");
+    loading();
+    try {
+      S.wmRows = await window.ZimmerOffline.wheelMaterials(true);
+      renderWheelList();
+    } catch (err) {
+      fail(err, openWheelAdmin);
+    }
+  }
+
+  function renderWheelList() {
+    S.view = "wheel";
+    const list = S.wmRows || [];
+    setHead("🕹 Rul chexol materiallari", list.length ? list.length + " ta material" : "Material yo'q");
+    body().innerHTML =
+      '<div class="adm-hint-block">Mijoz «Rul chexol» xizmatida materialni va uning rangini tanlaydi — rulning ' +
+      "chexol tikiladigan gardishi o'sha rangda chiziladi. Narx — material narxi.</div>" +
+      '<button class="apx-voice" id="wm-add">＋ Yangi material</button>' +
+      '<div class="cva-list">' +
+      (list.length
+        ? list
+            .map(
+              (m) =>
+                '<div class="cva-row' + (m.is_active === 0 || m.is_active === false ? " is-off" : "") + '">' +
+                '<span class="cva-art">' + ZimmerCovers.wheel({ color: m.colors[0] && m.colors[0].hex, texture: m.texture, thread: "#d9d9d9" }) + "</span>" +
+                '<div class="cva-tx"><b>' + esc(m.name) + "</b><small>" + esc(money(m.price)) + " · " +
+                esc((WM_TEX.find((t) => t[0] === m.texture) || ["", "Teri"])[1]) + "</small>" +
+                '<span class="cva-dots">' + m.colors.map((c) => '<i style="background:' + esc(c.hex) + '"></i>').join("") + "</span></div>" +
+                '<div class="cva-acts">' +
+                '<button class="mus-btn" data-wmeye="' + esc(m.key) + '">' + (m.is_active === 0 || m.is_active === false ? "🙈" : "👁") + "</button>" +
+                '<button class="mus-btn" data-wmedit="' + esc(m.key) + '">✏️</button>' +
+                '<button class="mus-btn mus-del" data-wmdel="' + esc(m.key) + '">🗑</button></div></div>'
+            )
+            .join("")
+        : '<div class="adm-hint">Hali material yo\'q — «＋ Yangi material» ni bosing.</div>') +
+      "</div>";
+    $("wm-add").onclick = () => openWheelForm(null);
+    body().querySelectorAll("[data-wmedit]").forEach((b) => {
+      b.onclick = () => openWheelForm((S.wmRows || []).find((x) => x.key === b.dataset.wmedit));
+    });
+    body().querySelectorAll("[data-wmeye]").forEach((b) => {
+      b.onclick = () => coverToggle(WM_P, S.wmRows, b.dataset.wmeye, openWheelAdmin);
+    });
+    body().querySelectorAll("[data-wmdel]").forEach((b) => {
+      b.onclick = () => coverDelete(WM_P, S.wmRows, b.dataset.wmdel, openWheelAdmin);
+    });
+  }
+
+  async function coverToggle(path, rows, key, reopen) {
+    const r = (rows || []).find((x) => x.key === key);
+    if (!r || S.busy) return;
+    const on = r.is_active === 0 || r.is_active === false;
+    S.busy = true;
+    try {
+      await fb().patch(path + "/" + key, { is_active: on ? 1 : 0, updatedAt: Date.now() });
+      toast(on ? "✅ Mijozga ko'rsatiladi" : "🙈 Yashirildi");
+    } catch (err) {
+      toast((err && err.message) || "Saqlanmadi");
+    } finally {
+      S.busy = false;
+    }
+    reopen();
+  }
+
+  async function coverDelete(path, rows, key, reopen) {
+    const r = (rows || []).find((x) => x.key === key);
+    if (!r || S.busy) return;
+    if (!(await ask("«" + (r.name || "Yozuv") + "» o'chirilsinmi?"))) return;
+    S.busy = true;
+    try {
+      await fb().patch(path + "/" + key, { deleted: true, updatedAt: Date.now() });
+      haptic("success");
+      toast("🗑 O'chirildi");
+    } catch (err) {
+      toast((err && err.message) || "O'chirilmadi");
+    } finally {
+      S.busy = false;
+    }
+    reopen();
+  }
+
+  function openWheelForm(m) {
+    S.view = "wheel-form";
+    S.wmEdit = m || null;
+    S.wmColors = m && m.colors.length ? m.colors.map((c) => ({ name: c.name, hex: c.hex })) : [{ name: "Qora", hex: "#151515" }];
+    S.wmTex = (m && m.texture) || "leather";
+    S.wmPick = 0;
+    setHead(m ? "Materialni tahrirlash" : "Yangi material", m ? m.name : "Rul chexol");
+    body().innerHTML =
+      '<div class="adm-form">' +
+      '<div class="admin-form-group"><div class="cva-preview" id="wm-live"></div></div>' +
+      '<div class="admin-form-group"><div class="apx-head"><div class="apx-ic apx-ic-gold">🕹</div>' +
+      '<div class="apx-tx"><b>Material</b><span>Nomi · narxi · tekstura</span></div></div>' +
+      '<input type="text" class="admin-input" id="wm-name" maxlength="60" placeholder="Nomi (mas: Ekoteri)" value="' + esc((m && m.name) || "") + '">' +
+      '<input type="text" class="admin-input" id="wm-price" inputmode="numeric" placeholder="Narxi, so\'m" value="' + esc(m ? String(m.price) : "") + '">' +
+      '<div class="apx-sub">Tekstura</div><div class="apx-tpl" id="wm-tex">' +
+      WM_TEX.map((t) => '<button type="button" class="apx-tpl-chip" data-tex="' + t[0] + '">' + esc(t[1]) + "</button>").join("") +
+      "</div>" +
+      '<input type="text" class="admin-input" id="wm-war" maxlength="30" placeholder="Kafolat (ixtiyoriy): 6 oy" value="' + esc((m && m.warranty) || "") + '">' +
+      '<textarea class="admin-input" id="wm-desc" rows="2" maxlength="600" placeholder="Tavsif (ixtiyoriy)">' + esc((m && m.description) || "") + "</textarea>" +
+      "</div>" +
+      '<div class="admin-form-group"><div class="apx-head"><div class="apx-ic apx-ic-gold">🎨</div>' +
+      '<div class="apx-tx"><b>Ranglar</b><span>Mijoz shulardan tanlaydi · bosilgani ko\'rinishda</span></div></div>' +
+      '<div class="cva-colors" id="wm-colors"></div>' +
+      '<button type="button" class="apx-voice" id="wm-cadd">＋ Rang qo\'shish</button></div>' +
+      "</div>" +
+      '<div class="shop-footer"><button class="btn btn-primary" id="wm-save">💾 Saqlash</button>' +
+      '<button class="btn btn-ghost" id="wm-cancel">Bekor qilish</button></div>';
+    const paintTex = () =>
+      body().querySelectorAll("#wm-tex [data-tex]").forEach((c) => c.classList.toggle("selected", c.dataset.tex === S.wmTex));
+    body().querySelectorAll("#wm-tex [data-tex]").forEach((c) => {
+      c.onclick = () => {
+        S.wmTex = c.dataset.tex;
+        haptic("light");
+        paintTex();
+        wmLive();
+      };
+    });
+    paintTex();
+    wmColors();
+    $("wm-cadd").onclick = () => {
+      if (S.wmColors.length >= 30) return toast("30 tagacha rang");
+      S.wmColors.push({ name: "", hex: "#7a4a2a" });
+      S.wmPick = S.wmColors.length - 1;
+      wmColors();
+    };
+    $("wm-save").onclick = saveWheel;
+    $("wm-cancel").onclick = () => renderWheelList();
+  }
+
+  function wmLive() {
+    const c = S.wmColors[S.wmPick] || S.wmColors[0] || {};
+    const box = $("wm-live");
+    if (box) box.innerHTML = ZimmerCovers.wheel({ color: c.hex, texture: S.wmTex, thread: "#d9d9d9" });
+  }
+
+  function wmColors() {
+    const box = $("wm-colors");
+    if (!box) return;
+    box.innerHTML = S.wmColors
+      .map(
+        (c, i) =>
+          '<div class="cva-crow' + (i === S.wmPick ? " is-on" : "") + '" data-ci="' + i + '">' +
+          '<input type="color" value="' + esc(HEX_OK(c.hex) ? c.hex : "#333333") + '" data-chex="' + i + '">' +
+          '<input type="text" class="admin-input" maxlength="40" placeholder="Rang nomi (mas: Qora)" value="' + esc(c.name) + '" data-cname="' + i + '">' +
+          '<button type="button" class="mus-btn mus-del" data-cdel="' + i + '" aria-label="O\'chirish">✕</button></div>'
+      )
+      .join("");
+    box.querySelectorAll("[data-ci]").forEach((row) => {
+      row.onclick = (e) => {
+        if (e.target.closest("[data-cdel]")) return;
+        S.wmPick = Number(row.dataset.ci);
+        box.querySelectorAll(".cva-crow").forEach((r) => r.classList.toggle("is-on", r === row));
+        wmLive();
+      };
+    });
+    box.querySelectorAll("[data-chex]").forEach((inp) => {
+      inp.oninput = () => {
+        const i = Number(inp.dataset.chex);
+        S.wmColors[i].hex = inp.value.toLowerCase();
+        S.wmPick = i;
+        wmLive();
+      };
+    });
+    box.querySelectorAll("[data-cname]").forEach((inp) => {
+      inp.oninput = () => (S.wmColors[Number(inp.dataset.cname)].name = inp.value);
+    });
+    box.querySelectorAll("[data-cdel]").forEach((b) => {
+      b.onclick = () => {
+        if (S.wmColors.length <= 1) return toast("Kamida bitta rang kerak");
+        S.wmColors.splice(Number(b.dataset.cdel), 1);
+        S.wmPick = 0;
+        wmColors();
+      };
+    });
+    wmLive();
+  }
+
+  async function saveWheel() {
+    if (S.busy) return;
+    const name = ($("wm-name").value || "").trim();
+    const price = parseNum($("wm-price").value);
+    if (name.length < 2) return toast("Material nomini kiriting");
+    if (price == null) return toast("Narxni kiriting");
+    const colors = S.wmColors
+      .map((c) => ({ name: String(c.name || "").trim(), hex: String(c.hex || "").toLowerCase() }))
+      .filter((c) => HEX_OK(c.hex));
+    if (!colors.length) return toast("Kamida bitta rang kiriting");
+    if (colors.some((c) => !c.name)) return toast("Har bir rangga nom bering");
+    if (!(await needFeature("service_options", "2.3.0"))) return;
+    const editing = S.wmEdit;
+    const key = editing ? editing.key : newKey("wm_");
+    const rec = {
+      _key: key,
+      name: name,
+      price: price,
+      texture: S.wmTex,
+      colors: colors,
+      warranty: ($("wm-war").value || "").trim() || null,
+      description: ($("wm-desc").value || "").trim() || null,
+      sort: editing ? Number(editing.sort) || 0 : ((S.wmRows || []).length + 1) * 10,
+      is_active: editing ? (editing.is_active === 0 || editing.is_active === false ? 0 : 1) : 1,
+      deleted: false,
+      updatedAt: Date.now(),
+      source: "miniapp",
+    };
+    if (!editing) rec.createdAt = Date.now();
+    S.busy = true;
+    try {
+      await fb().put(WM_P + "/" + key, rec);
+      haptic("ok");
+      toast("✅ Saqlandi");
+      S.busy = false;
+      await openWheelAdmin();
+    } catch (err) {
+      toast((err && err.message) || "Saqlanmadi");
+    } finally {
+      S.busy = false;
+    }
+  }
+
+  /* ==================================================================
+     O'RINDIQ DIZAYNLARI — `catalog/seat_designs/{kalit}`, 20 qism
+     ================================================================== */
+  const SD_P = "catalog/seat_designs";
+  const SD_PALETTE = [
+    "#111113", "#2b2b2e", "#55565b", "#8e8e93", "#d9d9de", "#f4f1ea",
+    "#5a3a24", "#8b5a2b", "#c19a6b", "#e5d3b3", "#7a0f1a", "#c1121f",
+    "#1f3a5f", "#2f7bff", "#14532d", "#30a46c", "#ff9f0a", "#ffd60a",
+  ];
+  const SD_GROUPS = [
+    ["Hammasi", null],
+    ["Markaz", ["z2", "z8", "z9", "z10", "z14", "z15"]],
+    ["Bolsterlar", ["z6", "z7", "z12", "z13"]],
+    ["Yon panellar", ["z17", "z18", "z19", "z20"]],
+    ["Bosh tayanch", ["z1", "z2"]],
+  ];
+
+  async function openSeatAdmin() {
+    S.view = "seat";
+    setHead("🪑 O'rindiq dizaynlari", "Yuklanmoqda...");
+    loading();
+    try {
+      S.sdRows = await window.ZimmerOffline.seatDesigns(true);
+      renderSeatList();
+    } catch (err) {
+      fail(err, openSeatAdmin);
+    }
+  }
+
+  function renderSeatList() {
+    S.view = "seat";
+    const list = S.sdRows || [];
+    setHead("🪑 O'rindiq dizaynlari", list.length ? list.length + " ta dizayn" : "Dizayn yo'q");
+    body().innerHTML =
+      '<div class="adm-hint-block">Har dizaynda o\'rindiq 20 qismga bo\'lingan — har qism rangini, ip rangini, ' +
+      "nomini va narxini o'zingiz belgilaysiz. Mijoz «O'rindiq chexol» xizmatida shu dizaynlardan tanlaydi.</div>" +
+      '<button class="apx-voice" id="sd-add">＋ Yangi dizayn</button>' +
+      '<div class="cva-list">' +
+      (list.length
+        ? list
+            .map(
+              (d) =>
+                '<div class="cva-row' + (d.is_active === 0 || d.is_active === false ? " is-off" : "") + '">' +
+                '<span class="cva-art is-seat">' + ZimmerCovers.seat({ zones: d.zones, thread: d.thread }) + "</span>" +
+                '<div class="cva-tx"><b>' + esc(d.name) + "</b><small>" + esc(money(d.price)) + "</small></div>" +
+                '<div class="cva-acts">' +
+                '<button class="mus-btn" data-sdcopy="' + esc(d.key) + '" aria-label="Nusxa">⧉</button>' +
+                '<button class="mus-btn" data-sdeye="' + esc(d.key) + '">' + (d.is_active === 0 || d.is_active === false ? "🙈" : "👁") + "</button>" +
+                '<button class="mus-btn" data-sdedit="' + esc(d.key) + '">✏️</button>' +
+                '<button class="mus-btn mus-del" data-sddel="' + esc(d.key) + '">🗑</button></div></div>'
+            )
+            .join("")
+        : '<div class="adm-hint">Hali dizayn yo\'q — «＋ Yangi dizayn» ni bosing.</div>') +
+      "</div>";
+    $("sd-add").onclick = () => openSeatForm(null);
+    const find = (k) => (S.sdRows || []).find((x) => x.key === k);
+    body().querySelectorAll("[data-sdedit]").forEach((b) => (b.onclick = () => openSeatForm(find(b.dataset.sdedit))));
+    body().querySelectorAll("[data-sdcopy]").forEach((b) => {
+      b.onclick = () => {
+        const d = find(b.dataset.sdcopy);
+        if (d) openSeatForm(Object.assign({}, d, { key: null, name: d.name + " (nusxa)" }), true);
+      };
+    });
+    body().querySelectorAll("[data-sdeye]").forEach((b) => (b.onclick = () => coverToggle(SD_P, S.sdRows, b.dataset.sdeye, openSeatAdmin)));
+    body().querySelectorAll("[data-sddel]").forEach((b) => (b.onclick = () => coverDelete(SD_P, S.sdRows, b.dataset.sddel, openSeatAdmin)));
+  }
+
+  function openSeatForm(d, isCopy) {
+    S.view = "seat-form";
+    S.sdEdit = d && d.key ? d : null;
+    const zones = {};
+    ZimmerCovers.SEAT_ZONES.forEach((z) => {
+      zones[z.id] = d && HEX_OK(d.zones && d.zones[z.id]) ? d.zones[z.id] : ZimmerCovers.DEFAULT_ZONE;
+    });
+    S.sdZones = zones;
+    S.sdThread = d && HEX_OK(d.thread) ? d.thread : "#c9c9c9";
+    S.sdPick = "z9";
+    S.sdColor = zones.z9;
+    setHead(S.sdEdit ? "Dizaynni tahrirlash" : isCopy ? "Dizayn nusxasi" : "Yangi dizayn", (d && d.name) || "O'rindiq chexol");
+    body().innerHTML =
+      '<div class="adm-form">' +
+      '<div class="admin-form-group"><div class="apx-sub" style="margin-top:0">Qismni bosing — rangini pastda tanlang</div>' +
+      '<div class="cva-preview is-seat" id="sd-live"></div>' +
+      '<div class="cva-zone" id="sd-zone"></div>' +
+      '<div class="cva-pal" id="sd-pal"></div>' +
+      '<div class="cva-row2"><label class="cva-own">O\'z rangingiz <input type="color" id="sd-own"></label></div>' +
+      '<div class="apx-sub">Tanlangan rangni guruhga qo\'llash</div><div class="apx-tpl" id="sd-groups">' +
+      SD_GROUPS.map((g, i) => '<button type="button" class="apx-tpl-chip" data-sg="' + i + '">' + esc(g[0]) + "</button>").join("") +
+      "</div>" +
+      '<div class="apx-sub">Ip (chok) rangi</div><div class="cva-pal is-thread" id="sd-thread"></div>' +
+      "</div>" +
+      '<div class="admin-form-group"><div class="apx-head"><div class="apx-ic apx-ic-gold">🪑</div>' +
+      '<div class="apx-tx"><b>Dizayn</b><span>Nomi · narxi · tavsif</span></div></div>' +
+      '<input type="text" class="admin-input" id="sd-name" maxlength="60" placeholder="Nomi (mas: Sport qizil)" value="' + esc((d && d.name) || "") + '">' +
+      '<input type="text" class="admin-input" id="sd-price" inputmode="numeric" placeholder="Narxi, so\'m" value="' + esc(d ? String(d.price) : "") + '">' +
+      '<input type="text" class="admin-input" id="sd-war" maxlength="30" placeholder="Kafolat (ixtiyoriy): 1 yil" value="' + esc((d && d.warranty) || "") + '">' +
+      '<textarea class="admin-input" id="sd-desc" rows="2" maxlength="600" placeholder="Tavsif (ixtiyoriy)">' + esc((d && d.description) || "") + "</textarea>" +
+      "</div></div>" +
+      '<div class="shop-footer"><button class="btn btn-primary" id="sd-save">💾 Saqlash</button>' +
+      '<button class="btn btn-ghost" id="sd-cancel">Bekor qilish</button></div>';
+    $("sd-live").onclick = (e) => {
+      const z = e.target.closest("[data-zone]");
+      if (!z) return;
+      haptic("light");
+      S.sdPick = z.dataset.zone;
+      S.sdColor = S.sdZones[S.sdPick];
+      sdPaint();
+    };
+    $("sd-own").oninput = (e) => sdApply(String(e.target.value).toLowerCase());
+    body().querySelectorAll("#sd-groups [data-sg]").forEach((b) => {
+      b.onclick = () => {
+        const g = SD_GROUPS[Number(b.dataset.sg)];
+        const ids = g[1] || ZimmerCovers.SEAT_ZONES.map((z) => z.id);
+        ids.forEach((id) => (S.sdZones[id] = S.sdColor));
+        haptic("medium");
+        sdPaint();
+      };
+    });
+    $("sd-save").onclick = saveSeat;
+    $("sd-cancel").onclick = () => renderSeatList();
+    sdPaint();
+  }
+
+  function sdApply(hex) {
+    if (!HEX_OK(hex)) return;
+    S.sdColor = hex;
+    S.sdZones[S.sdPick] = hex;
+    sdPaint();
+  }
+
+  function sdPaint() {
+    const live = $("sd-live");
+    if (live) live.innerHTML = ZimmerCovers.seat({ zones: S.sdZones, thread: S.sdThread, pick: S.sdPick });
+    const zi = ZimmerCovers.SEAT_ZONES.findIndex((z) => z.id === S.sdPick);
+    const zone = $("sd-zone");
+    if (zone) {
+      zone.innerHTML =
+        '<button type="button" class="mus-btn" id="sd-prev">‹</button>' +
+        '<span><i style="background:' + esc(S.sdZones[S.sdPick]) + '"></i><b>' + (zi + 1) + "/20 · " +
+        esc(ZimmerCovers.SEAT_ZONES[zi].name) + "</b></span>" +
+        '<button type="button" class="mus-btn" id="sd-next">›</button>';
+      const step = (d) => {
+        const n = (zi + d + 20) % 20;
+        S.sdPick = ZimmerCovers.SEAT_ZONES[n].id;
+        S.sdColor = S.sdZones[S.sdPick];
+        haptic("light");
+        sdPaint();
+      };
+      $("sd-prev").onclick = () => step(-1);
+      $("sd-next").onclick = () => step(1);
+    }
+    const pal = $("sd-pal");
+    if (pal) {
+      pal.innerHTML = SD_PALETTE.map(
+        (c) => '<button type="button" class="cva-sw' + (c === S.sdZones[S.sdPick] ? " is-on" : "") + '" data-pc="' + c + '" style="background:' + c + '"></button>'
+      ).join("");
+      pal.querySelectorAll("[data-pc]").forEach((b) => (b.onclick = () => (haptic("light"), sdApply(b.dataset.pc))));
+    }
+    const own = $("sd-own");
+    if (own) own.value = S.sdZones[S.sdPick];
+    const th = $("sd-thread");
+    if (th) {
+      th.innerHTML = ["#f2f2f2", "#1a1a1a", "#c1121f", "#d4a853", "#2f7bff", "#8e8e93", "#c19a6b", "#ffd60a"]
+        .map((c) => '<button type="button" class="cva-sw' + (c === S.sdThread ? " is-on" : "") + '" data-tc="' + c + '" style="background:' + c + '"></button>')
+        .join("");
+      th.querySelectorAll("[data-tc]").forEach((b) => {
+        b.onclick = () => {
+          S.sdThread = b.dataset.tc;
+          haptic("light");
+          sdPaint();
+        };
+      });
+    }
+  }
+
+  async function saveSeat() {
+    if (S.busy) return;
+    const name = ($("sd-name").value || "").trim();
+    const price = parseNum($("sd-price").value);
+    if (name.length < 2) return toast("Dizayn nomini kiriting");
+    if (price == null) return toast("Narxni kiriting");
+    if (!(await needFeature("service_options", "2.3.0"))) return;
+    const editing = S.sdEdit;
+    const key = editing ? editing.key : newKey("sd_");
+    const rec = {
+      _key: key,
+      name: name,
+      price: price,
+      zones: Object.assign({}, S.sdZones),
+      thread: S.sdThread,
+      warranty: ($("sd-war").value || "").trim() || null,
+      description: ($("sd-desc").value || "").trim() || null,
+      sort: editing ? Number(editing.sort) || 0 : ((S.sdRows || []).length + 1) * 10,
+      is_active: editing ? (editing.is_active === 0 || editing.is_active === false ? 0 : 1) : 1,
+      deleted: false,
+      updatedAt: Date.now(),
+      source: "miniapp",
+    };
+    if (!editing) rec.createdAt = Date.now();
+    S.busy = true;
+    try {
+      await fb().put(SD_P + "/" + key, rec);
+      haptic("ok");
+      toast("✅ Dizayn saqlandi");
+      S.busy = false;
+      await openSeatAdmin();
+    } catch (err) {
+      toast((err && err.message) || "Saqlanmadi");
+    } finally {
+      S.busy = false;
+    }
+  }
+
+  /* ==================================================================
+     NAVBAT ZALOGI — `catalog/settings/booking` {deposit, deposit_on}
+     ================================================================== */
+  async function openDepositAdmin() {
+    S.view = "deposit";
+    setHead("💳 Navbat zalogi", "Yuklanmoqda...");
+    loading();
+    const st = await window.ZimmerOffline.bookingSettings().catch(() => ({ deposit: 100000, deposit_on: 1 }));
+    setHead("💳 Navbat zalogi", st.deposit_on ? "Yoqilgan · " + money(st.deposit) : "O'chirilgan");
+    body().innerHTML =
+      '<div class="adm-form"><div class="admin-form-group">' +
+      '<div class="cfa-card-h"><div><b>Oldindan to\'lov (zalog)</b><small>Har bir xizmat navbatida mijoz shu summani ' +
+      "kartaga o'tkazib, chek rasmini yuklaydi. Siz chekni ko'rib «✅ Tasdiqlash» ni bosasiz.</small></div>" +
+      '<label class="cfa-sw"><input type="checkbox" id="dep-on"' + (st.deposit_on ? " checked" : "") + "><i></i></label></div>" +
+      '<input type="text" class="admin-input" id="dep-sum" inputmode="numeric" placeholder="Summa, so\'m" value="' + esc(String(st.deposit)) + '">' +
+      '<div class="apx-sale-note">Karta raqami Worker sozlamasida: PAY_CARD_NUMBER va PAY_CARD_HOLDER (WORKER_SETUP.md).</div>' +
+      "</div></div>" +
+      '<div class="shop-footer"><button class="btn btn-primary" id="dep-save">💾 Saqlash</button></div>';
+    $("dep-save").onclick = async () => {
+      if (S.busy) return;
+      const sum = parseNum($("dep-sum").value);
+      if (sum == null) return toast("Summani kiriting");
+      if (!(await needFeature("booking_deposit", "2.3.0"))) return;
+      S.busy = true;
+      try {
+        await fb().patch("catalog/settings/booking", {
+          deposit: sum,
+          deposit_on: $("dep-on").checked ? 1 : 0,
+          updatedAt: Date.now(),
+          source: "miniapp",
+        });
+        haptic("ok");
+        toast("✅ Saqlandi");
+        S.busy = false;
+        openDepositAdmin();
+      } catch (err) {
+        toast((err && err.message) || "Saqlanmadi");
+      } finally {
+        S.busy = false;
+      }
+    };
+  }
+
+  /* ==================================================================
+     🛡 KAFOLATLAR — barcha mijozlar (Worker `/admin/warranties`)
+     ================================================================== */
+  const WA_STATE = { active: "Faol", pending: "Kutilmoqda", expired: "Tugagan" };
+
+  async function openWarrantiesAdmin() {
+    S.view = "warranties";
+    setHead("🛡 Kafolatlar", "Yuklanmoqda...");
+    loading();
+    try {
+      const res = await window.ZimmerOffline.adminWarranties();
+      S.waRows = res.list;
+      S.waNow = res.now;
+      S.waFilter = S.waFilter || "active";
+      renderWarrantiesAdmin();
+    } catch (err) {
+      fail(err, openWarrantiesAdmin);
+    }
+  }
+
+  function renderWarrantiesAdmin() {
+    S.view = "warranties";
+    const all = S.waRows || [];
+    const cnt = { all: all.length, active: 0, pending: 0, expired: 0 };
+    all.forEach((w) => (cnt[w.state] = (cnt[w.state] || 0) + 1));
+    setHead("🛡 Kafolatlar", cnt.active + " ta faol");
+    const q = String(S.waQ || "").trim().toLowerCase();
+    const list = all.filter(
+      (w) =>
+        (S.waFilter === "all" || w.state === S.waFilter) &&
+        (!q || [w.title, w.sub, w.name, w.phone, w.order_code].filter(Boolean).join(" ").toLowerCase().includes(q))
+    );
+    const day = 86400000;
+    const date = (ms) => {
+      if (!ms) return "—";
+      const d = new Date(ms + 5 * 3600e3);
+      return String(d.getUTCDate()).padStart(2, "0") + "." + String(d.getUTCMonth() + 1).padStart(2, "0") + "." + d.getUTCFullYear();
+    };
+    body().innerHTML =
+      '<div class="ord-filters">' +
+      [["active", "Faol"], ["pending", "Kutilmoqda"], ["expired", "Tugagan"], ["all", "Hammasi"]]
+        .map(([k, t]) => '<button type="button" class="ord-fchip' + (S.waFilter === k ? " selected" : "") + '" data-waf="' + k + '">' + t + " <i>" + (cnt[k] || 0) + "</i></button>")
+        .join("") +
+      "</div>" +
+      '<input type="search" class="admin-input" id="wa-q" placeholder="Ism, telefon, xizmat…" value="' + esc(S.waQ || "") + '">' +
+      '<div class="wa-list">' +
+      (list.length
+        ? list
+            .map((w, i) => {
+              const left = w.end ? Math.max(0, Math.ceil((w.end - S.waNow) / day)) : 0;
+              const total = w.end && w.start ? Math.max(1, (w.end - w.start) / day) : 1;
+              const frac = w.state === "active" ? Math.min(1, left / total) : w.state === "expired" ? 0 : 1;
+              return (
+                '<div class="wa-item is-' + w.state + '">' +
+                '<div class="wa-top"><b>' + esc(w.title) + '</b><span class="wa-pill is-' + w.state + '">' + esc(WA_STATE[w.state]) + "</span></div>" +
+                '<div class="wa-sub">' + esc(w.sub || "") + " · " + esc(w.period) + "</div>" +
+                '<div class="wa-who">👤 ' + esc(w.name || "Mijoz") + (w.phone ? " · 📞 " + esc(w.phone) : "") + " · " + esc(w.order_code || "") + "</div>" +
+                (w.state === "pending"
+                  ? '<div class="wa-sub">Ish yakunlangach boshlanadi</div>'
+                  : '<div class="wa-dates"><span>' + date(w.start) + "</span><i><em style=\"width:" + (frac * 100).toFixed(1) + '%"></em></i><span>' + date(w.end) + "</span></div>" +
+                    (w.state === "active" ? '<div class="wa-left">' + left + " kun qoldi</div>" : "")) +
+                (w.editable ? '<button type="button" class="ord-act" data-waedit="' + i + '">✏️ Muddatni o\'zgartirish</button>' : "") +
+                "</div>"
+              );
+            })
+            .join("")
+        : '<div class="adm-hint">Bu bo\'limda kafolat yo\'q.</div>') +
+      "</div>";
+    body().querySelectorAll("[data-waf]").forEach((b) => {
+      b.onclick = () => {
+        S.waFilter = b.dataset.waf;
+        haptic("light");
+        renderWarrantiesAdmin();
+      };
+    });
+    const qi = $("wa-q");
+    if (qi) {
+      qi.oninput = () => {
+        S.waQ = qi.value;
+        clearTimeout(S.waT);
+        S.waT = setTimeout(() => {
+          renderWarrantiesAdmin();
+          const n = $("wa-q");
+          if (n) {
+            n.focus();
+            n.setSelectionRange(n.value.length, n.value.length);
+          }
+        }, 250);
+      };
+    }
+    body().querySelectorAll("[data-waedit]").forEach((b) => {
+      b.onclick = async () => {
+        const w = list[Number(b.dataset.waedit)];
+        if (!w) return;
+        const v = await askWarranty(w.title + " — kafolat", w.period);
+        if (v == null) return;
+        try {
+          await window.ZimmerOffline.adminWarrantySet(w.ref_kind, w.ref_key, v);
+          haptic("ok");
+          toast("✅ Kafolat yangilandi");
+          openWarrantiesAdmin();
+        } catch (err) {
+          toast((err && err.message) || "Saqlanmadi");
+        }
+      };
+    });
+  }
+
   function back() {
     /* Xizmatlar oynasi ochiq bo'lsa — avval uning ichki qadami
        (forma -> ro'yxat), keyin ZimmerShop menyusiga. */
@@ -4808,7 +5503,13 @@ window.ZimmerShop = (function () {
       renderMenu();
       return true;
     }
+    if (S.view === "wheel-form") return openWheelAdmin(), true;
+    if (S.view === "seat-form") return openSeatAdmin(), true;
     if (
+      S.view === "wheel" ||
+      S.view === "seat" ||
+      S.view === "deposit" ||
+      S.view === "warranties" ||
       S.view === "add" ||
       S.view === "edit" ||
       S.view === "inventory" ||
@@ -4838,6 +5539,10 @@ window.ZimmerShop = (function () {
     if (S.view === "banners" || S.view === "banner-form") return openBanners();
     if (S.view === "cars" || S.view === "car-form") return openCars();
     if (S.view === "studio") return openStudioAdmin();
+    if (S.view === "wheel" || S.view === "wheel-form") return openWheelAdmin();
+    if (S.view === "seat" || S.view === "seat-form") return openSeatAdmin();
+    if (S.view === "deposit") return openDepositAdmin();
+    if (S.view === "warranties") return openWarrantiesAdmin();
     if (S.view === "add") return openAdd();
     return open();
   }

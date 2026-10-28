@@ -2801,7 +2801,7 @@
      yuklanadi: takror chaqiruv o'sha Promise'ni qaytaradi.
      ==================================================================== */
 
-  const SCRIPT_VERSION = "80"; // index.html dagi `?v=` bilan bir xil bo'lsin
+  const SCRIPT_VERSION = "81"; // index.html dagi `?v=` bilan bir xil bo'lsin
   const _scripts = new Map();
 
   function loadScript(src) {
@@ -6888,6 +6888,12 @@
       price: Number(k.price) || 0,
       price_label: fmt(k.price),
       car_name: k.car_name || "",
+      details: k.details || "",
+      deposit_amount: Number(k.deposit_amount) || 0,
+      deposit_status: k.deposit_status || "",
+      warranty: k.warranty || null,
+      warranty_from: Number(k.warranty_from) || 0,
+      status_at: Number(k.status_at) || 0,
       status: k.status || "new",
       can_cancel: !!k.can_cancel,
       createdAt: Number(k.createdAt) || 0,
@@ -7166,6 +7172,27 @@
         order_status: st,
       });
     });
+    // Xizmatlar (navbat) — muddatni admin «Bajarildi» da belgilaydi
+    (S.my.booking || []).forEach((b) => {
+      const st = myNorm("booking", b.status);
+      if (st === "cancelled") return;
+      const per = wrParse(b.warranty);
+      if (!per) return;
+      rec({
+        id: "KF-" + String(b.code || b.id || "").replace(/-/g, ""),
+        kind: "service",
+        title: b.service_name || "Xizmat",
+        sub: [b.details, b.car_name].filter(Boolean).join(" · ") || "Xizmat",
+        qty: 1,
+        size: null,
+        p: per,
+        start: st === "done" ? startOf(b) : null,
+        created: orderTime(b),
+        order_code: b.code || "",
+        order_kind: "booking",
+        order_status: st,
+      });
+    });
     return out;
   }
 
@@ -7220,7 +7247,8 @@
     chev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 5.5 6.5 6.5-6.5 6.5"/></svg>',
   };
 
-  const wrKindIc = (w) => (w.kind === "install" ? WR_IC.wrench : w.kind === "biled" ? WR_IC.lens : WR_IC.bag);
+  const wrKindIc = (w) =>
+    w.kind === "install" || w.kind === "service" ? WR_IC.wrench : w.kind === "biled" ? WR_IC.lens : WR_IC.bag;
 
   /** Asosiy (katta kartochkadagi) kafolat: avval BI-LED (eng oz qolgani),
    *  keyin boshqa faol tovar, keyin kutilayotgani. */
@@ -7288,7 +7316,7 @@
           : "muddat tugagan";
     const statusTxt =
       w.state === "pending"
-        ? (w.order_kind === "biled" ? MY_KINDS.biled : MY_KINDS.order).st[w.order_status]
+        ? ((w.order_kind === "biled" ? MY_KINDS.biled : w.order_kind === "booking" ? MY_KINDS.booking : MY_KINDS.order).st || {})[w.order_status]
         : null;
     return (
       `<div class="wr-hero is-${w.state}" data-id="${esc(w.id)}">` +
@@ -7318,7 +7346,8 @@
       `<h3 class="wr-title">${esc(w.title)}${w.qty > 1 ? ` <em>×${w.qty}</em>` : ""}</h3>` +
       `<p class="wr-line">${esc(w.sub || "")} · ${esc(w.period)} kafolat${w.size ? " · " + esc(w.size) : ""}</p>` +
       (w.state === "pending"
-        ? '<p class="wr-wait">Tovar qo\'lingizga topshirilgan lahzadan hisob boshlanadi.' +
+        ? '<p class="wr-wait">' +
+          (w.kind === "service" ? "Ish bajarilgan lahzadan hisob boshlanadi." : "Tovar qo'lingizga topshirilgan lahzadan hisob boshlanadi.") +
           (statusTxt ? ` Hozir: <b>${esc(statusTxt.label)}</b>.` : "") +
           "</p>"
         : '<div class="wr-dates">' +
@@ -7336,7 +7365,7 @@
       w.state === "active"
         ? `${wrDaysLeft(w)} kun qoldi · ${wrDate(w.end)} gacha`
         : w.state === "pending"
-          ? `${w.period} · topshirilgach boshlanadi`
+          ? `${w.period} · ${w.kind === "service" ? "bajarilgach" : "topshirilgach"} boshlanadi`
           : `${wrDate(w.end)} da tugagan`;
     return (
       `<button type="button" class="wr-item is-${w.state}${sel ? " is-sel" : ""}" data-id="${esc(w.id)}">` +
@@ -7865,7 +7894,13 @@
               <div class="mo-sub2">${esc(moClean(o.summary) || "Bi-LED o'rnatish")}</div>`;
     } else {
       head = `<div class="mo-lead">🔧 ${esc(o.service_name || "Xizmat")}</div>
-              <div class="mo-sub2">${o.car_name ? "🚗 " + esc(o.car_name) + " · " : ""}📅 ${esc(o.date_label || "-")}${o.time ? " · 🕐 " + esc(o.time) : ""}</div>`;
+              <div class="mo-sub2">${o.car_name ? "🚗 " + esc(o.car_name) + " · " : ""}📅 ${esc(o.date_label || "-")}${o.time ? " · 🕐 " + esc(o.time) : ""}</div>` +
+        (o.details ? `<div class="mo-sub2">🎨 ${esc(o.details)}</div>` : "") +
+        (o.deposit_amount
+          ? `<div class="mo-sub2 mo-dep is-${o.deposit_status === "paid" ? "paid" : "wait"}">💳 Zalog ${esc(fmt(o.deposit_amount))} · ${
+              o.deposit_status === "paid" ? "qabul qilindi" : "tekshirilmoqda"
+            }</div>`
+          : "");
     }
 
     /* --- tafsilot (akkordeon ichida) --- */
@@ -8703,6 +8738,15 @@
       tagline: "Salon panellariga laminat qoplama — yangi ko'rinish",
       bullets: ["Torpedo va panellar", "Eshik ichi", "Konsol va tugmalar"],
     },
+    aqua: {
+      icon: "🌊",
+      layout: "list",
+      accent: "cyan",
+      short: "Suv bosma naqsh",
+      blockTitle: "Nima beradi",
+      tagline: "Akvaprint — karbon, yog'och yoki kamuflyaj naqshini detallarga suv orqali bosish",
+      bullets: ["Karbon, yog'och, kamuflyaj naqshlari", "Torpedo, rul, oyna qopqoqlari", "Lak bilan himoyalanadi — uzoq yuradi"],
+    },
     tint: {
       icon: "🌓",
       layout: "list",
@@ -8743,6 +8787,7 @@
     /* Yangi yo'nalishlar «rul» dan OLDIN tekshiriladi: tartib muhim.
        `database/db.py: _THEME_GUESS` bilan bir xil bo'lishi kerak —
        ikki tomon boshqa tema bersa kartochka dizayni ikki xil ko'rinadi. */
+    if (n.indexOf("akva") !== -1 || n.indexOf("aqua") !== -1) return "aqua";
     if (n.indexOf("laminat") !== -1) return "laminate";
     if (n.indexOf("tanirov") !== -1 || n.indexOf("tonirov") !== -1) return "tint";
     if (
@@ -8793,6 +8838,9 @@
     { id: null, theme: "laminate", name: "Laminat salon", duration_min: 0, price: null,
       price_label: null, coming_soon: true, warranty: null,
       description: "Salon panellariga laminat qoplama. Tez kunda ishga tushadi." },
+    { id: null, theme: "aqua", name: "Akvaprint", duration_min: 0, price: null,
+      price_label: null, coming_soon: true, warranty: null,
+      description: "Detallarga karbon, yog'och yoki kamuflyaj naqshini suv orqali bosish. Tez kunda." },
     { id: null, theme: "tint", name: "Tanirovka", duration_min: 0, price: null,
       price_label: null, coming_soon: true, warranty: null,
       description: "Oynalarga plyonka yopishtirish. Tez kunda ishga tushadi." },
@@ -8818,8 +8866,17 @@
    *
    *  Backend eski bo'lib maydon kelmasa ham xato bo'lmasin: narx ham,
    *  yorliq ham bo'lmasa (`null`) xizmat hali sozlanmagan hisoblanadi. */
+  /* Akvaprint, tonirovka va broni plyonka — narxi qo'yilmaguncha «Tez kunda»
+     (Worker 2.3.0 `serviceSoon` bilan bir xil qoida). Admin narx qo'ysa
+     xizmat o'zi ochiladi. */
+  const SOON_THEMES = ["aqua", "tint", "armor"];
   const svcSoon = (s) =>
-    !!(s && (s.coming_soon || (s.price == null && s.price_label == null)));
+    !!(
+      s &&
+      (s.coming_soon ||
+        (s.price == null && s.price_label == null) ||
+        (SOON_THEMES.includes(themeOf(s, 0)) && !(Number(s.price) > 0)))
+    );
 
   const SOON_TEXT = "Tez kunda";
 
@@ -9025,6 +9082,10 @@
     const isPolish = key === "polish" && !soon;
     const isGlass = key === "glass" && !soon;
     if (isGlass && !S.studio) gsLoadPrices();
+    const isWheel = key === "wheel" && !soon;
+    const isSeat = key === "seat" && !soon;
+    // Vizual konfiguratorli xizmatlar — umumiy sarlavha o'rnida o'z oynasi
+    const ownHero = isPolish || isWheel || isSeat || soon;
     const dur = svcDuration(s.duration_min);
     const war = s.warranty || "";
     const desc = s.description || t.tagline || "";
@@ -9043,7 +9104,19 @@
     facts.push(
       '<div class="sd-fact is-price' + (soon ? " is-soon" : "") + '"><i>' +
         (soon ? "🕒" : "💰") + "</i><b>" +
-        esc(soon ? SOON_TEXT : isConfig ? "Tanlovga qarab" : isGlass ? gsPriceLabel() : svcPrice(s)) +
+        esc(
+          soon
+            ? SOON_TEXT
+            : isConfig
+              ? "Tanlovga qarab"
+              : isGlass
+                ? gsPriceLabel()
+                : isWheel
+                  ? wcPriceLabel(s)
+                  : isSeat
+                    ? sePriceLabel(s)
+                    : svcPrice(s)
+        ) +
         "</b><small>" + (isGlass ? "Narx · 2 fara" : "Narx") + "</small></div>"
     );
     if (!soon && war) {
@@ -9057,7 +9130,10 @@
       /* --- sarlavha bloki: katta ikonka + tavsif.
              Polirovkada uning o'rnida «oldin / keyin» surgichi turadi. --- */
       (isPolish ? pzBlock(desc) : "") +
-      (isPolish ? "" : '<div class="sd-hero sv-a-' + t.accent + " sd-l-" + t.layout +
+      (isWheel ? wcBlock() : "") +
+      (isSeat ? seBlock() : "") +
+      (soon ? soonBlock(key, s, t) : "") +
+      (ownHero ? "" : '<div class="sd-hero sv-a-' + t.accent + " sd-l-" + t.layout +
       (soon ? " is-soon" : "") + '">' +
       '<div class="sd-hero-glow"></div>' +
       (soon ? '<div class="sd-soon-tag">' + esc(SOON_TEXT) + "</div>" : "") +
@@ -9067,30 +9143,27 @@
       "</div>") +
       /* --- shisha almashtirish: mashina va uning narxi --- */
       (isGlass ? gsBlock() : "") +
-      /* --- xulosa plitkalari --- */
-      '<div class="sd-facts">' + facts.join("") + "</div>" +
+      /* --- xulosa plitkalari («Tez kunda» da — yo'q, narx hali aniq emas) --- */
+      (soon ? "" : '<div class="sd-facts">' + facts.join("") + "</div>") +
       /* --- VIDEO (faqat uchta fara xizmatida, server ruxsat bersa) --- */
       svcVideoBlock(s, t) +
       /* --- temaga xos blok (dizaynlarni aynan shu joy ajratadi).
              Polirovkada uning o'rnini yuqoridagi surgich egallaydi. --- */
-      (isPolish
+      (ownHero
         ? ""
         : '<div class="sd-block sv-a-' + t.accent + " sv-l-" + t.layout + '">' +
           '<div class="sd-block-h">' + esc(t.blockTitle || "Xizmat haqida") + "</div>" +
           svcThemeBlock(t) +
           "</div>") +
       /* --- «Tez kunda» tushuntirishi (navbat tugmasi o'rniga) --- */
-      (soon
-        ? '<div class="sd-soon-note">' +
-          "<b>Bu xizmat hozir tayyorlanmoqda</b>" +
-          "<p>Narx va navbat tez kunda ochiladi. Ishga tushishi bilan " +
-          "shu bo'limda paydo bo'ladi.</p>" +
-          "</div>"
-        : "");
+      "";
 
     bindServiceVideo();
     if (isPolish) pzBind();
     if (isGlass) gsBind();
+    if (isWheel) wcBind();
+    if (isSeat) seBind();
+    if (soon) soonBind(s);
 
     /* --- pastdagi yakka tugma ---
        «Tez kunda» xizmatda navbat OLINMAYDI (server ham 409 qaytaradi).
@@ -9115,6 +9188,8 @@
     cta.onclick = () => {
       if (isConfig) return openFlow();
       if (isGlass) return gsBook(s);
+      if (isWheel) return wcBook(s);
+      if (isSeat) return seBook(s);
       openServiceBooking(s);
     };
 
@@ -9206,6 +9281,381 @@
       // konsolga chiqmasin, mijoz o'zi bosib qo'yadi.
       if (p && p.catch) p.catch(() => {});
     };
+  }
+
+  /* ==================================================================
+     RUL CHEXOL — material, rang, ip (admin boshqaradi)
+
+     Admin «Boshqaruv → Rul chexol materiallari» da material qo'shadi:
+     nomi, narxi, teksturasi (teri / perforatsiya / alkantara / karbon /
+     mato) va RANGLARI. Mijoz material va rangni tanlaganda rulning chexol
+     tikiladigan gardishi (`ZimmerCovers.wheel`) o'sha rang va teksturada,
+     choklar esa tanlangan ip rangida chiziladi.
+     Narx — material narxi (Worker katalogdan qayta oladi).
+     ================================================================== */
+  const WC_THREADS = [
+    ["#f2f2f2", "Oq"],
+    ["#1a1a1a", "Qora"],
+    ["#c1121f", "Qizil"],
+    ["#d4a853", "Oltin"],
+    ["#2f7bff", "Ko'k"],
+    ["#8e8e93", "Kulrang"],
+    ["#30d158", "Yashil"],
+    ["#ff9f0a", "To'q sariq"],
+  ];
+  const WC_TEXTURE = { leather: "Teri", perforated: "Perforatsiyali", alcantara: "Alkantara", carbon: "Karbon", fabric: "Mato" };
+
+  function wcState() {
+    S.wc = S.wc || { material: null, color: null, thread: "#f2f2f2" };
+    const list = S.wcList || [];
+    if (!list.some((m) => m.id === S.wc.material)) S.wc.material = list[0] ? list[0].id : null;
+    const m = list.find((x) => x.id === S.wc.material) || null;
+    if (m && !(m.colors || []).some((c) => c.hex.toLowerCase() === String(S.wc.color || "").toLowerCase())) {
+      S.wc.color = m.colors[0] ? m.colors[0].hex.toLowerCase() : null;
+    }
+    const color = m ? (m.colors || []).find((c) => c.hex.toLowerCase() === S.wc.color) || null : null;
+    return { m, color };
+  }
+
+  function wcPriceLabel(s) {
+    const { m } = wcState();
+    return m ? fmt(m.price) : svcPrice(s);
+  }
+
+  function wcBlock() {
+    if (S.wcList == null) {
+      return '<div class="cv-box"><div class="cv-stage is-load"><span class="st-loader-ring"></span></div></div>';
+    }
+    const list = S.wcList;
+    if (!list.length) {
+      return (
+        '<div class="cv-box"><div class="cv-stage" id="wc-stage">' + ZimmerCovers.wheel({}) + "</div>" +
+        '<p class="cv-empty">Materiallar tez orada qo\'shiladi. Hozircha usta bilan kelishib tanlaysiz.</p></div>'
+      );
+    }
+    const { m, color } = wcState();
+    const tex = (m && m.texture) || "leather";
+    return (
+      '<div class="cv-box">' +
+      '<div class="cv-stage" id="wc-stage">' +
+      ZimmerCovers.wheel({ color: color && color.hex, thread: S.wc.thread, texture: tex }) +
+      '<span class="cv-tag">' + esc((m ? m.name : "") + (color ? " · " + color.name : "")) + "</span>" +
+      "</div>" +
+      '<div class="cv-sec">Material</div>' +
+      '<div class="cv-cards">' +
+      list
+        .map(
+          (x) =>
+            '<button type="button" class="cv-card' + (m && x.id === m.id ? " is-on" : "") + '" data-wcm="' + esc(x.id) + '">' +
+            '<span class="cv-tex t-' + esc(x.texture || "leather") + '" style="--c:' + esc((x.colors[0] && x.colors[0].hex) || "#333") + '"></span>' +
+            "<b>" + esc(x.name) + "</b><small>" + esc(WC_TEXTURE[x.texture] || "Teri") + "</small>" +
+            "<em>" + esc(fmt(x.price)) + "</em></button>"
+        )
+        .join("") +
+      "</div>" +
+      (m && m.colors.length
+        ? '<div class="cv-sec">Rangi <span>' + esc(color ? color.name : "") + "</span></div>" +
+          '<div class="cv-dots">' +
+          m.colors
+            .map(
+              (c) =>
+                '<button type="button" class="cv-dot' + (color && c.hex.toLowerCase() === color.hex.toLowerCase() ? " is-on" : "") +
+                '" data-wcc="' + esc(c.hex.toLowerCase()) + '" style="--c:' + esc(c.hex) + '" aria-label="' + esc(c.name) + '"></button>'
+            )
+            .join("") +
+          "</div>"
+        : "") +
+      '<div class="cv-sec">Ip (chok) rangi <span>' + esc((WC_THREADS.find((t) => t[0] === S.wc.thread) || ["", ""])[1]) + "</span></div>" +
+      '<div class="cv-dots is-small">' +
+      WC_THREADS.map(
+        ([hex, name]) =>
+          '<button type="button" class="cv-dot' + (S.wc.thread === hex ? " is-on" : "") + '" data-wct="' + hex + '" style="--c:' + hex + '" aria-label="' + esc(name) + '"></button>'
+      ).join("") +
+      "</div>" +
+      (m && m.description ? '<p class="cv-note">' + esc(m.description) + "</p>" : "") +
+      "</div>"
+    );
+  }
+
+  function wcBind() {
+    if (S.wcList == null) {
+      ZimmerOffline.wheelMaterials()
+        .catch(() => [])
+        .then((list) => {
+          S.wcList = list || [];
+          if (S.page === "service") renderServicePage();
+        });
+      return;
+    }
+    const box = $("sd-body");
+    if (!box || box._wcBound) return;
+    box._wcBound = true;
+    box.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-wcm],[data-wcc],[data-wct]");
+      if (!b || !S.wc) return;
+      if (b.dataset.wcm) S.wc.material = b.dataset.wcm;
+      if (b.dataset.wcc) S.wc.color = b.dataset.wcc;
+      if (b.dataset.wct) S.wc.thread = b.dataset.wct;
+      haptic("light");
+      renderServicePage();
+    });
+  }
+
+  function wcBook(s) {
+    const { m, color } = wcState();
+    if (!m || !color) return openServiceBooking(s); // materiallar hali qo'shilmagan
+    BK.optNext = {
+      options: { material: m.id, color: color.hex.toLowerCase(), thread: S.wc.thread },
+      label: m.name + " · " + color.name,
+    };
+    openServiceBooking(Object.assign({}, s, { price: m.price, price_label: fmt(m.price) }));
+  }
+
+  /* ==================================================================
+     O'RINDIQ CHEXOL — dizaynlar (20 qism, admin bo'yaydi)
+     ================================================================== */
+  function seState() {
+    S.se = S.se || { design: null };
+    const list = S.seList || [];
+    if (!list.some((d) => d.id === S.se.design)) S.se.design = list[0] ? list[0].id : null;
+    return list.find((d) => d.id === S.se.design) || null;
+  }
+
+  function sePriceLabel(s) {
+    const d = seState();
+    return d ? fmt(d.price) : svcPrice(s);
+  }
+
+  function seBlock() {
+    if (S.seList == null) {
+      return '<div class="cv-box"><div class="cv-stage is-seat is-load"><span class="st-loader-ring"></span></div></div>';
+    }
+    const list = S.seList;
+    if (!list.length) {
+      return (
+        '<div class="cv-box"><div class="cv-stage is-seat">' + ZimmerCovers.seat({}) + "</div>" +
+        '<p class="cv-empty">Dizaynlar tez orada qo\'shiladi. Hozircha usta bilan kelishib tanlaysiz.</p></div>'
+      );
+    }
+    const d = seState();
+    return (
+      '<div class="cv-box">' +
+      '<div class="cv-stage is-seat" id="se-stage">' +
+      ZimmerCovers.seat({ zones: d.zones, thread: d.thread }) +
+      '<span class="cv-tag">' + esc(d.name) + "</span></div>" +
+      '<div class="cv-sec">Dizaynlar <span>' + list.length + " ta</span></div>" +
+      '<div class="cv-cards is-seats">' +
+      list
+        .map(
+          (x) =>
+            '<button type="button" class="cv-card is-seat' + (x.id === d.id ? " is-on" : "") + '" data-sed="' + esc(x.id) + '">' +
+            '<span class="cv-mini">' + ZimmerCovers.seat({ zones: x.zones, thread: x.thread }) + "</span>" +
+            "<b>" + esc(x.name) + "</b><em>" + esc(fmt(x.price)) + "</em></button>"
+        )
+        .join("") +
+      "</div>" +
+      (d.description ? '<p class="cv-note">' + esc(d.description) + "</p>" : "") +
+      "</div>"
+    );
+  }
+
+  function seBind() {
+    if (S.seList == null) {
+      ZimmerOffline.seatDesigns()
+        .catch(() => [])
+        .then((list) => {
+          S.seList = list || [];
+          if (S.page === "service") renderServicePage();
+        });
+      return;
+    }
+    const box = $("sd-body");
+    if (!box || box._seBound) return;
+    box._seBound = true;
+    box.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-sed]");
+      if (!b || !S.se) return;
+      S.se.design = b.dataset.sed;
+      haptic("light");
+      renderServicePage();
+    });
+  }
+
+  function seBook(s) {
+    const d = seState();
+    if (!d) return openServiceBooking(s);
+    BK.optNext = { options: { design: d.id }, label: d.name };
+    openServiceBooking(Object.assign({}, s, { price: d.price, price_label: fmt(d.price) }));
+  }
+
+  /* ==================================================================
+     «TEZ KUNDA» — Akvaprint, Tonirovka, Broni plyonka
+     Jonli illyustratsiya + «Ishga tushganda xabar bering» (Worker
+     adminga yozadi va ro'yxatni saqlaydi).
+     ================================================================== */
+  function soonArt(key) {
+    if (key === "aqua") {
+      return (
+        '<div class="sn-art is-aqua" aria-hidden="true">' +
+        '<svg viewBox="0 0 320 180"><defs><linearGradient id="snAq" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5ef2ff"/><stop offset=".5" stop-color="#2a7bff"/><stop offset="1" stop-color="#8a5cff"/></linearGradient>' +
+        '<pattern id="snCarb" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="10" fill="#fff" opacity=".12"/></pattern></defs>' +
+        '<path class="sn-wave w1" d="M0 120 C 60 80 120 160 180 110 S 280 70 320 110 V180 H0 Z" fill="url(#snAq)" opacity=".55"/>' +
+        '<path class="sn-wave w2" d="M0 135 C 70 100 130 170 200 125 S 290 95 320 130 V180 H0 Z" fill="url(#snAq)" opacity=".8"/>' +
+        '<path d="M70 70 Q160 20 250 70 Q262 110 250 128 Q160 150 70 128 Q58 108 70 70 Z" fill="#101216" stroke="#fff" stroke-opacity=".12"/>' +
+        '<path d="M70 70 Q160 20 250 70 Q262 110 250 128 Q160 150 70 128 Q58 108 70 70 Z" fill="url(#snCarb)"/>' +
+        '<path class="sn-film" d="M70 70 Q160 20 250 70 Q262 110 250 128 Q160 150 70 128 Q58 108 70 70 Z" fill="url(#snAq)" opacity=".65"/>' +
+        "</svg></div>"
+      );
+    }
+    if (key === "tint") {
+      return (
+        '<div class="sn-art is-tint" aria-hidden="true">' +
+        '<svg viewBox="0 0 320 180"><path d="M30 130 Q40 80 110 66 L210 62 Q260 64 292 104 L300 130 Z" fill="#17191d" stroke="#fff" stroke-opacity=".12"/>' +
+        '<path class="sn-glass g1" d="M112 74 L160 72 L158 112 L92 112 Q96 86 112 74 Z"/>' +
+        '<path class="sn-glass g2" d="M168 72 L208 71 Q240 74 262 104 L256 112 L166 112 Z"/>' +
+        '<circle cx="90" cy="134" r="20" fill="#0b0b0c" stroke="#3a3d42" stroke-width="6"/><circle cx="240" cy="134" r="20" fill="#0b0b0c" stroke="#3a3d42" stroke-width="6"/>' +
+        "</svg>" +
+        '<div class="sn-chips"><span>5%</span><span>20%</span><span>35%</span><span>50%</span></div></div>'
+      );
+    }
+    if (key === "armor") {
+      return (
+        '<div class="sn-art is-armor" aria-hidden="true">' +
+        '<svg viewBox="0 0 320 180"><defs><linearGradient id="snSh" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#bfe3ff" stop-opacity=".85"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>' +
+        '<clipPath id="snCar"><path d="M30 128 Q40 78 108 64 L208 60 Q262 62 294 104 L302 128 Z"/></clipPath></defs>' +
+        '<path d="M30 128 Q40 78 108 64 L208 60 Q262 62 294 104 L302 128 Z" fill="#c1121f"/>' +
+        '<path d="M30 128 Q40 78 108 64 L208 60 Q262 62 294 104 L302 128 Z" fill="#fff" opacity=".08"/>' +
+        '<rect class="sn-sweep" x="-120" y="40" width="110" height="110" fill="url(#snSh)" clip-path="url(#snCar)"/>' +
+        '<circle cx="90" cy="132" r="20" fill="#0b0b0c" stroke="#3a3d42" stroke-width="6"/><circle cx="240" cy="132" r="20" fill="#0b0b0c" stroke="#3a3d42" stroke-width="6"/>' +
+        '<g class="sn-stones"><circle cx="20" cy="70" r="3"/><circle cx="8" cy="96" r="2.4"/><circle cx="26" cy="112" r="2"/></g>' +
+        "</svg></div>"
+      );
+    }
+    return "";
+  }
+
+  function soonBlock(key, s, t) {
+    const waiting = (S.svcWait || {})[String(s.id)];
+    return (
+      '<div class="sn sv-a-' + t.accent + " is-" + esc(key) + '">' +
+      '<span class="sn-badge"><i></i>' + esc(SOON_TEXT) + "</span>" +
+      soonArt(key) +
+      "<h2>" + esc(s.name || "Xizmat") + "</h2>" +
+      "<p>" + esc(s.description || t.tagline || "") + "</p>" +
+      ((t.bullets || []).length
+        ? '<ul class="sn-list">' + t.bullets.map((x) => "<li>" + esc(x) + "</li>").join("") + "</ul>"
+        : "") +
+      '<button type="button" class="btn btn-primary sn-notify' + (waiting ? " is-done" : "") + '" id="sn-notify"' +
+      (s.id == null ? " disabled" : "") + ">" +
+      (waiting ? "✓ Ishga tushganda xabar beramiz" : "🔔 Ishga tushganda xabar bering") +
+      "</button>" +
+      '<small class="sn-hint">Xizmat ochilishi bilan Telegram\'da birinchi bo\'lib bilasiz.</small>' +
+      "</div>"
+    );
+  }
+
+  function soonBind(s) {
+    const btn = $("sn-notify");
+    if (!btn || s.id == null) return;
+    btn.onclick = async () => {
+      if (btn.classList.contains("is-done")) return;
+      haptic("medium");
+      btn.disabled = true;
+      try {
+        await ZimmerOffline.serviceNotify(s.id);
+        S.svcWait = S.svcWait || {};
+        S.svcWait[String(s.id)] = true;
+        btn.classList.add("is-done");
+        btn.textContent = "✓ Ishga tushganda xabar beramiz";
+        haptic("ok");
+        toast("✅ Yozib qo'ydik — ochilganda xabar beramiz");
+      } catch (err) {
+        btn.disabled = false;
+        onError(err);
+      }
+    };
+  }
+
+  /* ==================================================================
+     ZALOG (oldindan to'lov) — navbatning 3-qadami
+     Summa: `catalog/settings/booking.deposit` (standart 100 000 so'm).
+     Mijoz kartaga o'tkazadi, chek rasmini yuklaydi — navbat chek bilan
+     band qilinadi, admin chekni ko'rib «✅ Tasdiqlash» ni bosadi.
+     ================================================================== */
+  function bkDepositOn() {
+    const st = BK.settings;
+    return !!(st && st.deposit_on && st.deposit > 0);
+  }
+
+  function bkPayCfg() {
+    return Object.assign(offlineConfig(), S.workerConfig || {});
+  }
+
+  function paintBookingDeposit(box) {
+    const st = BK.settings || {};
+    const cfg = bkPayCfg();
+    const card = String(cfg.pay_card_number || "").replace(/\s+/g, "");
+    const pretty = card.replace(/(\d{4})(?=\d)/g, "$1 ");
+    const wrap = el("div", "dp");
+    wrap.innerHTML =
+      '<div class="dp-hero"><small>Oldindan to\'lov (zalog)</small><b>' + esc(fmt(st.deposit)) + "</b>" +
+      "<span>Navbat shu to'lov bilan band qilinadi. Usta chekni tekshirib tasdiqlaydi.</span></div>" +
+      (card
+        ? '<div class="dp-card"><div><small>Karta raqami</small><b>' + esc(pretty) + "</b>" +
+          (cfg.pay_card_holder ? "<span>" + esc(cfg.pay_card_holder) + "</span>" : "") +
+          '</div><button type="button" class="dp-copy" id="dp-copy">Nusxa</button></div>'
+        : '<div class="dp-card is-warn">Karta rekvizitlari hali kiritilmagan — to\'lov uchun admin bilan bog\'laning.</div>') +
+      '<ol class="dp-steps"><li>Kartaga <b>' + esc(fmt(st.deposit)) + "</b> o'tkazing</li>" +
+      "<li>To'lov cheki (skrinshot) rasmini yuklang</li><li>«Navbatni band qilish» ni bosing</li></ol>" +
+      '<label class="dp-up' + (BK.receipt ? " has-img" : "") + '" id="dp-up">' +
+      (BK.receipt
+        ? '<img src="' + esc(BK.receipt) + '" alt="To\'lov cheki"><span class="dp-up-ok">✓ Chek yuklandi · almashtirish</span>'
+        : BK.receiptBusy
+          ? '<span class="dp-up-ic">⏳</span><b>Yuklanmoqda… ' + (BK.receiptPct || 0) + "%</b>"
+          : '<span class="dp-up-ic">🧾</span><b>Chek rasmini yuklash</b><small>Galereyadan skrinshot</small>') +
+      '<input type="file" accept="image/*" id="dp-file"></label>';
+    box.append(wrap);
+    const go = el("button", "btn btn-primary dp-go", "Navbatni band qilish");
+    go.disabled = !BK.receipt || BK.receiptBusy;
+    go.onclick = () => confirmBooking(go);
+    box.append(go);
+    const back = el("button", "btn btn-ghost btn-sm", "‹ Boshqa vaqt");
+    back.onclick = () => {
+      BK.step = 2;
+      haptic();
+      paintBooking();
+    };
+    box.append(back);
+
+    const copy = $("dp-copy");
+    if (copy) copy.onclick = () => copyText(card, "📋 Karta raqami nusxalandi");
+    const file = $("dp-file");
+    if (file) {
+      file.onchange = async (e) => {
+        const f = (e.target.files || [])[0];
+        e.target.value = "";
+        if (!f) return;
+        if (!window.ZimmerUpload || !ZimmerUpload.available()) return toast("Rasm yuklash sozlanmagan");
+        BK.receiptBusy = true;
+        BK.receiptPct = 0;
+        paintBooking();
+        try {
+          const res = await ZimmerUpload.uploadFile(f, (pct) => {
+            BK.receiptPct = Math.round(pct);
+            const b = document.querySelector("#dp-up b");
+            if (b && BK.receiptBusy) b.textContent = "Yuklanmoqda… " + BK.receiptPct + "%";
+          });
+          BK.receipt = res.url;
+          haptic("ok");
+        } catch (err) {
+          haptic("err");
+          toast((err && err.message) || "Chek yuklanmadi — qayta urinib ko'ring");
+        } finally {
+          BK.receiptBusy = false;
+          if (BK.step === 3) paintBooking();
+        }
+      };
+    }
   }
 
   /* ==================================================================
@@ -9638,13 +10088,13 @@
   const BK = { step: 1, service: null, day: null, days: [], slots: [], time: null };
 
   function bookingHead() {
-    const titles = ["Qulay kunni tanlang", "Vaqtni tanlang"];
+    const titles = ["Qulay kunni tanlang", "Vaqtni tanlang", "Oldindan to'lov"];
     $("sheet-title").textContent = "🗓 " + (titles[BK.step - 1] || "Navbat olish");
   }
 
   /** Yuqoridagi qadam ko'rsatkichi (iOS segment uslubi). */
   function bookingSteps() {
-    const names = ["Kun", "Vaqt"];
+    const names = bkDepositOn() ? ["Kun", "Vaqt", "Zalog"] : ["Kun", "Vaqt"];
     const wrap = el("div", "bk-steps");
     names.forEach((name, i) => {
       const n = i + 1;
@@ -9675,6 +10125,7 @@
       bits.push(`🔧 ${esc(BK.service.name)}${esc(p)}`);
     }
     if (BK.car) bits.push(`🚗 ${esc(BK.car.name)}`);
+    if (BK.opt && BK.opt.label) bits.push(`🎨 ${esc(BK.opt.label)}`);
     if (BK.day) bits.push(`📅 ${esc(BK.day.short_label || BK.day.label)}`);
     return bits.length ? el("div", "bk-recap", bits.join(" · ")) : null;
   }
@@ -9700,6 +10151,11 @@
     BK.service = service;
     BK.car = BK.carNext || null; // faqat gsBook() beradi
     BK.carNext = null;
+    BK.opt = BK.optNext || null; // rul material / o'rindiq dizayni (wcBook, seBook)
+    BK.optNext = null;
+    BK.receipt = null;
+    BK.receiptBusy = false;
+    BK.settings = null; // zalog — loadBookingDays o'qiydi
     BK.day = null;
     BK.time = null;
     BK.days = [];
@@ -9725,6 +10181,7 @@
     if (recap) box.append(recap);
 
     if (BK.step === 1) return paintBookingDays(box);
+    if (BK.step === 3 && bkDepositOn()) return paintBookingDeposit(box);
     return paintBookingSlots(box);
   }
 
@@ -9759,6 +10216,16 @@
     const recap = bookingRecap();
     if (recap) box.append(recap);
     box.append(el("div", "bk-load", "Kunlar yuklanmoqda..."));
+    // Zalog sozlamasi (summa, yoqilganmi) — kunlar bilan birga
+    if (!BK.settings && window.ZimmerOffline && ZimmerOffline.bookingSettings) {
+      BK.settings = await ZimmerOffline.bookingSettings().catch(() => null);
+      /* Worker hali 2.3.0 ga yangilanmagan bo'lsa zalog qadamini KO'RSATMAYMIZ —
+         eski Worker chekni qabul qilmaydi va navbat butunlay to'xtab qolardi. */
+      if (BK.settings && BK.settings.deposit_on && ZimmerOffline.workerSupports) {
+        const sup = await ZimmerOffline.workerSupports("booking_deposit").catch(() => null);
+        if (sup && sup.ok === false) BK.settings.deposit_on = 0;
+      }
+    }
     try {
       BK.days = bkLocal()
         ? await ZimmerOffline.bookingDates(BK.service.duration_min)
@@ -9884,8 +10351,14 @@
           <small>${esc(BK.day.label || BK.day.short_label)}</small>
           <b>🕐 ${esc(BK.time)} · ${esc(BK.service.price_label)}</b>
         </div>`;
-      const go = el("button", "btn btn-primary", "Navbatni band qilish");
-      go.onclick = () => confirmBooking(go);
+      const dep = bkDepositOn();
+      const go = el("button", "btn btn-primary", dep ? "Davom etish · zalog " + fmt(BK.settings.deposit) : "Navbatni band qilish");
+      go.onclick = () => {
+        if (!dep) return confirmBooking(go);
+        haptic("medium");
+        BK.step = 3;
+        paintBooking();
+      };
       bar.append(go);
     } else {
       bar.innerHTML = '<div class="bk-sum"><small>Vaqtni tanlang</small></div>';
@@ -9905,6 +10378,7 @@
   /** Yakuniy tasdiq: navbatni band qiladi. */
   function confirmBooking(btn) {
     if (!BK.service || !BK.day || !BK.time) return toast("Vaqtni tanlang");
+    if (bkDepositOn() && !BK.receipt) return toast("Avval zalog chekini yuklang");
     return withPhone(async () => {
       btn.disabled = true;
       btn.textContent = "Band qilinmoqda...";
@@ -9926,6 +10400,10 @@
               // Shisha almashtirish: narxni Worker shu mashinadan hisoblaydi
               car_id: BK.car ? BK.car.id : undefined,
               car_name: BK.car ? BK.car.name : undefined,
+              // Rul material / o'rindiq dizayni — narxni Worker katalogdan oladi
+              options: BK.opt ? BK.opt.options : undefined,
+              // Zalog cheki (https rasm)
+              deposit_receipt: bkDepositOn() ? BK.receipt : undefined,
               date: BK.day.date,
               time: BK.time,
               name: (S.me && (S.me.full_name || S.me.first_name)) || "",
@@ -9941,6 +10419,15 @@
         btn.textContent = "Navbatni band qilish";
         // Kimdir shu vaqtni oldindan olib qo'ygan bo'lsa — ro'yxatni yangilaymiz.
         // `err.slots` — Worker bergan BO'SH vaqtlar (callWorker uni saqlaydi).
+        if (err && err.code === "deposit_required") {
+          // Admin zalogni yoqqan/o'zgartirgan — sozlamani qayta o'qib, to'lov qadamiga
+          BK.settings = await ZimmerOffline.bookingSettings().catch(() => BK.settings);
+          BK.receipt = null;
+          BK.step = 3;
+          toast("Navbat uchun zalog kerak — chekni yuklang", 3600);
+          paintBooking();
+          return;
+        }
         if (err && err.code === "slot_taken") {
           haptic("err");
           toast("Bu vaqt band bo'lib qoldi — boshqa vaqtni tanlang", 3200);
@@ -9956,7 +10443,12 @@
         haptic("ok");
         closeSheet();
         burst();
-        toast(`✅ Navbat #${res.booking.id} · ${BK.time}`, 3400);
+        toast(
+          BK.receipt
+            ? `✅ Navbat so'rovi yuborildi · ${BK.time} — usta chekni tekshirib tasdiqlaydi`
+            : `✅ Navbat #${res.booking.id} · ${BK.time}`,
+          3800
+        );
         show("profile");
       } catch (uiErr) {
         console.error("[booking] commit keyingi UI xatosi:", uiErr);

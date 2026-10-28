@@ -73,7 +73,7 @@ const DEFAULT_MAX_AGE = 86400; // 24 soat
 // berishga to'g'ri keladi).
 // Har deploy'da ko'tariladi — `/health` dagi bu raqam Cloudflare'da
 // YANGI nusxa turganini tasdiqlashning eng oson yo'li.
-const VERSION = "2.2.0";
+const VERSION = "2.3.0";
 const FEATURES = [
   // 2.0.0 — BOT Worker'da: webhook, menyu, holat tugmalari, mijoz↔admin
   // yozishmasi; /me — Bi-LED, navbat va KAFOLAT; mijoz navbatni bekor qiladi;
@@ -137,6 +137,15 @@ const FEATURES = [
   // qarab (`catalog/cars/{id}.glass_price`, bo'lmasa konfiguratordagi
   // standart shisha narxi) serverda hisoblanadi; navbat yozuvida car_*.
   "booking_car_price",
+  // 2.3.0 — rul chexol materiallari va o'rindiq dizaynlari (narx serverda),
+  // navbat uchun zalog (chek bilan), «tez kunda» yo'nalishlar, xizmat
+  // kafolati (admin muddat belgilaydi), barcha kafolatlar ro'yxati (admin),
+  // «ishga tushganda xabar bering».
+  "service_options",
+  "booking_deposit",
+  "service_warranty",
+  "admin_warranties",
+  "service_notify",
 ];
 
 /** Mini App'dan yuklanadigan fayl chegarasi.
@@ -205,6 +214,7 @@ export default {
       if (path === "/booking") return await handleBooking(request, env);
       if (path === "/booking-cancel") return await handleBookingCancel(request, env);
       if (path === "/biled-order") return await handleBiledOrder(request, env);
+      if (path === "/service-notify") return await handleServiceNotify(request, env);
       // Story'ga javob: adminga QAYSI story'dan kelganini bildirib yuboradi
       if (path === "/story-reply") return await handleStoryReply(request, env);
 
@@ -222,6 +232,8 @@ export default {
       if (path === "/admin/vip") return await handleAdminVip(request, env);
       if (path === "/admin/message") return await handleAdminMessage(request, env);
       if (path === "/admin/order-status") return await handleAdminOrderStatus(request, env);
+      if (path === "/admin/warranties") return await handleAdminWarranties(request, env);
+      if (path === "/admin/warranty-set") return await handleAdminWarrantySet(request, env);
 
       return json({ ok: false, error: "Bunday manzil yo'q" }, 404);
     } catch (error) {
@@ -935,7 +947,7 @@ async function handleBooking(request, env) {
   const token = await accessToken(env);
   const services = await rtdbGetStrict(c.dbUrl, `${c.root}/catalog/services`, token);
   const service = catalogRowById(services, body.service_id);
-  if (!catalogRowAvailable(service) || service.coming_soon) {
+  if (!catalogRowAvailable(service) || serviceSoon(service)) {
     return json({ ok: false, error: "Xizmat topilmadi" }, 404);
   }
   const duration = Math.max(30, Number(service.duration_min) || 30);
@@ -955,6 +967,25 @@ async function handleBooking(request, env) {
     const cfgNode = await rtdbGetStrict(c.dbUrl, `${c.root}/catalog/configurator`, token);
     price = studioCarPrice("glass", car, studioCatalog(cfgNode));
   }
+  // 2.3.0 — rul chexol materiali / o'rindiq dizayni: narx katalogdan
+  const opt = await bookingOptions(c, token, service, body);
+  if (opt && opt.error) return json({ ok: false, error: opt.error }, 409);
+  if (opt) price = opt.price;
+  // 2.3.0 — zalog: chek rasmi (https) bo'lmasa navbat olinmaydi
+  const settings = await bookingSettings(c, token);
+  let deposit = null;
+  if (settings.deposit_on && settings.deposit > 0) {
+    const receipt = clean(body.deposit_receipt, 600);
+    if (!CATALOG_URL_RE.test(receipt)) {
+      return json({
+        ok: false,
+        error: "deposit_required",
+        message: `Navbat uchun ${fmtPrice(settings.deposit)} zalog cheki kerak. Ilovani yangilang.`,
+        deposit: settings.deposit,
+      }, 400);
+    }
+    deposit = { amount: settings.deposit, receipt };
+  }
   if (date === today) {
     const now = new Date(Date.now() + 5 * 60 * 60 * 1000);
     const minStart = now.getUTCHours() * 60 + now.getUTCMinutes() + 30;
@@ -967,9 +998,10 @@ async function handleBooking(request, env) {
   if (clientKey.length < 16) return json({ ok: false, error: "client_key_required" }, 400);
   const serviceId = service.id == null ? Number(body.service_id) : service.id;
   const carId = car ? (car.id == null ? Number(body.car_id) : car.id) : null;
-  const requestHash = await sha256Hex(JSON.stringify(
-    carId == null ? { service_id: serviceId, date, time, phone } : { service_id: serviceId, date, time, phone, car_id: carId }
-  ));
+  const hashBase = carId == null ? { service_id: serviceId, date, time, phone } : { service_id: serviceId, date, time, phone, car_id: carId };
+  if (opt) hashBase.option = [opt.fields.option_id, opt.fields.option_hex || "", opt.fields.option_thread || ""];
+  if (deposit) hashBase.deposit = deposit.receipt;
+  const requestHash = await sha256Hex(JSON.stringify(hashBase));
   const key = `b_${uid}_${clientKey}`;
   const bookingPath = `${c.root}/bookings/${key}`;
   const claim = {
@@ -1005,6 +1037,19 @@ async function handleBooking(request, env) {
     bookingFields.car_id = carId;
     bookingFields.car_name = clean(car.name, 200);
   }
+  if (opt) {
+    Object.assign(bookingFields, opt.fields);
+    bookingFields.details = clean(opt.details, 300);
+  }
+  if (deposit) {
+    bookingFields.deposit_amount = deposit.amount;
+    bookingFields.deposit_receipt = deposit.receipt;
+    bookingFields.deposit_status = "pending";
+  }
+  // Kafolat muddati (snapshot): material/dizayn -> xizmat. Admin «Bajarildi»
+  // bosganda o'zgartirishi mumkin.
+  const warrantySnap = (opt && opt.warranty) || clean(service.warranty, 40);
+  if (warrantySnap) bookingFields.warranty = warrantySnap;
   for (let attempt = 0; attempt < 10; attempt++) {
     const snap = await rtdbGetEtag(c.dbUrl, c.root, token);
     const root = snap.value && typeof snap.value === "object" ? snap.value : {};
@@ -1144,6 +1189,210 @@ async function handleBiledOrder(request, env) {
 }
 
 // =====================================================================
+//  XIZMATLAR 2.3.0 — rul chexol materiali, o'rindiq dizayni, zalog,
+//  «tez kunda» yo'nalishlar, xizmat kafolati va «xabar bering»
+//
+//  • Rul chexol: `catalog/wheel_materials/{id}` = {name, price, texture,
+//    colors:[{name, hex}], warranty?}. Navbatda material + rang + ip.
+//  • O'rindiq: `catalog/seat_designs/{id}` = {name, price, zones:{z1..z20},
+//    thread, warranty?}. Navbatda dizayn.
+//    Ikkala holatda ham narx SERVERDA katalogdan olinadi.
+//  • Zalog: `catalog/settings/booking` = {deposit, deposit_on}; yo'q bo'lsa
+//    100 000 so'm, yoqilgan. Navbat chek rasmi (https) bilan qabul qilinadi,
+//    admin tasdiqlaganda `deposit_status: "paid"`.
+//  • «Tez kunda»: akvaprint, tonirovka, broni plyonka — narxi qo'yilmaguncha
+//    navbat olinmaydi (admin narx qo'ysa o'zi ochiladi).
+//  • Kafolat: navbat «Bajarildi» bo'lganda boshlanadi. Muddat — admin
+//    tanlagani, bo'lmasa xizmat/material/dizayndagi muddat.
+// =====================================================================
+const SOON_THEMES = ["aqua", "tint", "armor"];
+const BOOKING_DEFAULTS = { deposit: 100000, deposit_on: 1 };
+const HEX6_RE = /^#[0-9a-f]{6}$/i;
+const NO_WARRANTY_RE = /^(yo'?q|yoq|0|none|-)$/i;
+
+/** Xizmat temasi: admin yozgan `theme`, bo'lmasa nomdan (app.js themeOf bilan mos). */
+function serviceTheme(service) {
+  const theme = String((service && service.theme) || "").toLowerCase().trim();
+  if (theme) return theme;
+  const n = String((service && service.name) || "").toLowerCase();
+  if (/akva|aqua/.test(n)) return "aqua";
+  if (/laminat/.test(n)) return "laminate";
+  if (/tanirov|tonirov/.test(n)) return "tint";
+  if (/broni|bronli|plyonka|plonka/.test(n)) return "armor";
+  if (/rul/.test(n)) return "wheel";
+  if (/rindiq/.test(n)) return "seat";
+  if (/shisha/.test(n)) return "glass";
+  if (/polirov|polish/.test(n)) return "polish";
+  return "";
+}
+
+/** «Tez kunda»: admin belgilagan yoki — akvaprint/tonirovka/broni narxsiz. */
+function serviceSoon(service) {
+  if (!service) return true;
+  if (service.coming_soon) return true;
+  return SOON_THEMES.includes(serviceTheme(service)) && !(Number(service.price) > 0);
+}
+
+function rowsList(raw) {
+  if (Array.isArray(raw)) return raw.filter((x) => x && typeof x === "object");
+  if (raw && typeof raw === "object") return Object.values(raw).filter((x) => x && typeof x === "object");
+  return [];
+}
+
+async function bookingSettings(c, token) {
+  const row = await rtdbGet(c.dbUrl, `${c.root}/catalog/settings/booking`, token).catch(() => null);
+  const r = row && typeof row === "object" ? row : {};
+  const deposit = Number(r.deposit);
+  return {
+    deposit: Number.isFinite(deposit) && deposit >= 0 ? Math.round(deposit) : BOOKING_DEFAULTS.deposit,
+    deposit_on: r.deposit_on === undefined ? BOOKING_DEFAULTS.deposit_on : r.deposit_on ? 1 : 0,
+  };
+}
+
+/** Rul/o'rindiq tanlovi -> {price, fields, details, warranty} | {error} | null. */
+async function bookingOptions(c, token, service, body) {
+  const theme = serviceTheme(service);
+  const o = body.options && typeof body.options === "object" ? body.options : null;
+  if (!o) return null;
+  if (theme === "wheel") {
+    const node = await rtdbGetStrict(c.dbUrl, `${c.root}/catalog/wheel_materials`, token);
+    const m = catalogRowById(node, clean(o.material, 60));
+    if (!catalogRowAvailable(m)) return { error: "Material topilmadi yoki faol emas" };
+    const want = String(o.color || "").toLowerCase();
+    const color = rowsList(m.colors).find((x) => String(x.hex || "").toLowerCase() === want);
+    if (!color) return { error: "Material rangi topilmadi" };
+    const thread = HEX6_RE.test(String(o.thread || "")) ? String(o.thread).toLowerCase() : null;
+    const name = clean(m.name, 120);
+    const colorName = clean(color.name, 60) || String(color.hex).toUpperCase();
+    return {
+      price: Math.max(0, Math.round(Number(m.price) || 0)),
+      warranty: clean(m.warranty, 40) || null,
+      details: [name, colorName, thread ? "ip " + thread.toUpperCase() : ""].filter(Boolean).join(" · "),
+      fields: {
+        option_kind: "wheel",
+        option_id: String(clean(o.material, 60)),
+        option_name: name,
+        option_color: colorName,
+        option_hex: String(color.hex).toLowerCase(),
+        option_thread: thread,
+      },
+    };
+  }
+  if (theme === "seat") {
+    const node = await rtdbGetStrict(c.dbUrl, `${c.root}/catalog/seat_designs`, token);
+    const d = catalogRowById(node, clean(o.design, 60));
+    if (!catalogRowAvailable(d)) return { error: "Dizayn topilmadi yoki faol emas" };
+    const name = clean(d.name, 120);
+    return {
+      price: Math.max(0, Math.round(Number(d.price) || 0)),
+      warranty: clean(d.warranty, 40) || null,
+      details: name,
+      fields: { option_kind: "seat", option_id: String(clean(o.design, 60)), option_name: name },
+    };
+  }
+  return null;
+}
+
+/** Admin yozgan kafolat matni -> «6 oy» / «yo'q» | null (noto'g'ri). */
+function normWarrantyText(raw) {
+  const s = clean(raw, 40);
+  if (!s || NO_WARRANTY_RE.test(s)) return "yo'q";
+  const p = wParse(s);
+  return p ? wLabel(p) : null;
+}
+
+/* ---------------------------------------------------------------------
+   POST /admin/warranties — barcha mijozlarning kafolatlari (admin)
+   --------------------------------------------------------------------- */
+async function handleAdminWarranties(request, env) {
+  const gate = await requireAdmin(request, env);
+  if (gate.error) return gate.error;
+  const { c } = gate;
+  const token = await accessToken(env);
+  const [biledNode, bookingNode, pendingNode, products, categories, biledTypes] = await Promise.all([
+    rtdbGet(c.dbUrl, `${c.root}/biled_orders`, token).catch(() => null),
+    rtdbGet(c.dbUrl, `${c.root}/bookings`, token).catch(() => null),
+    rtdbGet(c.dbUrl, `${c.root}/pending_orders`, token).catch(() => null),
+    cachedNode(c, token, "catalog/products"),
+    cachedNode(c, token, "catalog/categories"),
+    cachedNode(c, token, "catalog/biled_types"),
+  ]);
+  const now = Date.now();
+  const base = { products: products || {}, categories: categories || {}, biledTypes: biledTypes || {}, now };
+  const out = [];
+  const live = (r) => r && r.status !== "processing" && r.status !== "failed";
+  const add = (list, ref) => list.forEach((w) => out.push({ ...w, ...ref }));
+  const who = (r) => ({ uid: Number(r.uid) || 0, name: clean(r.name, 120), phone: clean(r.phone, 30) });
+  for (const [k, r] of entriesOf(biledNode)) {
+    if (!live(r)) continue;
+    add(buildWarranties({ ...base, biled: [customerBiledView(k, r)] }), { ref_kind: "biled", ref_key: k, editable: true, ...who(r) });
+  }
+  for (const [k, r] of entriesOf(bookingNode)) {
+    if (!live(r)) continue;
+    add(buildWarranties({ ...base, bookings: [customerBookingView(k, r)] }), { ref_kind: "booking", ref_key: k, editable: true, ...who(r) });
+  }
+  for (const [k, r] of entriesOf(pendingNode)) {
+    if (!live(r)) continue;
+    add(buildWarranties({ ...base, orders: [customerOrderView(k, "pending", r, null)] }), { ref_kind: "order", ref_key: k, editable: false, ...who(r) });
+  }
+  const rank = { active: 0, pending: 1, expired: 2 };
+  out.sort((a, b) => rank[a.state] - rank[b.state] || (a.state === "active" ? a.end - b.end : (b.start || b.created) - (a.start || a.created)));
+  return json({ ok: true, warranties: out, now });
+}
+
+/* ---------------------------------------------------------------------
+   POST /admin/warranty-set — bajarilgan ishning kafolat muddatini o'zgartirish
+   --------------------------------------------------------------------- */
+async function handleAdminWarrantySet(request, env) {
+  const gate = await requireAdmin(request, env);
+  if (gate.error) return gate.error;
+  const { c, body, uid } = gate;
+  const kind = clean(body.kind, 12);
+  if (!KIND_NODES[kind]) return json({ ok: false, error: "kind" }, 400);
+  const key = clean(body.key, 120);
+  if (!/^[A-Za-z0-9_-]+$/.test(key)) return json({ ok: false, error: "bad_key" }, 400);
+  const warranty = normWarrantyText(body.warranty);
+  if (warranty == null) return json({ ok: false, error: "validation", message: "Muddat noto'g'ri: masalan 6 oy, 1 yil, 90 kun" }, 400);
+  const token = await accessToken(env);
+  const path = `${c.root}/${KIND_NODES[kind]}/${key}`;
+  const row = await rtdbGet(c.dbUrl, path, token);
+  if (!row || typeof row !== "object") return json({ ok: false, error: "not_found" }, 404);
+  const patch = { warranty, warranty_set_by: Number(uid), warranty_set_at: Date.now() };
+  await ensureOk(await rtdbPatch(c.dbUrl, path, patch, token), "Kafolat saqlanmadi");
+  return json({ ok: true, kind, key, warranty });
+}
+
+/* ---------------------------------------------------------------------
+   POST /service-notify — «Tez kunda» xizmat: «Ishga tushganda xabar bering»
+   --------------------------------------------------------------------- */
+async function handleServiceNotify(request, env) {
+  const c = cfg(env);
+  const body = await readJson(request);
+  const verified = await verifyInitData(body.initData, env);
+  if (!verified.ok) return json({ ok: false, error: verified.error, blocked: !!verified.blocked }, verified.status || 401);
+  if (!c.dbUrl) return json({ ok: false, error: "FIREBASE_DB_URL sozlanmagan" }, 500);
+  const token = await accessToken(env);
+  const services = await rtdbGetStrict(c.dbUrl, `${c.root}/catalog/services`, token);
+  const service = catalogRowById(services, body.service_id);
+  if (!service || service.deleted) return json({ ok: false, error: "Xizmat topilmadi" }, 404);
+  const sid = String(service.id == null ? clean(body.service_id, 40) : service.id).replace(/[^A-Za-z0-9_-]/g, "");
+  const uid = String(verified.user.id);
+  const path = `${c.root}/service_waitlist/${sid}/${uid}`;
+  const existed = await rtdbGet(c.dbUrl, path, token).catch(() => null);
+  const name = clean([verified.user.first_name, verified.user.last_name].filter(Boolean).join(" "), 120);
+  await ensureOk(await rtdbPut(c.dbUrl, path, { uid: Number(uid), name, at: Date.now() }, token), "Saqlanmadi");
+  if (!existed) {
+    await notifyAdmins(
+      env,
+      c,
+      `🔔 <b>${escHtml(service.name || "Xizmat")}</b> — mijoz ishga tushishini kutyapti\n` +
+        `👤 ${userLink(uid, name, verified.user.username)}`
+    ).catch(() => {});
+  }
+  return json({ ok: true, already: !!existed });
+}
+
+// =====================================================================
 //  BI-LED STUDIO (3D konfigurator) — 2.1.0
 //
 //  Mijoz Mini App'da tanlaydi: linza (R50/R80/R90), fara ichi (xrom/qora),
@@ -1208,9 +1457,7 @@ function studioCarPrice(kind, car, raw) {
 
 /** «Fara shishasini almashtirish» xizmatimi (tema yoki nom bo'yicha). */
 function serviceIsGlass(service) {
-  const theme = String((service && service.theme) || "").toLowerCase();
-  if (theme) return theme === "glass";
-  return /shisha/i.test(String((service && service.name) || ""));
+  return serviceTheme(service) === "glass";
 }
 
 /** Buyurtma tarkibi (bot, admin va kabinet uchun bitta manba). */
@@ -1577,7 +1824,11 @@ const CATALOG_WRITE_FIELDS = {
      — bosh sahifadagi «Rang» generatori (admin) tanlagan brend rangi
      (ton/to'yinganlik/ochlik). `catalog` hammaga o'qiladi, ya'ni har bir
      mijoz ilovasi shu rangda ochiladi. */
-  settings: new Set(["h", "s", "l", "updatedAt", "source"]),
+  /* 2.3.0 — `catalog/settings/booking`: zalog summasi va yoqilganmi. */
+  settings: new Set(["h", "s", "l", "deposit", "deposit_on", "updatedAt", "source"]),
+  // 2.3.0 — rul chexol materiallari (ranglari bilan) va o'rindiq dizaynlari (20 qism)
+  wheel_materials: new Set(["_key", "name", "price", "description", "texture", "colors", "warranty", "sort", "is_active", "deleted", "createdAt", "updatedAt", "source"]),
+  seat_designs: new Set(["_key", "name", "price", "description", "zones", "thread", "warranty", "sort", "is_active", "deleted", "createdAt", "updatedAt", "source"]),
 };
 const CATALOG_COUNTERS = {
   products: "products_counter",
@@ -1625,6 +1876,10 @@ const CATALOG_FIELD_CHECK = {
   glass_price: (v) => catNum(v, 0, 100000000000),
   housing_price: (v) => catNum(v, 0, 100000000000),
   group: (v) => catStr(v, 20),
+  texture: (v) => catStr(v, 20),
+  thread: (v) => typeof v === "string" && HEX6_RE.test(v),
+  deposit: (v) => catNum(v, 0, 100000000),
+  deposit_on: catBool01,
   size: (v) => catStr(v, 40),
   kelvin: (v) => catStr(v, 40),
   lumen: (v) => catStr(v, 40),
@@ -1722,6 +1977,23 @@ function validateCatalogMutation(table, value) {
     if (key === "carNames" || key === "categories" || key === "carnames") {
       const why = validateCatalogStringArray(v, 200);
       if (why) return why;
+      continue;
+    }
+    if (key === "colors") {
+      const rows = Array.isArray(v) ? v : (typeof v === "object" ? Object.values(v) : null);
+      if (!rows || rows.length > 30) return "Ranglar ro'yxati noto'g'ri";
+      for (const r of rows) {
+        if (r == null) continue;
+        if (typeof r !== "object" || !catStr(r.name, 40) || !HEX6_RE.test(String(r.hex || ""))) return "Rang noto'g'ri (nomi va #RRGGBB)";
+      }
+      continue;
+    }
+    if (key === "zones") {
+      if (typeof v !== "object" || Array.isArray(v)) return "Qismlar noto'g'ri";
+      for (const z of Object.keys(v)) {
+        if (!/^z([1-9]|1[0-9]|20)$/.test(z)) return "Qism nomi noto'g'ri: " + z;
+        if (v[z] != null && !HEX6_RE.test(String(v[z]))) return "Qism rangi noto'g'ri: " + z;
+      }
       continue;
     }
     if (key === "images") {
@@ -2095,12 +2367,20 @@ async function handleAdminOrderStatus(request, env) {
   if (gate.error) return gate.error;
   const { c, body, uid } = gate;
   const token = await accessToken(env);
+  let warranty;
+  if (body.warranty != null && body.warranty !== "") {
+    warranty = normWarrantyText(body.warranty);
+    if (warranty == null) {
+      return json({ ok: false, error: "validation", message: "Kafolat muddati noto'g'ri: masalan 6 oy, 1 yil, 90 kun" }, 400);
+    }
+  }
   const res = await applyStatusChange(env, c, token, {
     kind: clean(body.kind, 12),
     key: body.key,
     status: body.status,
     source: clean(body.source, 12),
     by: uid,
+    warranty,
   });
   if (res.error) {
     const { http, ...rest } = res.error;
@@ -2144,7 +2424,12 @@ function normKindStatus(kind, value) {
 
 /** Kafolat shu holatda BOSHLANADI: tovar yetkazildi / Bi-LED topshirildi. */
 function isWarrantyStart(kind, status) {
-  return (kind === "order" && status === "delivered") || (kind === "biled" && status === "done");
+  return (
+    (kind === "order" && status === "delivered") ||
+    (kind === "biled" && status === "done") ||
+    // 2.3.0 — xizmat (navbat) bajarilganda
+    (kind === "booking" && status === "done")
+  );
 }
 
 async function applyStatusChange(env, c, token, opts) {
@@ -2166,7 +2451,7 @@ async function applyStatusChange(env, c, token, opts) {
   let outcome;
   if (status === "cancelled" && kind === "order") outcome = await cancelOrderAtomic(c, token, key, by, source);
   else if (status === "cancelled" && kind === "booking") outcome = await cancelBookingAtomic(c, token, key, by);
-  else outcome = await setStatusCas(c, token, kind, node, key, status, by, source);
+  else outcome = await setStatusCas(c, token, kind, node, key, status, by, source, { warranty: opts.warranty });
   if (outcome.error) return outcome;
 
   const row = outcome.row || {};
@@ -2184,7 +2469,7 @@ async function applyStatusChange(env, c, token, opts) {
 }
 
 /** Bitta yozuvning holatini CAS bilan o'zgartiradi (bekor qilishdan boshqa). */
-async function setStatusCas(c, token, kind, node, key, status, by, source) {
+async function setStatusCas(c, token, kind, node, key, status, by, source, extra) {
   const path = `${c.root}/${node}/${key}`;
   let twinStatus;
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -2214,6 +2499,12 @@ async function setStatusCas(c, token, kind, node, key, status, by, source) {
       });
     }
     const next = { ...row, status, status_by: by, status_at: Date.now() };
+    // 2.3.0 — zalog cheki tasdiqlangan navbat
+    if (kind === "booking" && status === "confirmed" && row.deposit_amount) next.deposit_status = "paid";
+    // 2.3.0 — admin «Bajarildi / Topshirildi» da kafolat muddatini belgilaydi
+    if (status === "done" && (kind === "booking" || kind === "biled") && extra && extra.warranty) {
+      next.warranty = extra.warranty;
+    }
     // Kafolat aynan shu lahzadan sanaladi (keyingi tahrirlar uni siljitmaydi)
     if (isWarrantyStart(kind, status) && !row.warranty_from) next.warranty_from = next.status_at;
     const put = await rtdbPutIfMatch(c.dbUrl, path, next, token, snap.etag);
@@ -2268,11 +2559,16 @@ async function afterStatusChange(env, c, token, ev) {
       ? biledCode(key, row)
       : "#" + (row.id != null ? row.id : key);
   let body = `${text}\n\n🧾 ${escHtml(label)}`;
+  if (kind === "booking" && status === "confirmed" && row.deposit_amount) {
+    body += `\n💳 Zalog qabul qilindi: ${fmtPrice(row.deposit_amount)}`;
+  }
   const extra = {};
   if (isWarrantyStart(kind, status)) {
     const one = kind === "order"
       ? { orders: [customerOrderView(key, ev.source, row, null)], biled: [] }
-      : { orders: [], biled: [customerBiledView(key, row)] };
+      : kind === "booking"
+        ? { orders: [], biled: [], bookings: [customerBookingView(key, row)] }
+        : { orders: [], biled: [customerBiledView(key, row)] };
     const list = (await warrantiesFor(c, token, one).catch(() => [])).filter((w) => w.state === "active");
     if (list.length) {
       body +=
@@ -2787,10 +3083,15 @@ async function notifyBooking(env, c, token, key, rec, user) {
     "🗓 <b>Yangi navbat</b>\n\n" +
     `🔧 ${escHtml(rec.service_name || "Xizmat")}\n` +
     (rec.car_name ? `🚗 ${escHtml(rec.car_name)}\n` : "") +
+    (rec.details ? `🎨 ${escHtml(rec.details)}\n` : "") +
     `📅 ${when}\n` +
     `👤 ${userLink(rec.uid, rec.name, user && user.username)}\n` +
     `📞 ${escHtml(rec.phone || "")}\n` +
     (rec.price ? `💰 ${fmtPrice(rec.price)}\n` : "") +
+    (rec.deposit_amount
+      ? `💳 Zalog: <b>${fmtPrice(rec.deposit_amount)}</b> — <a href="${escHtml(rec.deposit_receipt || "")}">chekni ko'rish</a>\n` +
+        "<i>Chekni tekshirib «✅ Tasdiqlash» ni bosing.</i>\n"
+      : "") +
     `👤 Mijoz ID: <code>${Number(rec.uid) || 0}</code>\n\n` +
     "<i>↩️ Mijozga yozish uchun shu xabarga «Reply» qiling.</i>";
   const ok = await sendToAdmins(env, c, adminText, statusKeyboard("booking", key, "pending", "new"));
@@ -2802,9 +3103,13 @@ async function notifyBooking(env, c, token, key, rec, user) {
       `🔧 ${escHtml(rec.service_name || "Xizmat")}\n` +
       (rec.car_name ? `🚗 ${escHtml(rec.car_name)}\n` : "") +
       `📅 ${when}\n` +
+      (rec.details ? `🎨 ${escHtml(rec.details)}\n` : "") +
       (rec.price ? `💰 ${fmtPrice(rec.price)}\n` : "") +
+      (rec.deposit_amount ? `💳 Zalog cheki yuborildi: ${fmtPrice(rec.deposit_amount)}\n` : "") +
       "\n" +
-      "Usta vaqtni tasdiqlagach shu yerga xabar keladi 🔔",
+      (rec.deposit_amount
+        ? "Usta chekni tekshirib navbatni tasdiqlagach shu yerga xabar keladi 🔔"
+        : "Usta vaqtni tasdiqlagach shu yerga xabar keladi 🔔"),
     { reply_markup: { inline_keyboard: [[{ text: "🗓 Navbatlarim", web_app: { url: appUrl(env, "bookings") } }]] } }
   );
   return ok;
@@ -4243,6 +4548,12 @@ function customerBookingView(key, row) {
     time: row.time || "",
     price: Number(row.price || 0) || 0,
     car_name: row.car_name || "",
+    details: row.details || "",
+    deposit_amount: Number(row.deposit_amount || 0) || 0,
+    deposit_status: row.deposit_status || "",
+    warranty: row.warranty || null,
+    warranty_from: Number(row.warranty_from || 0) || null,
+    status_at: Number(row.status_at || 0) || null,
     status,
     createdAt: Number(row.createdAt || 0) || 0,
     can_cancel: (status === "new" || status === "confirmed") && !!row.date && row.date >= tashkentToday(),
@@ -4425,6 +4736,7 @@ function buildWarranties(input) {
   for (const b of input.biled || []) {
     const st = normKindStatus("biled", b.status);
     if (st === "cancelled") continue;
+    if (NO_WARRANTY_RE.test(String(b.warranty || ""))) continue; // admin «kafolatsiz» qo'ygan
     const t = b.biled_id != null ? catalogRowById(input.biledTypes, b.biled_id) : null;
     const period = wParse(b.warranty || (t && t.warranty)) || { months: WARRANTY_BILED_MONTHS };
     out.push(
@@ -4441,6 +4753,33 @@ function buildWarranties(input) {
           created: Number(b.createdAt) || 0,
           order_code: b.code || "",
           order_kind: "biled",
+          order_status: st,
+        },
+        now
+      )
+    );
+  }
+  // 2.3.0 — xizmatlar (navbat): muddat admin/xizmatdan, «Bajarildi» dan boshlanadi
+  for (const b of input.bookings || []) {
+    const st = normKindStatus("booking", b.status);
+    if (st === "cancelled") continue;
+    const period = wParse(b.warranty);
+    if (!period) continue;
+    const code = "NV-" + String(b.key || b.id || "").slice(-6).toUpperCase();
+    out.push(
+      wRecord(
+        {
+          id: "KF-" + code.replace(/-/g, ""),
+          kind: "service",
+          title: clean(b.service_name || "Xizmat", 120),
+          sub: [b.details ? clean(b.details, 80) : "", b.car_name ? clean(b.car_name, 60) : ""].filter(Boolean).join(" · ") || "Xizmat",
+          qty: 1,
+          size: null,
+          period,
+          start: st === "done" ? wStartOf(b) : null,
+          created: Number(b.createdAt) || 0,
+          order_code: code,
+          order_kind: "booking",
           order_status: st,
         },
         now
@@ -4476,6 +4815,7 @@ async function warrantiesFor(c, token, data) {
   return buildWarranties({
     orders: (data && data.orders) || [],
     biled: (data && data.biled) || [],
+    bookings: (data && data.bookings) || [],
     products: products || {},
     categories: categories || {},
     biledTypes: biledTypes || {},
