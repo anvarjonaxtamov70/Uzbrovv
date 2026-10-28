@@ -1,6 +1,6 @@
 {
  "car_id": null,
- "_generated_at": "2026-10-28T18:12:40Z",
+ "_generated_at": "2026-10-28T20:10:27Z",
  "banners": [
   {
    "id": 900001,
@@ -78,20 +78,20 @@
    "count": 1,
    "items": [
     {
-     "id": 900005,
-     "heading": "Uzbrovv",
-     "title": "Uzbrovv",
-     "body": "",
+     "id": 900013,
+     "heading": "Mijoz fikrlari",
+     "title": "Mijoz fikrlari",
+     "body": "Jizaxtlik akamizga. Nexia 2. Uchun tayor fara yasab yuborgandik",
      "emoji": "💬",
      "color_from": "#2fb4a0",
      "color_to": "#0c2f2a",
-     "photo_url": "https://i.ibb.co/xq9PV2tv/d5f686911a06.jpg",
-     "photo_external": true,
+     "photo_url": null,
+     "photo_external": false,
      "video_url": null,
      "video_external": true,
-     "has_media": true,
+     "has_media": false,
      "link": null,
-     "createdAt": 1792835504289
+     "createdAt": 1793215282102
     }
    ]
   },
@@ -514,7 +514,7 @@
      "price": 520000,
      "old_price": 600000,
      "badge": "R60",
-     "stock": 10,
+     "stock": 9,
      "car_id": null,
      "product_type": "oddiy",
      "sizes": [],
