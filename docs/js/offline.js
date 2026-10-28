@@ -768,6 +768,9 @@
             slug: r.slug || String(r.name || "").trim().toLowerCase(),
             photo_url: pic,
             has_media: !!pic,
+            // Bi-LED Studio: mashinaga xos shisha/korpus narxi (bo'lmasa standart)
+            glass_price: Number(r.glass_price) > 0 ? Number(r.glass_price) : null,
+            housing_price: Number(r.housing_price) > 0 ? Number(r.housing_price) : null,
           };
         });
       return list.length ? list : await cachedOrSnapshotCars();
@@ -867,6 +870,150 @@
       console.error("[offline] tuning o'qilmadi — keshga o'tilyapti:", err);
       return cachedOr(TUNING_KEY, { biled_types: [], shrouds: [], colors: [] });
     }
+  }
+
+  /* ==================================================================
+     BI-LED STUDIO (3D konfigurator) — variantlar va narxlar
+
+     Manba: `zimmer/catalog/configurator/{qator}` (hammaga o'qiladi).
+     Admin panelda «Bi-LED konfigurator» bo'limi shu yerga yozadi.
+     Bazada qator bo'lmasa — quyidagi STANDART qiymat ishlatiladi, ya'ni
+     konfigurator admin hech narsa kiritmasdan ham ishlaydi.
+
+     DIQQAT: `cloudflare-worker.js` dagi `STUDIO_DEFAULTS` bilan AYNAN
+     bir xil bo'lishi SHART — buyurtma narxini Worker shu jadvaldan qayta
+     hisoblaydi (mijoz yuborgan narxga ishonilmaydi).
+
+     Narxlar 2 fara (komplekt) uchun, o'rnatish bilan.
+     Mashinaga qarab: `catalog/cars/{id}.glass_price` va `.housing_price`
+     — bo'lmasa shu yerdagi standart narx.
+     ================================================================== */
+  var STUDIO_KEY = "zimmer_studio_cache";
+  var STUDIO_DEFAULTS = {
+    lens_r50: {
+      group: "lens", code: "r50", sort: 1, name: "Bi-LED R50", price: 1200000,
+      size: "2.5\"", kelvin: "5000K", lumen: "6 500 lm", warranty: "1 yil", badge: "",
+      description: "Ixcham linza. Kunlik shahar yurishi uchun tekis va aniq nur.",
+    },
+    lens_r80: {
+      group: "lens", code: "r80", sort: 2, name: "Bi-LED R80", price: 1500000,
+      size: "3.0\"", kelvin: "5500K", lumen: "8 500 lm", warranty: "1 yil", badge: "Ommabop",
+      description: "Ko'k antirefleks qoplamali 3 dyuymli linza. Kesish chizig'i keskin, nur keng.",
+    },
+    lens_r90: {
+      group: "lens", code: "r90", sort: 3, name: "Bi-LED R90", price: 2200000,
+      size: "3.0\"", kelvin: "6000K", lumen: "11 000 lm", warranty: "1 yil", badge: "Premium",
+      description: "Eng yorug' model: giperboloid linza va ko'k lazer aksent. Uzoq nur juda uzoqqa yetadi.",
+    },
+    inner_chrome: {
+      group: "inner", code: "chrome", sort: 1, name: "Asl rang (xrom)", price: 0,
+      description: "Zavod xrom ko'rinishi saqlanadi — yorug'likni eng yaxshi qaytaradi.",
+    },
+    inner_black: {
+      group: "inner", code: "black", sort: 2, name: "Qora", price: 350000,
+      description: "Fara ichi qora rangga bo'yaladi — agressiv, zamonaviy ko'rinish.",
+    },
+    ring_plain: {
+      group: "ring", code: "plain", sort: 1, name: "Oddiy ochki", price: 250000,
+      description: "Silliq klassik maska. Yonmaydi. Xrom yoki qora.",
+    },
+    ring_bmw: {
+      group: "ring", code: "bmw", sort: 2, name: "BMW halqa", price: 400000,
+      description: "BMW uslubidagi bo'rtiq halqa. Yonmaydi. Xrom yoki qora.",
+    },
+    ring_glow: {
+      group: "ring", code: "glow", sort: 3, name: "BMW yonadigan halqa", price: 450000,
+      description: "Halqa siz tanlagan rangda yonadi (angel eyes). Gabarit bilan birga yonadi.",
+    },
+    glass: {
+      group: "glass", code: "glass", sort: 1, name: "Yangi fara shishasi", price: 250000,
+      description: "Sarg'aygan, xira yoki yorilgan shisha o'rniga yangi tiniq shisha, germetik bilan.",
+    },
+    housing: {
+      group: "housing", code: "housing", sort: 1, name: "Yangi korpus", price: 600000,
+      description: "Eskirgan, yorilgan yoki quloqlari singan korpus yangisiga almashtiriladi.",
+    },
+  };
+  /** BMW yonadigan halqa uchun tayyor ranglar (mijoz istalganini ham tanlay oladi). */
+  var STUDIO_GLOWS = [
+    ["#f4f8ff", "Oq"],
+    ["#9fe7ff", "Muz"],
+    ["#2f7bff", "Ko'k"],
+    ["#8a5cff", "Binafsha"],
+    ["#ff4fa3", "Pushti"],
+    ["#ff2d2d", "Qizil"],
+    ["#ff8a00", "To'q sariq"],
+    ["#ffd60a", "Sariq"],
+    ["#2bff88", "Yashil"],
+    ["#19e3d1", "Firuza"],
+  ];
+
+  /** Bazadagi qatorlarni standartlar ustiga qo'yadi va guruhlaydi. */
+  function buildStudio(node) {
+    var raw = {};
+    Object.keys(STUDIO_DEFAULTS).forEach(function (k) {
+      raw[k] = Object.assign({ id: k }, STUDIO_DEFAULTS[k]);
+    });
+    if (node && typeof node === "object" && !Array.isArray(node)) {
+      Object.keys(node).forEach(function (k) {
+        var row = node[k];
+        if (!raw[k] || !row || typeof row !== "object") return; // faqat ma'lum qatorlar
+        Object.keys(row).forEach(function (f) {
+          if (row[f] !== null && row[f] !== undefined) raw[k][f] = row[f]; // "" — admin ataylab tozalagan
+        });
+        raw[k].id = k;
+      });
+    }
+    var on = function (r) {
+      return !r.deleted && r.is_active !== 0 && r.is_active !== false;
+    };
+    var group = function (g) {
+      return Object.keys(raw)
+        .map(function (k) {
+          var r = raw[k];
+          r.price = Math.max(0, Number(r.price) || 0);
+          r.price_label = priceLabel(r.price);
+          return r;
+        })
+        .filter(function (r) {
+          return r.group === g && on(r);
+        })
+        .sort(function (a, b) {
+          return (a.sort || 0) - (b.sort || 0);
+        });
+    };
+    return {
+      lenses: group("lens"),
+      inner: group("inner"),
+      rings: group("ring"),
+      glass: on(raw.glass) ? raw.glass : null,
+      housing: on(raw.housing) ? raw.housing : null,
+      glows: STUDIO_GLOWS.map(function (g) {
+        return { hex: g[0], name: g[1] };
+      }),
+      raw: raw,
+    };
+  }
+
+  /** Konfigurator variantlari (Firebase -> kesh -> standart). */
+  async function studio() {
+    if (!available()) return buildStudio(readBlob(STUDIO_KEY));
+    try {
+      var node = await readNode("configurator");
+      saveBlob(STUDIO_KEY, node || {});
+      return buildStudio(node);
+    } catch (err) {
+      console.warn("[offline] konfigurator o'qilmadi — kesh/standart:", err);
+      return buildStudio(readBlob(STUDIO_KEY));
+    }
+  }
+
+  /** Mashinaga qarab shisha/korpus narxi (2 fara). Mashinada yo'q bo'lsa — standart. */
+  function studioCarPrice(kind, car, cfg) {
+    var own = car ? Number(car[kind + "_price"]) : 0;
+    if (own > 0) return own;
+    var row = cfg && cfg[kind];
+    return row ? Number(row.price) || 0 : 0;
   }
 
   /* Videoga ruxsat etilgan xizmat temalari — `config.py:
@@ -1148,6 +1295,19 @@
     var body = Object.assign({}, payload || {}, { client_key: attempt.key });
     var result = await callWorker("/biled-order", body);
     clearAttempt(BILED_ATTEMPT_STORE); // FAQAT tasdiqlangan javobdan keyin
+    return result;
+  }
+
+  /** Bi-LED Studio buyurtmasi (3D konfigurator). Yo'l o'sha `/biled-order`,
+   *  lekin tanlov `studio` obyektida keladi va narxni Worker
+   *  `catalog/configurator` + mashina narxidan qayta hisoblaydi.
+   *  Eski Worker bu shaklni bilmaydi — avval feature tekshiriladi. */
+  async function createStudioOrder(payload) {
+    await ensureWorkerFeature("biled_studio");
+    var attempt = attemptFor(BILED_ATTEMPT_STORE, "bl_", payload);
+    var body = Object.assign({}, payload || {}, { client_key: attempt.key });
+    var result = await callWorker("/biled-order", body);
+    clearAttempt(BILED_ATTEMPT_STORE);
     return result;
   }
 
@@ -1577,12 +1737,18 @@
     home: home,
     cars: cars,
     tuning: tuning,
+    // Bi-LED Studio (3D konfigurator)
+    studio: studio,
+    buildStudio: buildStudio,
+    studioCarPrice: studioCarPrice,
+    STUDIO_DEFAULTS: STUDIO_DEFAULTS,
     services: services,
     // Navbat va Bi-LED — imzolangan Worker endpointlari orqali
     bookingDates: bookingDates,
     bookingSlots: bookingSlots,
     createBooking: createBooking,
     createBiledOrder: createBiledOrder,
+    createStudioOrder: createStudioOrder,
     freeSlots: freeSlots,
     dateLabel: dateLabel,
     shortDateLabel: shortDateLabel,
