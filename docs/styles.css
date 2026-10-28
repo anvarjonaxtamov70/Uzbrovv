@@ -13098,3 +13098,96 @@ html.lite .st-done { background: rgba(5, 5, 6, 0.86); }
 .cfa-car .admin-input { margin: 0; padding: 10px; font-size: 14.5px; text-align: right; }
 .cfa-car.is-head span { font-size: 11px; font-weight: 700; color: var(--muted); }
 .cfa-car.is-head span + span { text-align: right; padding-right: 10px; }
+
+/* ==========================================================================
+   POLIROVKA — «OLDIN / KEYIN» SURGICHI (`app.js -> pzBlock`)
+   Chap qism xira (oldin), o'ng qism toza (keyin); chegarasi — `--x`.
+   ========================================================================== */
+.pz { margin: 4px 0 14px; }
+.pz-desc { margin: 12px 2px 0; color: var(--muted); font-size: 13.5px; line-height: 1.45; }
+.pz-head { margin: 2px 2px 10px; }
+.pz-head b { display: block; font-size: 18px; font-weight: 750; letter-spacing: -0.02em; }
+.pz-head small { display: block; margin-top: 2px; font-size: 13px; color: var(--muted); }
+.pz-stage {
+  --x: 86%;
+  position: relative; overflow: hidden;
+  aspect-ratio: 16 / 11; border-radius: 26px;
+  background:
+    radial-gradient(70% 60% at 50% 55%, hsl(var(--h) calc(var(--s) * 0.3) 16% / 0.5), transparent 70%),
+    radial-gradient(120% 100% at 50% 30%, #1d1f25 0%, #0c0d10 55%, #050506 100%);
+  border: 0.5px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  touch-action: pan-y; /* gorizontal — surgich, vertikal — sahifa skrolli */
+  user-select: none; -webkit-user-select: none; cursor: ew-resize;
+}
+.pz-layer { position: absolute; inset: 0; }
+.pz-layer img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; -webkit-user-drag: none; }
+.pz-layer.is-hazy { clip-path: inset(0 calc(100% - var(--x)) 0 0); }
+.pz-stage:not(.is-ready) .pz-layer { opacity: 0; }
+.pz-stage.is-ready .pz-layer { opacity: 1; transition: opacity 0.5s var(--silk); }
+.pz-gl { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+
+.pz-svg { position: absolute; inset: 0; display: grid; place-items: center; padding: 18px; }
+.pz-svg svg { width: 100%; height: auto; }
+.pz-svg.is-haze { filter: sepia(0.85) saturate(1.5) brightness(0.9) contrast(0.82) blur(0.7px); }
+.pz-svg.is-haze::after {
+  content: ""; position: absolute; inset: 18% 6%; border-radius: 40%;
+  background: radial-gradient(closest-side, rgba(236, 210, 140, 0.45), rgba(236, 210, 140, 0));
+}
+
+.pz-handle { position: absolute; top: 0; bottom: 0; left: var(--x); width: 0; z-index: 3; outline: none; }
+.pz-line {
+  position: absolute; top: 0; bottom: 0; left: -1.5px; width: 3px;
+  background: linear-gradient(rgba(255, 255, 255, 0), #fff 18%, #fff 82%, rgba(255, 255, 255, 0));
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.55), 0 0 30px hsl(var(--h) var(--s) var(--l) / 0.35);
+}
+.pz-knob {
+  position: absolute; top: 50%; left: 0; width: 48px; height: 48px;
+  transform: translate(calc(-50% + var(--kx, 0px)), -50%);
+  display: grid; place-items: center; border-radius: 50%;
+  color: #0b0b0c;
+  background: linear-gradient(180deg, #ffffff, #e4e8ee);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 0 5px rgba(255, 255, 255, 0.18), inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+  transition: transform 0.25s var(--spring);
+}
+.pz-knob svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.pz-stage.is-drag .pz-knob { transform: translate(calc(-50% + var(--kx, 0px)), -50%) scale(1.1); }
+.pz-handle:focus-visible .pz-knob { box-shadow: 0 0 0 3px var(--accent), 0 8px 24px rgba(0, 0, 0, 0.45); }
+
+.pz-tag {
+  position: absolute; top: 12px; z-index: 2;
+  padding: 5px 11px; border-radius: 99px;
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: #fff; background: rgba(20, 20, 22, 0.55);
+  border: 0.5px solid rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  pointer-events: none;
+}
+.pz-tag.is-before { left: 12px; color: #f3dc9a; }
+.pz-tag.is-after { right: 12px; color: #bfe3ff; }
+.pz-load { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; transition: opacity 0.4s; }
+.pz-load .st-loader-ring { margin: 0; width: 40px; height: 40px; }
+.pz-stage.is-ready .pz-load { opacity: 0; pointer-events: none; }
+.pz-done {
+  position: absolute; left: 50%; bottom: 14px; z-index: 2;
+  padding: 7px 14px; border-radius: 99px;
+  font-size: 13px; font-weight: 700; color: var(--accent-ink);
+  background: var(--accent); box-shadow: 0 8px 24px hsl(var(--h) var(--s) var(--l) / 0.45);
+  opacity: 0; transform: translate(-50%, 10px) scale(0.92);
+  transition: opacity 0.35s, transform 0.45s var(--spring);
+  pointer-events: none;
+}
+.pz-stage.is-clean .pz-done { opacity: 1; transform: translate(-50%, 0) scale(1); }
+
+.pz-bar { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.pz-meter { flex: 1; min-width: 0; display: grid; grid-template-columns: auto 1fr; align-items: baseline; column-gap: 8px; }
+.pz-meter small { font-size: 12px; color: var(--muted); }
+.pz-meter b { font-size: 17px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
+.pz-track { grid-column: 1 / -1; height: 5px; margin-top: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.pz-track i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #f3dc9a, #bfe3ff); }
+.pz-mode { flex: 0 0 190px; }
+.pz-mode button { height: 34px; font-size: 13px; }
+html.lite .pz-tag { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(20, 20, 22, 0.85); }
+@media (prefers-reduced-motion: reduce) {
+  .pz-knob, .pz-done, .pz-stage.is-ready .pz-layer { transition: none !important; }
+}

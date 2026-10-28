@@ -6,9 +6,9 @@ qorong'i fon, brend rangi rang generatoridan (`--h/--s/--l`).
 
 | # | Bosqich | Holat |
 |---|---|---|
-| 1 | Bi-LED Studio — 3D konfigurator | ✅ shu PR |
-| 2 | Fara polirovka — «oldin/keyin» surgich | ⏳ keyingi |
-| 3 | Fara shishasini almashtirish — mashinaga qarab narx + navbat | ⏳ |
+| 1 | Bi-LED Studio — 3D konfigurator | ✅ tayyor (PR #140, #141) |
+| 2 | Fara polirovka — «oldin/keyin» surgich | ✅ tayyor |
+| 3 | Fara shishasini almashtirish — mashinaga qarab narx + navbat | ⏳ keyingi |
 | 4 | Rul chexol — materiallar va ranglar (admin boshqaradi) | ⏳ |
 | 5 | O'rindiq chexol — 20 qismli o'rindiq, dizaynlar (admin boshqaradi) | ⏳ |
 | 6 | «Tez kunda»: Akvaprint, Tonirovka, Broni plyonka | ⏳ |
@@ -40,14 +40,21 @@ yuklanadi), `docs/js/app.js` (UI), `docs/js/offline.js` (`studio()`),
 **Ishga tushirish:** Worker'ni 2.1.0 ga yangilang (WORKER_SETUP.md), keyin
 admin panelda narxlarni tekshiring — hozirgi qiymatlar vaqtinchalik standart.
 
-## 2. Fara polirovka — «oldin/keyin»
+## 2. Fara polirovka — «oldin/keyin» ✅
 
-- Xizmat oynasida katta fara rasmi: chap tomoni **toza**, o'ng tomoni **xira,
-  sarg'aygan**. O'rtada surgich (tayoqcha): chapga surilsa toza qism kengayadi,
-  o'ngga surilsa xira qism qaytadi. Barmoq bilan silliq, haptic bilan.
-- Rasmlar admin yuklaydi (toza va xira juftligi); yuklanmagan bo'lsa — 3D
-  studiyadagi faraning o'zidan «eski shisha» va «yangi shisha» holati.
-- Pastda narx, davomiylik, kafolat va «Navbat olish».
+- Xizmat oynasi ochilganda fara **xira va sarg'aygan** turadi, ustida tayoqcha.
+  Tayoqcha **chapga** surilsa uning o'ng tomoni **toza** bo'lib ochiladi,
+  **o'ngga** surilsa xiralik qaytadi. Butun rasm bo'ylab barmoq bilan suriladi,
+  har 20% da yengil tebranish, to'liq tozalanganda «✨ Fara toza».
+- «Kunduzi / Kechasi»: kechasi chiroq yoqiladi — xira shisha nurni qanday
+  sochishi va toza shisha qanday yorishi ko'rinadi.
+- Rasmlar 3D studiyadagi o'sha faradan olinadi (bir xil burchak, faqat shisha
+  holati farq qiladi). WebGL yo'q bo'lsa — SVG chizma.
+- Pastda tavsif, narx, davomiylik va «Navbat olish» (avvalgidek).
+- Kod: `docs/js/app.js -> pzBlock/pzBind/pzPaint`, `docs/js/headlight3d.js ->
+  snapshot()` va `haze` (oksidlangan shisha), `docs/styles.css` `.pz-*`.
+- Kelajakda (ixtiyoriy): admin o'z ustaxonasidagi haqiqiy «oldin/keyin»
+  suratlarini yuklasa, 3D rasm o'rniga o'sha suratlar chiqadi.
 
 ## 3. Fara shishasini almashtirish
 
