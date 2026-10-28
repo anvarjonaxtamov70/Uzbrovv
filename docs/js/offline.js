@@ -1281,6 +1281,8 @@
   async function createBooking(payload) {
     // Yangi route — avval Worker feature flag'ini tekshiramiz (item 7).
     await ensureWorkerFeature("secure_booking");
+    // Mashinaga qarab narx (shisha almashtirish) — Worker 2.2.0+
+    if (payload && payload.car_id != null) await ensureWorkerFeature("booking_car_price");
     var attempt = attemptFor(BOOKING_ATTEMPT_STORE, "bk_", payload);
     var body = Object.assign({}, payload || {}, { client_key: attempt.key });
     var result = await callWorker("/booking", body);

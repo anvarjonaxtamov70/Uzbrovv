@@ -559,8 +559,10 @@ window.ZimmerShop = (function () {
           // Worker navbat yozuvi `service_name` ni ishlatadi; eski yozuvlar
           // `service` — ikkalasini ham qo'llab-quvvatlaymiz (item 6).
           ["🛠", r.service_name || r.service],
+          ["🚗", r.car_name],
           ["📅", r.date],
           ["🕐", r.time],
+          ["💰", Number(r.price) > 0 ? money(r.price) : ""],
         ],
       }));
     }
@@ -4556,7 +4558,7 @@ window.ZimmerShop = (function () {
     { title: "Bi-LED linzalar", icon: "💡", sub: "Nomi, narxi va xususiyatlari — mijoz kartochkada ko'radi", keys: ["lens_r50", "lens_r80", "lens_r90"], lens: true },
     { title: "Fara ichi rangi", icon: "🎨", sub: "Xrom — asl rang, odatda bepul", keys: ["inner_chrome", "inner_black"] },
     { title: "Ochki (maska)", icon: "◎", sub: "Xrom yoki qora — mijoz tanlaydi, narx turiga qarab", keys: ["ring_plain", "ring_bmw", "ring_glow"] },
-    { title: "Shisha va korpus — standart narx", icon: "🔆", sub: "Mashinaga alohida narx yozilmagan bo'lsa shu ishlaydi", keys: ["glass", "housing"] },
+    { title: "Shisha va korpus — standart narx", icon: "🔆", sub: "Mashinaga alohida narx yozilmagan bo'lsa shu ishlaydi. Shisha narxi «Fara shishasini almashtirish» xizmatida ham shu", keys: ["glass", "housing"] },
   ];
 
   function cfgDefaults() {
@@ -4641,7 +4643,7 @@ window.ZimmerShop = (function () {
           "</div>"
       ).join("") +
       '<div class="admin-form-group"><div class="apx-head"><div class="apx-ic apx-ic-blue">🚗</div>' +
-      "<div class=\"apx-tx\"><b>Mashina bo'yicha narx</b><span>Bo'sh qoldirilsa — standart: shisha " +
+      "<div class=\"apx-tx\"><b>Mashina bo'yicha narx</b><span>Konfigurator va shisha almashtirish uchun. Bo'sh qoldirilsa — standart: shisha " +
       esc(glassStd) + ", korpus " + esc(housingStd) + " so'm</span></div></div>" +
       '<input type="search" class="admin-input" id="cfa-car-q" placeholder="Mashinani qidirish…">' +
       '<div class="cfa-cars"><div class="cfa-car is-head"><span>Mashina</span><span>Shisha</span><span>Korpus</span></div>' +
