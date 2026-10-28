@@ -8624,13 +8624,13 @@
       icon: "💡",
       layout: "hero",
       accent: "gold",
-      short: "Narxni hisoblash",
+      short: "3D'da yig'ing va narxini ko'ring",
       blockTitle: "Nimalarni tanlaysiz",
-      tagline: "Linza, ochki va rangni tanlab narxni o'zingiz hisoblang",
+      tagline: "Linza, ochki, fara ichi, shisha va korpusni 3D ko'rinishda tanlang",
       facts: [
-        ["🔩", "Linza", "5 xil model"],
-        ["🎭", "Ochki", "Devil Eye"],
-        ["🌈", "Rang", "Optika tusi"],
+        ["🔩", "Linza", "R50 · R80 · R90"],
+        ["◎", "Ochki", "BMW halqa"],
+        ["🎨", "Fara ichi", "Xrom · qora"],
       ],
     },
     biled: {
@@ -8771,7 +8771,7 @@
    *  serverdan kelgan ro'yxat ustun turadi va bu yerga qaralmaydi. */
   const SERVICES_FALLBACK = [
     { id: null, theme: "config", name: "Bi-LED konfigurator", duration_min: 0, price: 0,
-      warranty: "1 yil", description: "Mashinangizga mos linzani tanlab, narxni o'zingiz ko'ring." },
+      warranty: "1 yil", description: "Farangizni 3D ko'rinishda yig'ib, narxini o'zingiz ko'ring." },
     { id: null, theme: "biled", name: "Bi-LED o'rnatish (2 fara)", duration_min: 120, price: 400000,
       warranty: "1 yil", description: "Linzani o'rnatish, sozlash va germetiklash." },
     { id: null, theme: "polish", name: "Fara polirovkasi", duration_min: 60, price: 150000,
@@ -8898,7 +8898,13 @@
     }
     if (!Array.isArray(list)) list = [];
     S.servicesFallback = list.length === 0;
-    S.services = sortServices(list.length ? list : SERVICES_FALLBACK.slice());
+    list = list.length ? list.slice() : SERVICES_FALLBACK.slice();
+    /* Bi-LED Studio (3D konfigurator) Xizmatlarda HAR DOIM turadi.
+       Bazadagi «Bi-LED konfigurator» qatori o'chirilgan (`is_active: 0`)
+       bo'lsa ham — u navbat xizmati emas, oyna, shuning uchun plitka
+       ichki ro'yxatdan qo'shiladi va eng tepada chiqadi. */
+    if (!list.some((s) => themeOf(s, 0) === "config")) list.unshift(SERVICES_FALLBACK[0]);
+    S.services = sortServices(list);
     return S.services;
   }
 
@@ -10565,6 +10571,12 @@
   $("sv-list").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-svc]");
     if (!btn) return;
+    // Konfigurator plitkasi oraliq oynasiz — to'g'ridan 3D studiya ochiladi
+    const s = (S.services || [])[Number(btn.dataset.svc)];
+    if (s && themeOf(s, Number(btn.dataset.svc)) === "config") {
+      haptic("light");
+      return openFlow();
+    }
     openService(btn.dataset.svc);
   });
   $("sd-back").onclick = () => {
