@@ -1657,6 +1657,8 @@
     } else {
       // Mashina o'zgardi — katalog unga bog'liq, MAJBURAN qayta o'qiymiz
       loadHome({ force: true });
+      // Shisha almashtirish oynasida narx mashinaga bog'liq — qayta chizamiz
+      if (S.page === "service") renderServicePage();
     }
   }
 
@@ -2799,7 +2801,7 @@
      yuklanadi: takror chaqiruv o'sha Promise'ni qaytaradi.
      ==================================================================== */
 
-  const SCRIPT_VERSION = "79"; // index.html dagi `?v=` bilan bir xil bo'lsin
+  const SCRIPT_VERSION = "80"; // index.html dagi `?v=` bilan bir xil bo'lsin
   const _scripts = new Map();
 
   function loadScript(src) {
@@ -6885,6 +6887,7 @@
       time: k.time || "",
       price: Number(k.price) || 0,
       price_label: fmt(k.price),
+      car_name: k.car_name || "",
       status: k.status || "new",
       can_cancel: !!k.can_cancel,
       createdAt: Number(k.createdAt) || 0,
@@ -7862,7 +7865,7 @@
               <div class="mo-sub2">${esc(moClean(o.summary) || "Bi-LED o'rnatish")}</div>`;
     } else {
       head = `<div class="mo-lead">🔧 ${esc(o.service_name || "Xizmat")}</div>
-              <div class="mo-sub2">📅 ${esc(o.date_label || "-")}${o.time ? " · 🕐 " + esc(o.time) : ""}</div>`;
+              <div class="mo-sub2">${o.car_name ? "🚗 " + esc(o.car_name) + " · " : ""}📅 ${esc(o.date_label || "-")}${o.time ? " · 🕐 " + esc(o.time) : ""}</div>`;
     }
 
     /* --- tafsilot (akkordeon ichida) --- */
@@ -8954,7 +8957,8 @@
     const t = SERVICE_THEMES[key] || SERVICE_THEMES.biled;
     const isConfig = key === "config";
     const soon = svcSoon(s);
-    const price = isConfig ? "Hisoblash" : svcPrice(s);
+    // Shisha almashtirish narxi mashinaga bog'liq — garajdagi mashina narxi yoki «Mashinaga qarab»
+    const price = isConfig ? "Hisoblash" : key === "glass" && !soon ? gsPriceLabel() : svcPrice(s);
 
     return (
       '<button class="svt sv-a-' + t.accent + (isConfig ? " is-hero" : "") +
@@ -9018,6 +9022,9 @@
     const t = SERVICE_THEMES[key] || SERVICE_THEMES.biled;
     const isConfig = key === "config";
     const soon = svcSoon(s);
+    const isPolish = key === "polish" && !soon;
+    const isGlass = key === "glass" && !soon;
+    if (isGlass && !S.studio) gsLoadPrices();
     const dur = svcDuration(s.duration_min);
     const war = s.warranty || "";
     const desc = s.description || t.tagline || "";
@@ -9036,8 +9043,8 @@
     facts.push(
       '<div class="sd-fact is-price' + (soon ? " is-soon" : "") + '"><i>' +
         (soon ? "🕒" : "💰") + "</i><b>" +
-        esc(soon ? SOON_TEXT : isConfig ? "Tanlovga qarab" : svcPrice(s)) +
-        "</b><small>Narx</small></div>"
+        esc(soon ? SOON_TEXT : isConfig ? "Tanlovga qarab" : isGlass ? gsPriceLabel() : svcPrice(s)) +
+        "</b><small>" + (isGlass ? "Narx · 2 fara" : "Narx") + "</small></div>"
     );
     if (!soon && war) {
       facts.push('<div class="sd-fact is-war"><i>🛡</i><b>' + esc(war) + "</b><small>Kafolat</small></div>");
@@ -9046,7 +9053,6 @@
       facts.push('<div class="sd-fact"><i>⏱</i><b>' + esc(dur) + "</b><small>Davomiyligi</small></div>");
     }
 
-    const isPolish = key === "polish" && !soon;
     box.innerHTML =
       /* --- sarlavha bloki: katta ikonka + tavsif.
              Polirovkada uning o'rnida «oldin / keyin» surgichi turadi. --- */
@@ -9059,6 +9065,8 @@
       "<h2>" + esc(s.name || "Xizmat") + "</h2>" +
       "<p>" + esc(desc) + "</p>" +
       "</div>") +
+      /* --- shisha almashtirish: mashina va uning narxi --- */
+      (isGlass ? gsBlock() : "") +
       /* --- xulosa plitkalari --- */
       '<div class="sd-facts">' + facts.join("") + "</div>" +
       /* --- VIDEO (faqat uchta fara xizmatida, server ruxsat bersa) --- */
@@ -9082,6 +9090,7 @@
 
     bindServiceVideo();
     if (isPolish) pzBind();
+    if (isGlass) gsBind();
 
     /* --- pastdagi yakka tugma ---
        «Tez kunda» xizmatda navbat OLINMAYDI (server ham 409 qaytaradi).
@@ -9105,6 +9114,7 @@
     cta.className = "btn btn-primary sd-cta sv-a-" + t.accent;
     cta.onclick = () => {
       if (isConfig) return openFlow();
+      if (isGlass) return gsBook(s);
       openServiceBooking(s);
     };
 
@@ -9196,6 +9206,102 @@
       // konsolga chiqmasin, mijoz o'zi bosib qo'yadi.
       if (p && p.catch) p.catch(() => {});
     };
+  }
+
+  /* ==================================================================
+     FARA SHISHASINI ALMASHTIRISH — narx MASHINAGA qarab
+
+     Mijoz avval mashinani tanlaydi (garajdagi mashina darhol olinadi),
+     narx o'sha mashinaniki bo'ladi, so'ng navbat (kun → vaqt).
+       narx = catalog/cars/{id}.glass_price
+              (bo'lmasa — Bi-LED konfiguratordagi standart shisha narxi)
+     Admin ikkalasini «Boshqaruv → Bi-LED konfigurator» da yozadi —
+     konfigurator va shu xizmat BIR XIL narxni ishlatadi.
+     Navbat yozuvidagi narxni Worker (2.2.0+) qayta hisoblaydi.
+     ================================================================== */
+  function gsCar() {
+    const mine = gxMine();
+    if (!mine) return null;
+    return (S.cars || []).find((c) => c.id === mine.id || c.name === mine.name) || mine;
+  }
+
+  function gsPrice(car) {
+    const off = window.ZimmerOffline;
+    if (!off || !off.studioCarPrice) return 0;
+    return off.studioCarPrice("glass", car, S.studio || off.buildStudio(null));
+  }
+
+  function gsPriceLabel() {
+    const car = gsCar();
+    return car ? fmt(gsPrice(car)) : "Mashinaga qarab";
+  }
+
+  /** Standart narx `catalog/configurator` da — bir marta o'qiladi. */
+  let _gsLoading = null;
+  function gsLoadPrices() {
+    if (_gsLoading || !window.ZimmerOffline || !ZimmerOffline.studio) return;
+    _gsLoading = ZimmerOffline.studio()
+      .then((cfg) => {
+        S.studio = cfg;
+        if (S.page === "service") renderServicePage();
+      })
+      .catch(() => {})
+      .finally(() => {
+        _gsLoading = null;
+      });
+  }
+
+  function gsBlock() {
+    const car = gsCar();
+    if (!car) {
+      return (
+        '<div class="gs is-empty">' +
+        '<div class="gs-tx"><small>1-qadam</small><b>Mashinangizni tanlang</b>' +
+        "<span>Shisha narxi mashina rusumiga qarab farq qiladi</span></div>" +
+        '<button type="button" class="btn btn-primary gs-pick" id="gs-pick">Tanlash</button>' +
+        "</div>"
+      );
+    }
+    const own = Number(car.glass_price) > 0;
+    return (
+      '<div class="gs">' +
+      '<div class="gs-row">' +
+      '<span class="gs-mono">' + esc(gxMono(car.name)) + "</span>" +
+      '<div class="gs-tx"><small>Mashinangiz</small><b>' + esc(car.name) + "</b>" +
+      (car.years ? "<span>" + esc(car.years) + "</span>" : "") + "</div>" +
+      '<button type="button" class="gs-edit" id="gs-pick">O\'zgartirish</button>' +
+      "</div>" +
+      '<div class="gs-price"><span><small>Shisha almashtirish · 2 fara</small>' +
+      "<b>" + esc(fmt(gsPrice(car))) + "</b></span>" +
+      "<em>" + esc(own ? car.name + " uchun narx" : "Standart narx") + "</em></div>" +
+      "</div>"
+    );
+  }
+
+  function gsBind() {
+    const btn = $("gs-pick");
+    if (btn) {
+      btn.onclick = () => {
+        haptic();
+        openCarSheet();
+      };
+    }
+  }
+
+  /** «Navbat olish»: mashina bo'lmasa avval garaj ochiladi. */
+  function gsBook(s) {
+    const car = gsCar();
+    if (!car) {
+      toast("Avval mashinani tanlang — narx shunga qarab");
+      return openCarSheet();
+    }
+    if (car._fallback || car.id == null || Number(car.id) < 0) {
+      toast("Bu mashina bazada yo'q — ro'yxatdan boshqasini tanlang");
+      return openCarSheet();
+    }
+    const price = gsPrice(car);
+    BK.carNext = { id: car.id, name: car.name };
+    openServiceBooking(Object.assign({}, s, { price: price, price_label: fmt(price) }));
   }
 
   /* ==================================================================
@@ -9568,6 +9674,7 @@
       const p = BK.service.price ? " · " + svcPrice(BK.service) : "";
       bits.push(`🔧 ${esc(BK.service.name)}${esc(p)}`);
     }
+    if (BK.car) bits.push(`🚗 ${esc(BK.car.name)}`);
     if (BK.day) bits.push(`📅 ${esc(BK.day.short_label || BK.day.label)}`);
     return bits.length ? el("div", "bk-recap", bits.join(" · ")) : null;
   }
@@ -9591,6 +9698,8 @@
     haptic("medium");
     BK.step = 1;
     BK.service = service;
+    BK.car = BK.carNext || null; // faqat gsBook() beradi
+    BK.carNext = null;
     BK.day = null;
     BK.time = null;
     BK.days = [];
@@ -9814,6 +9923,9 @@
               service_name: BK.service.name || "",
               duration_min: BK.service.duration_min,
               price: BK.service.price || 0,
+              // Shisha almashtirish: narxni Worker shu mashinadan hisoblaydi
+              car_id: BK.car ? BK.car.id : undefined,
+              car_name: BK.car ? BK.car.name : undefined,
               date: BK.day.date,
               time: BK.time,
               name: (S.me && (S.me.full_name || S.me.first_name)) || "",

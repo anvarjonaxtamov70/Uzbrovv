@@ -73,7 +73,7 @@ const DEFAULT_MAX_AGE = 86400; // 24 soat
 // berishga to'g'ri keladi).
 // Har deploy'da ko'tariladi — `/health` dagi bu raqam Cloudflare'da
 // YANGI nusxa turganini tasdiqlashning eng oson yo'li.
-const VERSION = "2.1.0";
+const VERSION = "2.2.0";
 const FEATURES = [
   // 2.0.0 — BOT Worker'da: webhook, menyu, holat tugmalari, mijoz↔admin
   // yozishmasi; /me — Bi-LED, navbat va KAFOLAT; mijoz navbatni bekor qiladi;
@@ -133,6 +133,10 @@ const FEATURES = [
   // `glass_price`/`housing_price` dan qayta hisoblanadi; admin panel
   // `catalog/configurator` ni va mashina narxlarini yoza oladi.
   "biled_studio",
+  // 2.2.0 — navbatda mashina: «Fara shishasini almashtirish» narxi mashinaga
+  // qarab (`catalog/cars/{id}.glass_price`, bo'lmasa konfiguratordagi
+  // standart shisha narxi) serverda hisoblanadi; navbat yozuvida car_*.
+  "booking_car_price",
 ];
 
 /** Mini App'dan yuklanadigan fayl chegarasi.
@@ -936,6 +940,21 @@ async function handleBooking(request, env) {
   }
   const duration = Math.max(30, Number(service.duration_min) || 30);
   if (start + duration > 18 * 60) return json({ ok: false, error: "Vaqt ish soatidan tashqarida" }, 400);
+
+  /* 2.2.0 — mashina. Ixtiyoriy (eski Mini App yubormaydi), lekin yuborilsa
+     katalogda bo'lishi SHART. Shisha almashtirishda narx mashinadan olinadi
+     — mijoz yuborgan narxga ishonilmaydi. */
+  let car = null;
+  if (body.car_id != null && body.car_id !== "") {
+    const cars = await rtdbGetStrict(c.dbUrl, `${c.root}/catalog/cars`, token);
+    car = catalogRowById(cars, body.car_id);
+    if (!catalogRowAvailable(car)) return json({ ok: false, error: "Mashina topilmadi" }, 409);
+  }
+  let price = Math.max(0, Number(service.price) || 0);
+  if (car && serviceIsGlass(service)) {
+    const cfgNode = await rtdbGetStrict(c.dbUrl, `${c.root}/catalog/configurator`, token);
+    price = studioCarPrice("glass", car, studioCatalog(cfgNode));
+  }
   if (date === today) {
     const now = new Date(Date.now() + 5 * 60 * 60 * 1000);
     const minStart = now.getUTCHours() * 60 + now.getUTCMinutes() + 30;
@@ -947,7 +966,10 @@ async function handleBooking(request, env) {
   const clientKey = clean(body.client_key, 64).replace(/[^A-Za-z0-9_-]/g, "");
   if (clientKey.length < 16) return json({ ok: false, error: "client_key_required" }, 400);
   const serviceId = service.id == null ? Number(body.service_id) : service.id;
-  const requestHash = await sha256Hex(JSON.stringify({ service_id: serviceId, date, time, phone }));
+  const carId = car ? (car.id == null ? Number(body.car_id) : car.id) : null;
+  const requestHash = await sha256Hex(JSON.stringify(
+    carId == null ? { service_id: serviceId, date, time, phone } : { service_id: serviceId, date, time, phone, car_id: carId }
+  ));
   const key = `b_${uid}_${clientKey}`;
   const bookingPath = `${c.root}/bookings/${key}`;
   const claim = {
@@ -975,10 +997,14 @@ async function handleBooking(request, env) {
     date,
     time,
     duration_min: duration,
-    price: Math.max(0, Number(service.price) || 0),
+    price,
     name: clean(body.name || [verified.user.first_name, verified.user.last_name].filter(Boolean).join(" "), 200),
     phone,
   };
+  if (car) {
+    bookingFields.car_id = carId;
+    bookingFields.car_name = clean(car.name, 200);
+  }
   for (let attempt = 0; attempt < 10; attempt++) {
     const snap = await rtdbGetEtag(c.dbUrl, c.root, token);
     const root = snap.value && typeof snap.value === "object" ? snap.value : {};
@@ -1178,6 +1204,13 @@ function studioCarPrice(kind, car, raw) {
   const own = Number(car && car[`${kind}_price`]);
   if (Number.isFinite(own) && own > 0) return Math.round(own);
   return studioPrice(raw[kind]);
+}
+
+/** «Fara shishasini almashtirish» xizmatimi (tema yoki nom bo'yicha). */
+function serviceIsGlass(service) {
+  const theme = String((service && service.theme) || "").toLowerCase();
+  if (theme) return theme === "glass";
+  return /shisha/i.test(String((service && service.name) || ""));
 }
 
 /** Buyurtma tarkibi (bot, admin va kabinet uchun bitta manba). */
@@ -2753,6 +2786,7 @@ async function notifyBooking(env, c, token, key, rec, user) {
   const adminText =
     "🗓 <b>Yangi navbat</b>\n\n" +
     `🔧 ${escHtml(rec.service_name || "Xizmat")}\n` +
+    (rec.car_name ? `🚗 ${escHtml(rec.car_name)}\n` : "") +
     `📅 ${when}\n` +
     `👤 ${userLink(rec.uid, rec.name, user && user.username)}\n` +
     `📞 ${escHtml(rec.phone || "")}\n` +
@@ -2765,7 +2799,11 @@ async function notifyBooking(env, c, token, key, rec, user) {
     env,
     String(rec.uid),
     "✅ <b>Navbat so'rovingiz qabul qilindi!</b>\n\n" +
-      `🔧 ${escHtml(rec.service_name || "Xizmat")}\n📅 ${when}\n\n` +
+      `🔧 ${escHtml(rec.service_name || "Xizmat")}\n` +
+      (rec.car_name ? `🚗 ${escHtml(rec.car_name)}\n` : "") +
+      `📅 ${when}\n` +
+      (rec.price ? `💰 ${fmtPrice(rec.price)}\n` : "") +
+      "\n" +
       "Usta vaqtni tasdiqlagach shu yerga xabar keladi 🔔",
     { reply_markup: { inline_keyboard: [[{ text: "🗓 Navbatlarim", web_app: { url: appUrl(env, "bookings") } }]] } }
   );
@@ -4204,6 +4242,7 @@ function customerBookingView(key, row) {
     date: row.date || "",
     time: row.time || "",
     price: Number(row.price || 0) || 0,
+    car_name: row.car_name || "",
     status,
     createdAt: Number(row.createdAt || 0) || 0,
     can_cancel: (status === "new" || status === "confirmed") && !!row.date && row.date >= tashkentToday(),

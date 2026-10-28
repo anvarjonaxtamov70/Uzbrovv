@@ -13191,3 +13191,40 @@ html.lite .pz-tag { -webkit-backdrop-filter: none; backdrop-filter: none; backgr
 @media (prefers-reduced-motion: reduce) {
   .pz-knob, .pz-done, .pz-stage.is-ready .pz-layer { transition: none !important; }
 }
+
+/* ==========================================================================
+   FARA SHISHASINI ALMASHTIRISH — mashina va narx kartasi (`app.js -> gsBlock`)
+   ========================================================================== */
+.gs {
+  margin: 0 0 14px; padding: 14px; border-radius: 24px;
+  background: linear-gradient(135deg, rgba(10, 132, 255, 0.16), rgba(255, 255, 255, 0.035));
+  border: 0.5px solid rgba(100, 170, 255, 0.32);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  animation: stIn 0.4s var(--silk) both;
+}
+.gs-row { display: flex; align-items: center; gap: 12px; }
+.gs-mono {
+  flex: 0 0 auto; width: 48px; height: 48px; border-radius: 15px;
+  display: grid; place-items: center;
+  font-size: 17px; font-weight: 800; color: #fff;
+  background: linear-gradient(160deg, #5ac8fa, #0a84ff);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 18px rgba(10, 132, 255, 0.35);
+}
+.gs-tx { flex: 1; min-width: 0; line-height: 1.25; }
+.gs-tx small { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #8fc4ff; }
+.gs-tx b { display: block; margin-top: 2px; font-size: 18px; font-weight: 750; letter-spacing: -0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-tx span { display: block; margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+.gs-edit {
+  flex: 0 0 auto; border: 0; padding: 8px 13px; border-radius: 99px;
+  background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 13px; font-weight: 650;
+}
+.gs-edit:active, .gs-pick:active { transform: scale(0.95); }
+.gs-pick { width: auto; padding: 12px 18px; border-radius: 99px; font-size: 14.5px; color: var(--accent-ink); }
+.gs.is-empty { display: flex; align-items: center; gap: 12px; }
+.gs-price {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 10px;
+  margin-top: 12px; padding-top: 12px; border-top: 0.5px solid rgba(255, 255, 255, 0.1);
+}
+.gs-price small { display: block; font-size: 12px; color: var(--muted); }
+.gs-price b { display: block; margin-top: 2px; font-size: 24px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.gs-price em { font-style: normal; font-size: 12px; font-weight: 650; color: #8fc4ff; text-align: right; }

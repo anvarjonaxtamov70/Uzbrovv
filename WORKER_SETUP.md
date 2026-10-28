@@ -1,5 +1,12 @@
 # Cloudflare Worker — bot va do'kon (bepul, uxlamaydi)
 
+> ## 🪟 2.2.0: Fara shishasi — narx mashinaga qarab
+>
+> «Fara shishasini almashtirish» navbatida mijoz mashinasini tanlaydi va
+> narx o'sha mashinaniki bo'ladi (narxni Worker hisoblaydi). Buning uchun
+> `cloudflare-worker.js` ni yana qo'ying (5 qadam) va `/health` da
+> `"version": "2.2.0"` hamda `"booking_car_price"` borligini tekshiring.
+
 > ## 🔦 2.1.0: Bi-LED Studio (3D konfigurator)
 >
 > Yangi konfigurator buyurtmasi va admin paneldagi **«Bi-LED konfigurator»**

@@ -7,9 +7,9 @@ qorong'i fon, brend rangi rang generatoridan (`--h/--s/--l`).
 | # | Bosqich | Holat |
 |---|---|---|
 | 1 | Bi-LED Studio — 3D konfigurator | ✅ tayyor (PR #140, #141) |
-| 2 | Fara polirovka — «oldin/keyin» surgich | ✅ tayyor |
-| 3 | Fara shishasini almashtirish — mashinaga qarab narx + navbat | ⏳ keyingi |
-| 4 | Rul chexol — materiallar va ranglar (admin boshqaradi) | ⏳ |
+| 2 | Fara polirovka — «oldin/keyin» surgich | ✅ tayyor (PR #142) |
+| 3 | Fara shishasini almashtirish — mashinaga qarab narx + navbat | ✅ tayyor |
+| 4 | Rul chexol — materiallar va ranglar (admin boshqaradi) | ⏳ keyingi |
 | 5 | O'rindiq chexol — 20 qismli o'rindiq, dizaynlar (admin boshqaradi) | ⏳ |
 | 6 | «Tez kunda»: Akvaprint, Tonirovka, Broni plyonka | ⏳ |
 | 7 | Navbat uchun 100 000 so'm oldindan to'lov (zalog) → admin tasdig'i | ⏳ savol bor |
@@ -56,12 +56,19 @@ admin panelda narxlarni tekshiring — hozirgi qiymatlar vaqtinchalik standart.
 - Kelajakda (ixtiyoriy): admin o'z ustaxonasidagi haqiqiy «oldin/keyin»
   suratlarini yuklasa, 3D rasm o'rniga o'sha suratlar chiqadi.
 
-## 3. Fara shishasini almashtirish
+## 3. Fara shishasini almashtirish ✅
 
-- Avval mashina tanlanadi → narx o'sha mashinaniki (`catalog/cars/{id}.glass_price`,
-  1-bosqichda qo'shilgan; bo'lmasa standart narx).
-- Keyin navbat (kun → vaqt), navbat yozuvida mashina va narx saqlanadi.
-- Narxni server qayta hisoblaydi.
+- Xizmat oynasida **mashina kartasi**: garajdagi mashina darhol olinadi, yo'q
+  bo'lsa «Mashinangizni tanlang» (garaj paneli ochiladi). Mashina almashsa narx
+  shu zahoti yangilanadi.
+- Narx: `catalog/cars/{id}.glass_price` (2 fara), bo'lmasa Bi-LED
+  konfiguratordagi standart shisha narxi. Ikkalasi ham **Boshqaruv → Bi-LED
+  konfigurator** da yoziladi — konfigurator va shu xizmat bir xil narxda.
+- «Navbat olish»: mashinasiz ochilmaydi; navbat panelida mashina ko'rinadi.
+- Worker 2.2.0: navbatda `car_id`/`car_name` saqlanadi, shisha narxi serverda
+  mashinadan qayta hisoblanadi; admin va mijozga xabarda mashina va narx.
+  Admin ro'yxatida va mijoz kabinetida navbat yonida mashina ko'rinadi.
+- Eski Mini App (mashinasiz so'rov) avvalgidek ishlayveradi.
 
 ## 4. Rul chexol tikish
 
