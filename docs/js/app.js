@@ -52,12 +52,18 @@
     currency: "so'm",
     me: null,
     cars: [],
-    tuning: null,
+    tuning: null, // eski Bi-LED turlari (faqat eski buyurtmalar kafolati uchun)
     car: null,
-    biled: null,
-    shroud: null,
-    color: null,
-    previewTab: "art",
+    /* Bi-LED Studio (3D konfigurator) */
+    studio: null, // ZimmerOffline.studio(): variantlar va narxlar
+    cfg: null, // {lens, inner, ring, finish, glow, glass, housing}
+    cfgTab: "lens",
+    cfgView: "front",
+    cfgComment: "",
+    cfgShown: null, // ekrandagi jami (count-up animatsiyasi uchun)
+    light: "low",
+    h3d: null, // 3D studiya (js/headlight3d.js)
+    h3dFallback: false, // WebGL yo'q — SVG chizma
     home: null,
     favorites: new Set(), // saqlangan tovar ID'lari
     favLoaded: false, // saqlanganlar serverdan olindimi (Firebase manbasida)
@@ -776,7 +782,12 @@
     // `catalog/products` ga — Avto_A1 modeli). Render bor yoki yo'q,
     // farqi yo'q: yagona manba, yagona dizayn, chalkashlik yo'q.
     if (page === "admin") openAdminPanel();
-    if (page !== "flow") stopVideos();
+    if (page !== "flow") {
+      stopVideos();
+      // 3D studiya ko'rinmayotganda kadr chizmaydi (batareya)
+      if (S.h3d) S.h3d.pause();
+      document.documentElement.classList.remove("st-lock");
+    }
 
     // Banner taymeri faqat bosh sahifada kerak — boshqa joyda to'xtatiladi
     if (page !== "home") stopBannerTimer();
@@ -1038,114 +1049,81 @@
   }
 
   /* ======================================================================
-     KONFIGURATOR
+     BI-LED STUDIO — 3D KONFIGURATOR
+
+     Ikki qadam (`S.step`):
+       1 — mashina. Shisha va korpus narxi mashinaga bog'liq, shuning
+           uchun avval doim mashina so'raladi (garajda bo'lsa — bitta
+           tugma bilan davom etiladi);
+       2 — studiya. Tepada jonli 3D fara (`js/headlight3d.js`), pastda
+           bo'limlar: linza · fara ichi · ochki · shisha · korpus · yakun.
+
+     Variantlar va narxlar — `ZimmerOffline.studio()` (Firebase
+     `catalog/configurator` + standartlar). Narxni yakunda Worker
+     qayta hisoblaydi — ekrandagi summa faqat ko'rsatish uchun.
+
+     3D yuklanmasa (WebGL yo'q, eski telefon, internet uzildi) — xuddi
+     shu tanlovlar SVG chizmada (`js/headlight.js`) ko'rsatiladi, oqim
+     to'xtamaydi.
      ====================================================================== */
 
-  const STEPS = [
-    { key: "car", title: "Mashinani tanlang", node: "fstep-car" },
-    { key: "biled", title: "Bi-LED linza", node: "fstep-biled" },
-    { key: "shroud", title: "Ochki (maska)", node: "fstep-shroud" },
-    { key: "color", title: "Optika rangi", node: "fstep-color" },
-    { key: "summary", title: "Buyurtmani tasdiqlash", node: "fstep-summary" },
+  /** Panel bo'limlari. `view` — bo'lim ochilganda kamera qayerga qaraydi. */
+  const ST_TABS = [
+    { key: "lens", title: "Linza", view: "lens" },
+    { key: "inner", title: "Fara ichi", view: "front" },
+    { key: "ring", title: "Ochki", view: "lens" },
+    { key: "glass", title: "Shisha", view: "front" },
+    { key: "housing", title: "Korpus", view: "side" },
+    { key: "sum", title: "Yakun", view: "front" },
   ];
 
-  /** Konfigurator qadamini ko'rsatadi.
-   *
-   *  DIQQAT: har bir DOM murojaati TEKSHIRILADI. Ilgari bu yerda
-   *  `$(s.node).classList` to'g'ridan chaqirilardi va agar element
-   *  yo'q bo'lsa (`showDone()` DOM'ni qayta yozgandan keyin shunday
-   *  bo'lardi) `TypeError` chiqib konfigurator butunlay o'lardi. */
-  function setStep(step) {
-    // «Buyurtma qabul qilindi» qatlami ochiq bo'lsa — avval yopamiz
-    if (S.flowDone) closeFlowDone();
+  const ST_LAMP = '<path d="M10 6.2C6.6 6.2 4 8.8 4 12s2.6 5.8 6 5.8z"/>';
+  const ST_LIGHTS = [
+    ["off", "O'chiq", '<path d="M12 4.5v6.5"/><path d="M7.4 7.6a6.8 6.8 0 1 0 9.2 0"/>'],
+    ["drl", "Gabarit", ST_LAMP + '<path d="M13.5 12h1.6M17.6 12h1.6"/>'],
+    ["low", "Yaqin", ST_LAMP + '<path d="M13.2 8.6l6.6 1.8M13.2 12l6.6 1.8M13.2 15.4l6.6 1.8"/>'],
+    ["high", "Uzoq", ST_LAMP + '<path d="M13.2 8.4h7M13.2 12h7M13.2 15.6h7"/>'],
+  ];
+  const ST_VIEWS = [
+    ["front", "Umumiy"],
+    ["lens", "Linza"],
+    ["side", "Yon"],
+    ["beam", "Nur"],
+  ];
 
-    S.step = Math.max(1, Math.min(STEPS.length, step));
-    const cur = STEPS[S.step - 1];
-
-    STEPS.forEach((s, i) => {
-      const node = $(s.node);
-      if (node) node.classList.toggle("hidden", i !== S.step - 1);
-    });
-    setText("flow-title", cur.title);
-    setText(
-      "flow-sub",
-      S.step === STEPS.length ? "Yakuniy qadam" : `${S.step}-qadam / ${STEPS.length - 1}`
+  /** Faol bo'limlar — admin shisha yoki korpus xizmatini o'chirgan bo'lishi mumkin. */
+  function stTabs() {
+    const c = S.studio;
+    return ST_TABS.filter(
+      (t) => (t.key !== "glass" || (c && c.glass)) && (t.key !== "housing" || (c && c.housing))
     );
-    const fill = $("progress-fill");
-    if (fill) fill.style.width = (S.step / STEPS.length) * 100 + "%";
-    const back = $("flow-back");
-    if (back) back.style.visibility = S.step > 1 ? "visible" : "hidden";
+  }
 
-    const preview = $("preview");
-    if (preview) preview.classList.toggle("hidden", S.step < 2);
-    if (S.step >= 2) {
-      S.previewTab = "art";
-      drawPreview();
+  /** Konfigurator qadami: 1 — mashina, 2 — 3D studiya.
+   *  Mashina tanlanmagan bo'lsa studiya OCHILMAYDI (narx mashinaga bog'liq). */
+  function setStep(step) {
+    if (S.flowDone) closeFlowDone();
+    S.step = step >= 2 && S.car ? 2 : 1;
+    const carBox = $("st-car");
+    const studio = $("st-studio");
+    if (carBox) carBox.classList.toggle("hidden", S.step !== 1);
+    if (studio) studio.classList.toggle("hidden", S.step !== 2);
+    document.documentElement.classList.toggle("st-lock", S.step === 2);
+    if (S.step === 1) {
+      if (S.h3d) S.h3d.pause();
+      stMine();
+      stFilterCars();
+      window.scrollTo({ top: 0, behavior: "auto" });
     } else {
-      stopVideos();
+      openStudio();
     }
-    if (S.step === STEPS.length) renderSummary();
-
-    const cta = $("flow-cta");
-    if (cta) cta.classList.toggle("hidden", S.step < 2);
-    updateCta();
-    updateTotal();
     syncBackButton();
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   /** Elementga matn yozadi (element yo'q bo'lsa jimgina o'tadi). */
   function setText(id, value) {
     const node = $(id);
     if (node) node.textContent = value;
-  }
-
-  function total() {
-    return (
-      (S.biled ? S.biled.price : 0) +
-      (S.shroud ? S.shroud.price : 0) +
-      (S.color ? S.color.price : 0)
-    );
-  }
-
-  /** CTA tugmasi matni: majburiy bo'lmagan qadamda «O'tkazib yuborish». */
-  function updateCta() {
-    const btn = $("flow-next");
-    if (!btn) return;
-    /* Konfigurator qadamlari orasida tugma DOIM faol. `submitConfig` uni
-       jo'natish paytida o'chiradi va COMMIT'dan keyin ATAYLAB tiklamaydi
-       (dublikatning oldini olish) — shu sababli yangi konfiguratsiyaga
-       qaytilganda faol holatni SHU YERDA tiklaymiz (item 8). */
-    btn.disabled = false;
-    if (S.step === STEPS.length) btn.textContent = "Buyurtmani yuborish";
-    else if (S.step === 3 && !S.shroud) btn.textContent = "O'tkazib yuborish";
-    else if (S.step === 4 && !S.color) btn.textContent = "O'tkazib yuborish";
-    else btn.textContent = "Davom etish";
-  }
-
-  function updateTotal() {
-    const node = $("flow-total");
-    if (!node) return;
-    const value = fmt(total());
-    if (node.textContent === value) return;
-    node.textContent = value;
-    node.classList.remove("bump");
-    void node.offsetWidth;
-    node.classList.add("bump");
-  }
-
-  function powerOf(biled) {
-    if (!biled) return 3;
-    const list = (S.tuning && S.tuning.biled_types) || [];
-    const i = list.findIndex((b) => b.id === biled.id);
-    return Math.max(1, Math.min(5, i + 1));
-  }
-
-  /** Ayni qadamda tanlangan element (media shundan olinadi). */
-  function currentItem() {
-    if (S.step === 3) return S.shroud;
-    if (S.step === 4) return S.color;
-    return S.biled;
   }
 
   function stopVideos() {
@@ -1156,69 +1134,255 @@
     });
   }
 
-  function drawPreview(flash) {
-    const item = currentItem();
-    const photo = abs(item && item.photo_url);
-    const video = abs(item && item.video_url);
+  /* ---------------------------------------------------- tanlov va narx */
 
-    // tablar: chizma doim bor, rasm/video faqat mavjud bo'lsa
-    const tabs = [["art", "◐ Chizma"]];
-    if (photo) tabs.push(["photo", "🖼 Rasm"]);
-    if (video) tabs.push(["video", "🎬 Video"]);
-    if (!tabs.some(([k]) => k === S.previewTab)) S.previewTab = "art";
-
-    const tabBox = $("preview-tabs");
-    tabBox.classList.toggle("hidden", tabs.length < 2);
-    tabBox.innerHTML = "";
-    tabs.forEach(([key, label]) => {
-      const btn = el("button", "ptab" + (key === S.previewTab ? " on" : ""), label);
-      btn.onclick = () => {
-        S.previewTab = key;
-        haptic();
-        drawPreview();
-      };
-      tabBox.append(btn);
-    });
-
-    const svgBox = $("headlight");
-    const mediaBox = $("preview-media");
-
-    if (S.previewTab === "art") {
-      stopVideos();
-      mediaBox.classList.add("hidden");
-      mediaBox.innerHTML = "";
-      svgBox.classList.remove("hidden");
-      svgBox.innerHTML = window.ZimmerHeadlight.render({
-        biled: S.biled,
-        shroud: S.shroud,
-        color: S.color,
-        power: powerOf(S.biled),
-      });
-    } else {
-      svgBox.classList.add("hidden");
-      mediaBox.classList.remove("hidden");
-      mediaBox.innerHTML =
-        S.previewTab === "photo"
-          ? img(photo)
-          : `<video src="${esc(video)}" controls playsinline preload="none"
-                 ${photo ? `poster="${esc(photo)}"` : ""}></video>`;
+  /** Tanlov to'liq va bazadagi variantlarga mos bo'lishini ta'minlaydi. */
+  function stEnsureCfg() {
+    const c = S.studio;
+    const has = (list, id) => list.some((r) => r.id === id);
+    const cfg = S.cfg || {};
+    if (!cfg.lens || !has(c.lenses, cfg.lens)) {
+      cfg.lens = (c.lenses[Math.min(1, c.lenses.length - 1)] || {}).id || null;
     }
+    if (!cfg.inner || !has(c.inner, cfg.inner)) {
+      cfg.inner = (c.inner.find((r) => r.code === "chrome") || c.inner[0] || {}).id || null;
+    }
+    if (!cfg.ring || !has(c.rings, cfg.ring)) cfg.ring = (c.rings[0] || {}).id || null;
+    if (cfg.finish !== "black") cfg.finish = "chrome";
+    if (!/^#[0-9a-f]{6}$/i.test(cfg.glow || "")) cfg.glow = "#9fe7ff";
+    cfg.glass = !!cfg.glass && !!c.glass;
+    cfg.housing = !!cfg.housing && !!c.housing;
+    S.cfg = cfg;
+  }
 
+  function stRows() {
+    const c = S.studio || { lenses: [], inner: [], rings: [] };
+    const cfg = S.cfg || {};
+    const by = (list, id) => list.find((r) => r.id === id) || null;
+    return { lens: by(c.lenses, cfg.lens), inner: by(c.inner, cfg.inner), ring: by(c.rings, cfg.ring) };
+  }
+
+  /** Shisha/korpus narxi — mashinaga xos, bo'lmasa standart (2 fara). */
+  function stCarPrice(kind) {
+    return window.ZimmerOffline && ZimmerOffline.studioCarPrice
+      ? ZimmerOffline.studioCarPrice(kind, S.car, S.studio)
+      : 0;
+  }
+
+  function stTotal() {
+    const r = stRows();
+    const cfg = S.cfg || {};
+    return (
+      (r.lens ? r.lens.price : 0) +
+      (r.inner ? r.inner.price : 0) +
+      (r.ring ? r.ring.price : 0) +
+      (cfg.glass ? stCarPrice("glass") : 0) +
+      (cfg.housing ? stCarPrice("housing") : 0)
+    );
+  }
+
+  function stSameHex(a, b) {
+    return String(a || "").toLowerCase() === String(b || "").toLowerCase();
+  }
+
+  function stGlowName(hex) {
+    const g = ((S.studio && S.studio.glows) || []).find((x) => stSameHex(x.hex, hex));
+    return g ? g.name : String(hex || "").toUpperCase();
+  }
+
+  /** «BMW yonadigan halqa · qora · Ko'k» */
+  function stRingLabel(ring) {
+    if (!ring) return "—";
+    const bits = [ring.name, S.cfg.finish === "black" ? "qora" : "xrom"];
+    if (ring.code === "glow") bits.push(stGlowName(S.cfg.glow));
+    return bits.join(" · ");
+  }
+
+  /** Bir qatorli xulosa — tayyor ekran va bildirishnomalar uchun. */
+  function stSummary() {
+    const r = stRows();
     const bits = [];
-    if (S.car) bits.push(`<b>${esc(S.car.name)}</b>`);
-    if (S.biled) bits.push(`💡 ${esc(S.biled.name)}`);
-    if (S.shroud) bits.push(`🕶 ${esc(S.shroud.name)}`);
-    if (S.color) bits.push(`🎨 ${esc(S.color.name)}`);
-    if (!S.shroud && !S.color) bits.push('<span class="tagline">Jonli ko\'rinish</span>');
-    $("preview-caption").innerHTML = bits.join(" · ");
+    if (r.lens) bits.push(r.lens.name);
+    if (r.inner) bits.push("ichi: " + r.inner.name.toLowerCase());
+    if (r.ring) bits.push(stRingLabel(r.ring));
+    if (S.cfg.glass) bits.push("yangi shisha");
+    if (S.cfg.housing) bits.push("yangi korpus");
+    return bits.join(" · ");
+  }
 
-    const preview = $("preview");
-    preview.classList.toggle("lit", !!S.biled);
-    if (flash) {
-      preview.classList.remove("flash");
-      void preview.offsetWidth;
-      preview.classList.add("flash");
+  /** 3D dvigatelga beriladigan ko'rinish (narxsiz, faqat kodlar). */
+  function st3dCfg() {
+    const r = stRows();
+    return {
+      lens: r.lens ? r.lens.code : "r80",
+      size: r.lens ? r.lens.size : "",
+      inner: r.inner ? r.inner.code : "chrome",
+      ring: r.ring ? r.ring.code : "plain",
+      finish: S.cfg.finish,
+      glow: S.cfg.glow,
+      glass: !!S.cfg.glass,
+      housing: !!S.cfg.housing,
+    };
+  }
+
+  function stApply() {
+    if (!S.cfg) return;
+    const cfg = st3dCfg();
+    if (S.h3d) S.h3d.set(cfg);
+    else if (S.h3dFallback) stPaintSvg(cfg);
+  }
+
+  /** WebGL yo'q bo'lsa — eski SVG chizma, yangi tanlovlarga moslab. */
+  function stPaintSvg(cfg) {
+    const host = $("st-canvas");
+    if (!host || !window.ZimmerHeadlight) return;
+    const lit = S.light !== "off";
+    const ringColor = cfg.ring === "glow" ? cfg.glow : cfg.finish === "black" ? "#2a2d33" : "#d9dee6";
+    const style = cfg.ring === "plain" ? (cfg.finish === "black" ? "sport" : "classic") : "angel";
+    host.innerHTML =
+      '<div class="st-svg' + (lit ? " is-lit" : "") + '">' +
+      window.ZimmerHeadlight.render({
+        biled: { glow: lit ? "#eef5ff" : "#5d6470", size: cfg.lens === "r50" ? '2.5"' : '3.0"' },
+        shroud: { style: style, ring_color: ringColor },
+        color:
+          cfg.inner === "black"
+            ? { hex_from: "#3a3d42", hex_to: "#111216" }
+            : { hex_from: "#e7ebf1", hex_to: "#8b929c" },
+        power: S.light === "high" ? 5 : S.light === "low" ? 3 : 1,
+      }) +
+      "</div>";
+  }
+
+  /* ------------------------------------------------------ 3D yuklash */
+  let _h3dLoad = null;
+
+  /** three.js (≈150 KB gzip) va 3D dvigatel — faqat konfigurator uchun. */
+  function ensureStudio3D() {
+    if (window.THREE && window.ZimmerHeadlight3D) return Promise.resolve();
+    if (_h3dLoad) return _h3dLoad;
+    _h3dLoad = (async () => {
+      if (!window.THREE) await loadScript("vendor/three.min.js");
+      if (!window.ZimmerHeadlight3D) await loadScript("js/headlight3d.js");
+    })().catch((err) => {
+      _h3dLoad = null; // keyingi ochilishda qayta urinadi
+      throw err;
+    });
+    return _h3dLoad;
+  }
+
+  /** Brend rangi (rang generatori) — 3D studiya aksiga qo'shiladi. */
+  function stAccentColor() {
+    try {
+      const probe = document.createElement("i");
+      probe.style.color = "var(--accent)";
+      document.body.appendChild(probe);
+      const c = getComputedStyle(probe).color;
+      probe.remove();
+      return c || "#f5b335";
+    } catch (_) {
+      return "#f5b335";
     }
+  }
+
+  function stLoaderOut() {
+    const l = $("st-loader");
+    if (!l) return;
+    l.classList.add("is-out");
+    setTimeout(() => l.classList.add("hidden"), 450);
+  }
+
+  async function stMount() {
+    const host = $("st-canvas");
+    if (!host) return;
+    if (S.h3d) {
+      S.h3d.resume();
+      S.h3d.resize();
+      stApply();
+      return;
+    }
+    if (S.h3dFallback) {
+      stApply();
+      return;
+    }
+    if (S.h3dMounting) return;
+    S.h3dMounting = true;
+    const loader = $("st-loader");
+    if (loader) loader.classList.remove("hidden", "is-out");
+    try {
+      await ensureStudio3D();
+      if (!window.ZimmerHeadlight3D.supported()) throw new Error("WebGL yo'q");
+      // Yuklanayotganda mijoz chiqib ketgan bo'lsa — keyingi ochilishda yasaladi
+      if (S.page !== "flow" || S.step !== 2) return;
+      S.h3d = window.ZimmerHeadlight3D.create(host, {
+        lite: document.documentElement.classList.contains("lite"),
+        accent: stAccentColor(),
+        onReady: stLoaderOut,
+        onInteract: stHintOff,
+        onLost: () => {
+          const old = S.h3d;
+          S.h3d = null;
+          S.h3dFallback = true;
+          try {
+            if (old) old.dispose();
+          } catch (_) {}
+          $("st-stage").classList.add("is-flat");
+          stApply();
+        },
+      });
+      stApply();
+      S.light = "low";
+      S.h3d.intro(() => stPaintLights());
+      stPaintLights();
+      // «Aylantirish uchun suring» — bir marta, qisqa vaqt
+      setTimeout(() => {
+        const h = $("st-hint");
+        if (h && !S.stHinted) h.classList.add("is-on");
+      }, 2600);
+      setTimeout(stHintOff, 7000);
+    } catch (err) {
+      console.warn("[studio] 3D ishlamadi — SVG chizmaga o'tildi:", err);
+      S.h3dFallback = true;
+      const stage = $("st-stage");
+      if (stage) stage.classList.add("is-flat");
+      stLoaderOut();
+      stApply();
+    } finally {
+      S.h3dMounting = false;
+    }
+  }
+
+  function stHintOff() {
+    if (S.stHinted) return;
+    S.stHinted = true;
+    const h = $("st-hint");
+    if (h) h.classList.remove("is-on");
+  }
+
+  /** Studiyani ochadi: variantlarni yuklaydi, panelni chizadi, 3D'ni ulaydi. */
+  async function openStudio() {
+    // Profildan kelgan mashina yozuvida narx maydonlari yo'q — to'liq yozuvni olamiz
+    const full = (S.cars || []).find((c) => S.car && (c.id === S.car.id || c.name === S.car.name));
+    if (full) S.car = full;
+    setText("st-car-name", S.car ? S.car.name : "");
+    if (!S.studio) {
+      const pane = $("st-pane");
+      if (pane) pane.innerHTML = '<div class="st-skel"></div><div class="st-skel"></div><div class="st-skel"></div>';
+      try {
+        S.studio = await ZimmerOffline.studio();
+      } catch (_) {
+        S.studio = ZimmerOffline.buildStudio(null);
+      }
+      if (S.page !== "flow" || S.step !== 2) return;
+    }
+    stEnsureCfg();
+    if (!stTabs().some((t) => t.key === S.cfgTab)) S.cfgTab = "lens";
+    stPaintTabs();
+    stPaintPane(true);
+    stPaintLights();
+    stPaintViews();
+    stPaintTotal(true);
+    stPaintCta();
+    stMount();
   }
 
   /* --------------------------------------------------------------- mashina */
@@ -1489,7 +1653,6 @@
     }
 
     if (S.page === "flow") {
-      if (!S.tuning) await loadTuning();
       setStep(2);
     } else {
       // Mashina o'zgardi — katalog unga bog'liq, MAJBURAN qayta o'qiymiz
@@ -1497,330 +1660,614 @@
     }
   }
 
-  /* ------------------------------------------- ixcham variant qatorlari */
+  /* ====================================================================
+     BI-LED STUDIO — PANEL (bo'limlar, variantlar, yakun)
+     Har chizishda innerHTML qayta yoziladi; hodisalar ota elementlarda
+     bir marta tutiladi (`bindStudio`).
+     ==================================================================== */
 
-  /**
-   * Bir xil ko'rinishdagi ixcham qator: [◉] [thumb] nom/meta ... narx
-   * Tanlanganda pastida tafsilot ochiladi (akkordeon).
-   */
-  function optionRow(opts) {
-    const wrap = el("div");
-    const row = el("button", "opt" + (opts.selected ? " selected" : ""));
-
-    const thumb = opts.photo
-      ? img(opts.photo, "opt-thumb")
-      : `<div class="opt-icon">${opts.icon || "•"}</div>`;
-
-    row.innerHTML = `
-      <span class="opt-mark"></span>
-      ${thumb}
-      <div class="opt-body">
-        <div class="opt-name">
-          <span>${esc(opts.name)}</span>
-          ${opts.badge ? `<i class="badge-tag">${esc(opts.badge)}</i>` : ""}
-          ${opts.hasVideo ? '<i class="badge-media">🎬</i>' : ""}
-        </div>
-        ${opts.meta ? `<div class="opt-meta">${esc(opts.meta)}</div>` : ""}
-      </div>
-      <div class="opt-price${opts.price ? "" : " free"}">${esc(opts.priceLabel)}</div>`;
-    row.onclick = opts.onSelect;
-    wrap.append(row);
-
-    if (opts.details) {
-      const more = el("div", "opt-more" + (opts.selected ? " open" : ""), opts.details);
-      wrap.append(more);
-    }
-    return wrap;
+  function stHead(title, sub) {
+    return '<div class="st-head"><b>' + esc(title) + "</b>" + (sub ? "<small>" + esc(sub) + "</small>" : "") + "</div>";
   }
 
-  async function loadTuning() {
-    try {
-      // Zaxira rejimda variantlar Firebase'dan o'qiladi. `biled_types`,
-      // `shrouds`, `optic_colors` allaqachon bulutga ko'chiriladi —
-      // shu paytgacha faqat o'qilmasdi, shuning uchun konfigurator
-      // Render'siz ishlamasdi.
-      S.tuning = S.offline
-        ? await ZimmerOffline.tuning()
-        : await api("/api/tuning");
-      renderBiled();
-      renderShrouds();
-      renderColors();
-    } catch (err) {
-      onError(err);
+  function stPaintTabs() {
+    const box = $("st-tabs");
+    if (!box || !S.cfg) return;
+    const r = stRows();
+    const val = {
+      lens: r.lens ? r.lens.name.replace(/^bi-?led\s*/i, "") : "—",
+      inner: r.inner ? (r.inner.code === "black" ? "Qora" : "Xrom") : "—",
+      ring: r.ring ? (r.ring.code === "plain" ? "Oddiy" : r.ring.code === "glow" ? "BMW · nur" : "BMW") : "—",
+      glass: S.cfg.glass ? "Yangi" : "Hozirgi",
+      housing: S.cfg.housing ? "Yangi" : "Hozirgi",
+      sum: "Tasdiq",
+    };
+    box.innerHTML = stTabs()
+      .map(
+        (t) =>
+          '<button type="button" role="tab" class="st-tab' + (t.key === S.cfgTab ? " is-on" : "") +
+          '" data-tab="' + t.key + '" aria-selected="' + (t.key === S.cfgTab) + '">' +
+          "<b>" + esc(t.title) + "</b><small>" + esc(val[t.key]) + "</small></button>"
+      )
+      .join("");
+    const on = box.querySelector(".is-on");
+    if (on) {
+      const left = on.offsetLeft - (box.clientWidth - on.offsetWidth) / 2;
+      box.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
     }
   }
 
-  function renderBiled() {
-    const box = $("biled-list");
-    box.innerHTML = "";
-    if (!S.tuning.biled_types.length) {
-      emptyState(box, "Linzalar ro'yxati hozircha bo'sh.");
-      return;
+  function stPaintPane(anim) {
+    const box = $("st-pane");
+    if (!box || !S.studio || !S.cfg) return;
+    const k = S.cfgTab;
+    box.innerHTML =
+      k === "lens"
+        ? stLensPane()
+        : k === "inner"
+          ? stInnerPane()
+          : k === "ring"
+            ? stRingPane()
+            : k === "glass" || k === "housing"
+              ? stSwapPane(k)
+              : stSumPane();
+    if (anim) {
+      box.classList.remove("is-in");
+      void box.offsetWidth;
+      box.classList.add("is-in");
     }
-    S.tuning.biled_types.forEach((b) => {
-      const selected = S.biled && S.biled.id === b.id;
-      const specs = [
-        ["O'lcham", b.size],
-        ["Harorat", b.kelvin],
-        ["Yorqinlik", b.lumen],
-        ["Kafolat", b.warranty],
-      ].filter(([, v]) => v);
+    if (k === "sum") {
+      const ta = $("order-comment");
+      if (ta) {
+        ta.value = S.cfgComment || "";
+        ta.oninput = () => (S.cfgComment = ta.value);
+      }
+    }
+  }
 
-      const details =
-        (b.description ? `<div>${esc(b.description)}</div>` : "") +
-        (specs.length
-          ? `<div class="spec-grid">${specs
-              .map(([k, v]) => `<div class="spec">${esc(k)}<b>${esc(v)}</b></div>`)
-              .join("")}</div>`
-          : "");
-
-      box.append(
-        optionRow({
-          name: b.name,
-          meta: [b.brand, b.size, b.kelvin, b.lumen].filter(Boolean).join(" · "),
-          priceLabel: b.price_label,
-          price: b.price,
-          badge: b.badge,
-          icon: "💡",
-          photo: abs(b.photo_url),
-          hasVideo: !!b.video_url,
-          selected,
-          details,
-          onSelect: () => {
-            S.biled = b;
-            haptic();
-            renderBiled();
-            drawPreview(true);
-            updateTotal();
-          },
+  function stLensPane() {
+    const list = S.studio.lenses;
+    if (!list.length) return '<div class="st-empty">Linzalar hozircha qo\'shilmagan.</div>';
+    return (
+      stHead("Bi-LED linza", "Nur shu yerdan chiqadi. Ko'rinishi va yorug'ligi 3D'da darhol o'zgaradi.") +
+      '<div class="st-list">' +
+      list
+        .map((l) => {
+          const on = l.id === S.cfg.lens;
+          const meta = [l.size, l.kelvin, l.lumen].filter(Boolean).join(" · ");
+          const inch = parseFloat(String(l.size || "").replace(",", ".")) || 3;
+          const k = Math.max(0.55, Math.min(1, (inch - 1.6) / 1.4));
+          const specs = [
+            ["O'lcham", l.size],
+            ["Harorat", l.kelvin],
+            ["Yorqinlik", l.lumen],
+            ["Kafolat", l.warranty],
+          ].filter(([, v]) => v);
+          return (
+            '<button type="button" class="st-item' + (on ? " is-on" : "") + '" data-lens="' + esc(l.id) + '">' +
+            '<span class="st-lens-ic is-' + esc(l.code) + '" style="--k:' + k.toFixed(2) + '"><i></i></span>' +
+            '<span class="st-item-tx"><b>' + esc(l.name) + (l.badge ? " <em>" + esc(l.badge) + "</em>" : "") +
+            "</b><small>" + esc(meta) + "</small>" +
+            '<strong class="st-item-pr">' + esc(fmt(l.price)) + "</strong></span>" +
+            '<span class="st-tick" aria-hidden="true"></span></button>' +
+            (on && (l.description || specs.length)
+              ? '<div class="st-more">' +
+                (l.description ? "<p>" + esc(l.description) + "</p>" : "") +
+                (specs.length
+                  ? '<div class="st-specs">' +
+                    specs.map(([a, b]) => "<span><small>" + esc(a) + "</small><b>" + esc(b) + "</b></span>").join("") +
+                    "</div>"
+                  : "") +
+                "</div>"
+              : "")
+          );
         })
-      );
-    });
+        .join("") +
+      "</div>"
+    );
   }
 
-  const SHROUD_ICON = { classic: "⭕️", devil: "😈", angel: "😇", sport: "🏁", carbon: "🩶" };
-
-  function renderShrouds() {
-    const box = $("shroud-list");
-    box.innerHTML = "";
-    if (!S.tuning.shrouds.length) {
-      emptyState(box, "Ochki turlari hozircha qo'shilmagan.");
-      return;
-    }
-    S.tuning.shrouds.forEach((s) => {
-      const selected = S.shroud && S.shroud.id === s.id;
-      box.append(
-        optionRow({
-          name: s.name,
-          meta: s.description ? s.description.slice(0, 46) : "",
-          priceLabel: s.price_label,
-          price: s.price,
-          icon: SHROUD_ICON[s.style] || "⭕️",
-          photo: abs(s.photo_url),
-          hasVideo: !!s.video_url,
-          selected,
-          details: s.description ? `<div>${esc(s.description)}</div>` : "",
-          onSelect: () => {
-            S.shroud = s;
-            haptic();
-            renderShrouds();
-            drawPreview(true);
-            updateTotal();
-            updateCta();
-          },
-        })
-      );
-    });
+  function stInnerPane() {
+    const list = S.studio.inner;
+    const cur = list.find((r) => r.id === S.cfg.inner);
+    return (
+      stHead("Fara ichi rangi", "Reflektor va ichki yuzalar. Ochki rangi «Ochki» bo'limida alohida tanlanadi.") +
+      '<div class="st-sws">' +
+      list
+        .map(
+          (r) =>
+            '<button type="button" class="st-sw' + (r.id === S.cfg.inner ? " is-on" : "") + '" data-inner="' + esc(r.id) + '">' +
+            '<span class="st-sw-dot is-' + esc(r.code) + '"></span>' +
+            "<b>" + esc(r.name) + "</b><small>" + (r.price ? "+" + esc(fmt(r.price)) : "Bepul") + "</small>" +
+            '<span class="st-tick" aria-hidden="true"></span></button>'
+        )
+        .join("") +
+      "</div>" +
+      (cur && cur.description ? '<p class="st-note">' + esc(cur.description) + "</p>" : "")
+    );
   }
 
-  function renderColors() {
-    const box = $("color-list");
-    box.innerHTML = "";
-    if (!S.tuning.colors.length) {
-      emptyState(box, "Ranglar hozircha qo'shilmagan.");
-      return;
-    }
-    S.tuning.colors.forEach((c) => {
-      const node = el("button", "swatch" + (S.color && S.color.id === c.id ? " selected" : ""));
-      const photo = abs(c.photo_url);
-      node.innerHTML = `
-        <div class="swatch-dot" style="${
-          photo
-            ? `background-image:url('${esc(photo)}');background-size:cover;background-position:center`
-            : `background:linear-gradient(135deg,${esc(c.hex_from)},${esc(c.hex_to)})`
-        }"></div>
-        <div class="swatch-name">${esc(c.name)}</div>
-        <div class="swatch-price">${c.price ? "+" + esc(c.price_label) : "Bepul"}</div>`;
-      node.onclick = () => {
-        S.color = c;
-        haptic();
-        renderColors();
-        drawPreview(true);
-        updateTotal();
-        updateCta();
-      };
-      box.append(node);
-    });
+  function stRingIcon(code) {
+    const glow = code === "glow";
+    const ring =
+      code === "plain"
+        ? '<circle cx="24" cy="24" r="15.5" fill="none" stroke="currentColor" stroke-opacity=".55" stroke-width="5"/>'
+        : '<circle cx="24" cy="24" r="15.5" fill="none" stroke="currentColor" stroke-opacity=".4" stroke-width="5"/>' +
+          '<circle cx="24" cy="24" r="17.4" fill="none" stroke="' + (glow ? esc(S.cfg.glow) : "currentColor") +
+          '" stroke-width="3"' + (glow ? ' class="is-glow"' : "") + "/>";
+    return (
+      '<svg class="st-ring-ic" viewBox="0 0 48 48" aria-hidden="true">' +
+      '<defs><radialGradient id="stLensG" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#fff" stop-opacity=".9"/>' +
+      '<stop offset=".45" stop-color="#8ea3c0" stop-opacity=".55"/><stop offset="1" stop-color="#0c0f14"/></radialGradient></defs>' +
+      ring +
+      '<circle cx="24" cy="24" r="10" fill="url(#stLensG)"/>' +
+      '<circle cx="24" cy="24" r="10" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>'
+    );
   }
 
-  /* ------------------------------------------------------------------ yakun */
-  function renderSummary() {
+  function stRingPane() {
+    const list = S.studio.rings;
+    const cur = list.find((r) => r.id === S.cfg.ring);
+    const glow = !!cur && cur.code === "glow";
+    const glows = S.studio.glows || [];
+    const preset = glows.some((g) => stSameHex(g.hex, S.cfg.glow));
+    return (
+      stHead("Ochki (maska)", "Linza atrofidagi bezak — faraning «nigohi» shu.") +
+      '<div class="st-rings">' +
+      list
+        .map(
+          (r) =>
+            '<button type="button" class="st-ring' + (r.id === S.cfg.ring ? " is-on" : "") +
+            (r.code === "glow" ? " is-glowing" : "") + '" data-ring="' + esc(r.id) + '" style="--g:' + esc(S.cfg.glow) + '">' +
+            stRingIcon(r.code) + "<b>" + esc(r.name) + "</b><small>" + esc(fmt(r.price)) + "</small></button>"
+        )
+        .join("") +
+      "</div>" +
+      '<div class="st-sub">Ochki rangi</div>' +
+      '<div class="st-seg" role="radiogroup">' +
+      [["chrome", "Xrom"], ["black", "Qora"]]
+        .map(
+          ([k, t]) =>
+            '<button type="button" role="radio" aria-checked="' + (S.cfg.finish === k) + '" class="' +
+            (S.cfg.finish === k ? "is-on" : "") + '" data-finish="' + k + '"><i class="st-fin is-' + k + '"></i>' + t + "</button>"
+        )
+        .join("") +
+      "</div>" +
+      (glow
+        ? '<div class="st-sub">Halqa yorug\'ligi <span class="st-glow-now" style="--g:' + esc(S.cfg.glow) + '">' +
+          esc(stGlowName(S.cfg.glow)) + "</span></div>" +
+          '<div class="st-glows">' +
+          glows
+            .map(
+              (g) =>
+                '<button type="button" class="st-glow' + (stSameHex(g.hex, S.cfg.glow) ? " is-on" : "") +
+                '" data-glow="' + esc(g.hex) + '" style="--g:' + esc(g.hex) + '" aria-label="' + esc(g.name) + '"></button>'
+            )
+            .join("") +
+          '<label class="st-glow is-custom' + (preset ? "" : " is-on") + '" aria-label="Boshqa rang" style="--g:' +
+          esc(S.cfg.glow) + '"><input type="color" id="st-glow-pick" value="' + esc(S.cfg.glow) + '"></label>' +
+          "</div>"
+        : "") +
+      (cur && cur.description ? '<p class="st-note">' + esc(cur.description) + "</p>" : "")
+    );
+  }
+
+  const ST_SWAP = {
+    glass: {
+      title: "Fara shishasi",
+      sub: "Tashqi himoya shishasi. Sarg'aygan yoki chizilgan bo'lsa, yangisi nurni to'liq o'tkazadi.",
+      keep: "Hozirgi shisha qoladi",
+      take: "Yangi shisha o'rnatilsin",
+      bullets: [
+        "Tiniq polikarbonat — nur xiralashmaydi",
+        "UV-himoya qatlami: tez sarg'aymaydi",
+        "Germetik bilan yopiladi, namlik kirmaydi",
+      ],
+    },
+    housing: {
+      title: "Fara korpusi",
+      sub: "Faraning plastik tanasi. Yorilgan, quloqlari singan yoki eskirgan bo'lsa almashtiriladi.",
+      keep: "Hozirgi korpus qoladi",
+      take: "Yangi korpusga almashtirilsin",
+      bullets: [
+        "Mashinangizga mos yangi korpus",
+        "Mahkamlash quloqlari butun, germetik yangi",
+        "Linza va ochki yangi korpusga yig'iladi",
+      ],
+    },
+  };
+
+  function stSwapPane(kind) {
+    const row = S.studio[kind];
+    if (!row) return "";
+    const T = ST_SWAP[kind];
+    const on = !!S.cfg[kind];
+    const price = stCarPrice(kind);
+    const carName = S.car ? S.car.name : "";
+    return (
+      stHead(T.title, T.sub) +
+      '<div class="st-list">' +
+      '<button type="button" class="st-item' + (on ? "" : " is-on") + '" data-' + kind + '="0">' +
+      '<span class="st-opt-ic is-keep" aria-hidden="true"></span>' +
+      '<span class="st-item-tx"><b>' + esc(T.keep) + "</b><small>Qo'shimcha to'lovsiz</small></span>" +
+      '<span class="st-item-pr">' + esc(fmt(0)) + "</span>" +
+      '<span class="st-tick" aria-hidden="true"></span></button>' +
+      '<button type="button" class="st-item' + (on ? " is-on" : "") + '" data-' + kind + '="1">' +
+      '<span class="st-opt-ic is-new" aria-hidden="true"></span>' +
+      '<span class="st-item-tx"><b>' + esc(T.take) + "</b><small>" +
+      esc((carName ? carName + " uchun · " : "") + "2 fara") + "</small></span>" +
+      '<span class="st-item-pr">+' + esc(fmt(price)) + "</span>" +
+      '<span class="st-tick" aria-hidden="true"></span></button>' +
+      "</div>" +
+      '<ul class="st-bullets">' + T.bullets.map((b) => "<li>" + esc(b) + "</li>").join("") + "</ul>" +
+      (row.description ? '<p class="st-note">' + esc(row.description) + "</p>" : "")
+    );
+  }
+
+  function stSumPane() {
+    const r = stRows();
     const rows = [
-      ["🚗 Mashina", S.car ? `${S.car.name} (${S.car.years || "-"})` : "-", 0],
-      ["💡 Bi-LED linza", S.biled ? S.biled.name : "-", S.biled ? S.biled.price : 0],
-      ["🕶 Ochki", S.shroud ? S.shroud.name : "tanlanmagan", S.shroud ? S.shroud.price : 0],
-      ["🎨 Optika rangi", S.color ? S.color.name : "standart", S.color ? S.color.price : 0],
+      ["Bi-LED linza", r.lens ? r.lens.name : "—", r.lens ? r.lens.price : 0],
+      ["Fara ichi", r.inner ? r.inner.name : "—", r.inner ? r.inner.price : 0],
+      ["Ochki", stRingLabel(r.ring), r.ring ? r.ring.price : 0],
     ];
-    let html = "";
-    rows.forEach(([label, value, price]) => {
-      html += `<div class="sum-row"><span>${label}</span><b>${esc(value)}${
-        price
-          ? `<br><small style="color:#9aa0ab;font-weight:500">${esc(fmt(price))}</small>`
-          : ""
-      }</b></div>`;
-    });
-    html += '<div class="sum-div"></div>';
-    html += `<div class="sum-total"><span>Jami (o'rnatish bilan)</span><b>${esc(
-      fmt(total())
-    )}</b></div>`;
-    $("summary").innerHTML = html;
+    if (S.studio.glass) {
+      rows.push(["Shisha", S.cfg.glass ? "Yangi shisha" : "Hozirgisi qoladi", S.cfg.glass ? stCarPrice("glass") : 0]);
+    }
+    if (S.studio.housing) {
+      rows.push(["Korpus", S.cfg.housing ? "Yangi korpus" : "Hozirgisi qoladi", S.cfg.housing ? stCarPrice("housing") : 0]);
+    }
+    const warranty = r.lens && r.lens.warranty ? r.lens.warranty : "";
+    return (
+      stHead("Konfiguratsiya tayyor", "Tekshirib, buyurtmani yuboring — usta siz bilan bog'lanadi.") +
+      '<div class="st-receipt">' +
+      '<div class="st-rc is-car"><span><small>Mashina</small><b>' + esc(S.car ? S.car.name : "—") + "</b></span>" +
+      '<button type="button" class="st-rc-edit" data-go="car">O\'zgartirish</button></div>' +
+      rows
+        .map(
+          ([a, b, p]) =>
+            '<div class="st-rc"><span><small>' + esc(a) + "</small><b>" + esc(b) + "</b></span><em>" +
+            (p ? esc(fmt(p)) : "—") + "</em></div>"
+        )
+        .join("") +
+      '<div class="st-rc-total"><span>Jami</span><b>' + esc(fmt(stTotal())) + "</b></div>" +
+      '<p class="st-rc-foot">2 fara uchun, o\'rnatish bilan' + (warranty ? " · linza kafolati " + esc(warranty) : "") + ".</p>" +
+      "</div>" +
+      '<label class="st-field"><span>Izoh (ixtiyoriy)</span>' +
+      '<textarea id="order-comment" rows="2" maxlength="2000" placeholder="Masalan: shanba kuni kelmoqchiman"></textarea></label>' +
+      '<div class="st-trust">' +
+      "<span><b>Kafolat</b><small>" + esc(warranty || "Bor") + "</small></span>" +
+      "<span><b>O'rnatish</b><small>Ustaxonada</small></span>" +
+      "<span><b>Vaqt</b><small>Kelishiladi</small></span>" +
+      "</div>"
+    );
   }
 
-  function submitConfig() {
-    if (!S.car || !S.biled) return toast("Mashina va linzani tanlang");
+  /* --------------------------------------------------- jami va tugma */
+  function stPaintTotal(instant) {
+    const node = $("flow-total");
+    if (!node) return;
+    const to = stTotal();
+    const from = S.cfgShown == null ? to : S.cfgShown;
+    S.cfgShown = to;
+    cancelAnimationFrame(S._stTotalRaf || 0);
+    const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (instant || from === to || reduce) {
+      node.textContent = fmt(to);
+      return;
+    }
+    node.classList.remove("bump");
+    void node.offsetWidth;
+    node.classList.add("bump");
+    const t0 = performance.now();
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / 420);
+      const e = 1 - Math.pow(1 - k, 3);
+      node.textContent = fmt(Math.round((from + (to - from) * e) / 1000) * 1000);
+      if (k < 1) S._stTotalRaf = requestAnimationFrame(step);
+      else node.textContent = fmt(to);
+    };
+    S._stTotalRaf = requestAnimationFrame(step);
+  }
+
+  function stPaintCta() {
+    const btn = $("flow-next");
+    if (!btn) return;
+    btn.disabled = false;
+    if (S.cfgTab === "sum") {
+      btn.textContent = "Buyurtma berish";
+      return;
+    }
+    const tabs = stTabs();
+    const next = tabs[tabs.findIndex((t) => t.key === S.cfgTab) + 1];
+    btn.innerHTML = "Davom etish" + (next ? "<small>" + esc(next.title) + "</small>" : "");
+  }
+
+  function stPaintLights() {
+    const box = $("st-lights");
+    if (!box) return;
+    box.innerHTML = ST_LIGHTS.map(
+      ([k, t, ic]) =>
+        '<button type="button" role="tab" class="st-lt' + (S.light === k ? " is-on" : "") + '" data-light="' + k +
+        '" aria-selected="' + (S.light === k) + '"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + ic +
+        "</svg><span>" + t + "</span></button>"
+    ).join("");
+  }
+
+  function stPaintViews() {
+    const box = $("st-views");
+    if (!box) return;
+    box.innerHTML = ST_VIEWS.map(
+      ([k, t]) =>
+        '<button type="button" role="tab" class="st-vw' + (S.cfgView === k ? " is-on" : "") + '" data-view="' + k +
+        '" aria-selected="' + (S.cfgView === k) + '">' + t + "</button>"
+    ).join("");
+  }
+
+  /* -------------------------------------------------------- amallar */
+  function stGoTab(key) {
+    if (!S.cfg || key === S.cfgTab) return;
+    S.cfgTab = key;
+    haptic();
+    const t = ST_TABS.find((x) => x.key === key);
+    if (t && S.h3d) {
+      S.cfgView = t.view;
+      S.h3d.view(t.view);
+      stPaintViews();
+    }
+    stPaintTabs();
+    stPaintPane(true);
+    stPaintCta();
+    const pane = $("st-pane");
+    if (pane) pane.scrollTop = 0;
+  }
+
+  function stPick(kind, value) {
+    if (!S.cfg) return;
+    if (kind === "glow") {
+      value = String(value || "").toLowerCase();
+      if (!/^#[0-9a-f]{6}$/.test(value)) return;
+    }
+    if (S.cfg[kind] === value) return;
+    S.cfg[kind] = value;
+    haptic("light");
+    if (kind === "ring" || kind === "glow") {
+      // Yonadigan halqa tanlansa — u ko'rinsin: chiroqlar o'chiq bo'lsa gabarit yoqiladi
+      const ring = stRows().ring;
+      if (ring && ring.code === "glow" && S.light === "off") stLight("drl", true);
+    }
+    if ((kind === "glass" || kind === "housing") && value && S.h3d) {
+      S.cfgView = kind === "glass" ? "front" : "side";
+      S.h3d.view(S.cfgView);
+      stPaintViews();
+    }
+    stApply();
+    stPaintPane();
+    stPaintTabs();
+    stPaintTotal();
+  }
+
+  function stLight(mode, quiet) {
+    if (!ST_LIGHTS.some(([k]) => k === mode)) return;
+    S.light = mode;
+    if (!quiet) haptic("light");
+    if (S.h3d) S.h3d.light(mode);
+    else stApply();
+    stPaintLights();
+  }
+
+  function stView(name) {
+    if (!ST_VIEWS.some(([k]) => k === name)) return;
+    S.cfgView = name;
+    haptic();
+    // Nur ko'rinishida chiroq yoqilmagan bo'lsa — devorda hech narsa ko'rinmaydi
+    if (name === "beam" && (S.light === "off" || S.light === "drl")) stLight("low", true);
+    if (S.h3d) S.h3d.view(name);
+    stPaintViews();
+  }
+
+  /* ----------------------------------------------------- mashina qadami */
+  function stMine() {
+    const box = $("st-mine");
+    if (!box) return;
+    const car = gxMine();
+    if (!car) {
+      box.classList.add("hidden");
+      box.innerHTML = "";
+      return;
+    }
+    const full = (S.cars || []).find((c) => c.id === car.id || c.name === car.name) || car;
+    box.classList.remove("hidden");
+    box.innerHTML =
+      '<div class="st-mine-tx"><small>Garajingizda</small><b>' + esc(full.name) + "</b>" +
+      (full.years ? "<span>" + esc(full.years) + "</span>" : "") + "</div>" +
+      '<button type="button" class="btn btn-primary st-mine-go" id="st-mine-go">Davom etish</button>';
+    $("st-mine-go").onclick = () => pickCar(full);
+  }
+
+  function stFilterCars() {
+    const input = $("st-car-q");
+    const q = ((input && input.value) || "").trim().toLowerCase();
+    let shown = 0;
+    document.querySelectorAll("#cars .gx-row").forEach((row) => {
+      const ok = !q || row.textContent.toLowerCase().includes(q);
+      row.classList.toggle("hidden", !ok);
+      if (ok) shown++;
+    });
+    const empty = $("st-car-empty");
+    if (empty) empty.classList.toggle("hidden", shown > 0 || !q);
+  }
+
+  /** Hodisalar — bir marta, ota elementlarda. */
+  function bindStudio() {
+    const tabs = $("st-tabs");
+    const pane = $("st-pane");
+    const lights = $("st-lights");
+    const views = $("st-views");
+    if (tabs) {
+      tabs.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-tab]");
+        if (b) stGoTab(b.dataset.tab);
+      });
+    }
+    if (pane) {
+      pane.addEventListener("click", (e) => {
+        const b = e.target.closest("button");
+        if (!b) return;
+        const d = b.dataset;
+        if (d.go === "car") return setStep(1);
+        if (d.lens) return stPick("lens", d.lens);
+        if (d.inner) return stPick("inner", d.inner);
+        if (d.ring) return stPick("ring", d.ring);
+        if (d.finish) return stPick("finish", d.finish);
+        if (d.glow) return stPick("glow", d.glow);
+        if (d.glass != null) return stPick("glass", d.glass === "1");
+        if (d.housing != null) return stPick("housing", d.housing === "1");
+      });
+      // Rang g'ildiragi: surayotganda 3D jonli o'zgaradi, qo'yib yuborilganda saqlanadi
+      pane.addEventListener("input", (e) => {
+        if (e.target.id !== "st-glow-pick" || !S.cfg) return;
+        S.cfg.glow = String(e.target.value).toLowerCase();
+        stApply();
+        const now = pane.querySelector(".st-glow-now");
+        if (now) {
+          now.style.setProperty("--g", S.cfg.glow);
+          now.textContent = stGlowName(S.cfg.glow);
+        }
+      });
+      pane.addEventListener("change", (e) => {
+        if (e.target.id !== "st-glow-pick" || !S.cfg) return;
+        S.cfg.glow = "";
+        stPick("glow", e.target.value);
+      });
+    }
+    if (lights) {
+      lights.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-light]");
+        if (b) stLight(b.dataset.light);
+      });
+    }
+    if (views) {
+      views.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-view]");
+        if (b) stView(b.dataset.view);
+      });
+    }
+    if ($("st-car-q")) $("st-car-q").addEventListener("input", stFilterCars);
+    document.addEventListener("visibilitychange", () => {
+      if (!S.h3d) return;
+      if (document.hidden) S.h3d.pause();
+      else if (S.page === "flow" && S.step === 2 && !S.flowDone) S.h3d.resume();
+    });
+  }
+
+  /* ------------------------------------------------------------------ yuborish */
+  function submitStudio() {
+    if (!S.car) {
+      toast("Avval mashinani tanlang");
+      return setStep(1);
+    }
+    const r = stRows();
+    if (!r.lens || !r.inner || !r.ring) return toast("Variantlar yuklanmadi — qayta urinib ko'ring");
+    if (!window.ZimmerOffline || !ZimmerOffline.workerReady || !ZimmerOffline.workerReady()) {
+      return toast("Buyurtma xizmati sozlanmagan (WORKER_URL)");
+    }
     return withPhone(async () => {
       const btn = $("flow-next");
       btn.disabled = true;
-      btn.textContent = "Yuborilmoqda...";
-      // 1) FAQAT tarmoq chaqiruvi shu try ichida (item 8).
+      btn.textContent = "Yuborilmoqda…";
+      // 1) FAQAT tarmoq chaqiruvi shu try ichida: xato bo'lsa tugma tiklanadi
       let res;
       try {
-        // Bazaga to'g'ridan yoziladi — Render kerak emas.
-        res = S.offline
-          ? await ZimmerOffline.createBiledOrder({
-              uid: (S.me && (S.me.user_id || S.me.id)) || 0,
-              car_id: S.car.id,
-              car_name: S.car.name || "",
-              biled_id: S.biled.id,
-              biled_name: S.biled.name || "",
-              biled_price: S.biled.price || 0,
-              shroud_id: S.shroud ? S.shroud.id : null,
-              shroud_name: S.shroud ? S.shroud.name : "",
-              shroud_price: S.shroud ? S.shroud.price : 0,
-              color_id: S.color ? S.color.id : null,
-              color_name: S.color ? S.color.name : "",
-              color_price: S.color ? S.color.price : 0,
-              comment: $("order-comment").value.trim(),
-              name: (S.me && (S.me.full_name || S.me.first_name)) || "",
-              phone: (S.me && S.me.phone) || "",
-            })
-          : await api("/api/biled-orders", {
-          method: "POST",
-          body: {
-            car_id: S.car.id,
-            biled_id: S.biled.id,
-            shroud_id: S.shroud ? S.shroud.id : null,
-            color_id: S.color ? S.color.id : null,
-            comment: $("order-comment").value.trim(),
+        res = await ZimmerOffline.createStudioOrder({
+          uid: (S.me && (S.me.user_id || S.me.id)) || 0,
+          car_id: S.car.id,
+          car_name: S.car.name || "",
+          studio: {
+            v: 2,
+            lens: r.lens.id,
+            inner: r.inner.id,
+            ring: r.ring.id,
+            finish: S.cfg.finish === "black" ? "black" : "chrome",
+            glow: r.ring.code === "glow" ? S.cfg.glow : null,
+            glass: !!S.cfg.glass,
+            housing: !!S.cfg.housing,
           },
+          comment: String(S.cfgComment || "").trim().slice(0, 2000),
+          name: (S.me && (S.me.full_name || S.me.first_name)) || "",
+          phone: (S.me && S.me.phone) || "",
         });
       } catch (err) {
-        // COMMIT'DAN OLDINGI xato — tugmani tiklaymiz (qayta urinish mumkin).
         btn.disabled = false;
-        btn.textContent = "Buyurtmani yuborish";
+        stPaintCta();
         throw err;
       }
-      // 2) COMMIT bo'ldi — tugmani TIKLAMAYMIZ (dublikatning oldini olish);
-      //    UI render'i alohida bloko va uning istisnosi buyurtmani
-      //    "muvaffaqiyatsiz" ko'rsatmaydi.
+      // 2) COMMIT bo'ldi — tugma ATAYLAB tiklanmaydi (dublikatning oldini olish)
       try {
         haptic("ok");
         burst();
-        showDone(res.order);
+        showDone((res && res.order) || {});
       } catch (uiErr) {
-        console.error("[biled] commit keyingi UI xatosi:", uiErr);
+        console.error("[studio] commit keyingi UI xatosi:", uiErr);
       }
     });
   }
 
   /* ====================================================================
-     BUYURTMA QABUL QILINDI EKRANI
-
-     ILGARI NIMA XATO EDI
-     Bu funksiya `.flow-body` ning `innerHTML` ini QAYTA YOZARDI — ya'ni
-     konfiguratorning BARCHA qadamlari (`#fstep-car` … `#fstep-summary`)
-     va `#cars` ro'yxati DOM'dan butunlay o'chib ketardi. Tiklanish
-     yagona yo'l bilan hisoblangan edi: «Asosiy menyuga o'tish» tugmasi
-     `location.reload()` qiladi.
-
-     Lekin mijoz o'sha tugmani bosishi SHART emas. U Telegram'ning orqaga
-     tugmasini yoki pastdagi menyuni bosishi mumkin. Keyin konfiguratorga
-     qaytsa:
-
-         openFlow() -> renderCars() -> $("cars") === null
-                    -> setStep()   -> null.classList  => TypeError
-
-     va konfigurator SEANS OXIRIGACHA ishlamay qolardi. `setStep()` da
-     bitta ham `null` tekshiruvi yo'q edi.
-
-     ENDI
-     Xabar ALOHIDA qatlamga chiziladi (`#flow-done`), qadamlar DOM'da
-     buzilmasdan qoladi. Yopilganda qatlam olib tashlanadi va konfigurator
-     birinchi qadamdan qaytadan ishlaydi — sahifani qayta yuklash kerak emas
-     (ya'ni savat ham yo'qolmaydi).
+     BUYURTMA QABUL QILINDI — studiya ustidagi alohida qatlam.
+     Qadamlar DOM'da buzilmaydi; qatlam yopilganda konfigurator yana
+     birinchi qadamdan ishlaydi (sahifa qayta yuklanmaydi, savat qoladi).
      ==================================================================== */
   function showDone(order) {
-    stopVideos();
-    $("flow-cta").classList.add("hidden");
-    $("preview").classList.add("hidden");
-    $("progress-fill").style.width = "100%";
-    $("flow-title").textContent = "Buyurtma qabul qilindi";
-    $("flow-sub").textContent = "Rahmat!";
-    $("flow-back").style.visibility = "hidden";
-
-    const body = document.querySelector(".flow-body");
-    if (!body) return;
-
-    // Qadamlarni faqat YASHIRAMIZ (o'chirmaymiz)
-    STEPS.forEach((s) => {
-      const node = $(s.node);
-      if (node) node.classList.add("hidden");
-    });
-
+    const flow = $("flow");
+    if (!flow) return;
+    if (S.h3d) S.h3d.light("high");
     let layer = $("flow-done");
     if (!layer) {
-      layer = el("div", "done-wrap");
+      layer = el("div", "st-done");
       layer.id = "flow-done";
-      body.appendChild(layer);
+      flow.appendChild(layer);
     }
-    layer.innerHTML = `
-      <div class="done-ring"><svg viewBox="0 0 52 52"><path d="M14 27 L22 35 L38 18"/></svg></div>
-      <h2>Buyurtma #${esc(order.id)} qabul qilindi</h2>
-      <p>${esc(order.summary)}<br><b style="color:#fff">${esc(order.total_label)}</b></p>
-      <p>Mutaxassisimiz tez orada bog'lanib, o'rnatish vaqtini kelishadi. 🔧</p>
-      <button class="btn btn-primary" id="done-home">Asosiy menyuga o'tish</button>`;
+    const total = order.total_label || fmt(order.total != null ? order.total : stTotal());
+    layer.innerHTML =
+      '<div class="st-done-card">' +
+      '<div class="done-ring"><svg viewBox="0 0 52 52"><path d="M14 27 L22 35 L38 18"/></svg></div>' +
+      "<h2>Buyurtma qabul qilindi</h2>" +
+      (order.code ? '<p class="st-done-code">' + esc(order.code) + "</p>" : "") +
+      '<p class="st-done-sum">' + esc((S.car ? S.car.name + " · " : "") + stSummary()) + "</p>" +
+      '<b class="st-done-total">' + esc(total) + "</b>" +
+      "<p class=\"st-done-note\">Mutaxassisimiz tez orada bog'lanib, o'rnatish vaqtini kelishadi.</p>" +
+      '<button class="btn btn-primary" id="done-orders" type="button">Buyurtmalarimda kuzatish</button>' +
+      '<button class="btn btn-ghost" id="done-home" type="button">Bosh sahifa</button>' +
+      "</div>";
     layer.classList.remove("hidden");
     S.flowDone = true;
+    syncBackButton();
 
     $("done-home").onclick = () => {
       closeFlowDone();
       show("home");
       loadHome({ force: isHomeStale() });
     };
+    $("done-orders").onclick = () => {
+      closeFlowDone();
+      openMyOrders("biled");
+    };
   }
 
-  /** «Buyurtma qabul qilindi» qatlamini olib tashlaydi va konfiguratorni
-   *  ishlashga qaytaradi. Sahifa QAYTA YUKLANMAYDI — savat saqlanadi. */
+  /** «Qabul qilindi» qatlamini yopadi va konfiguratorni toza holatga qaytaradi. */
   function closeFlowDone() {
     const layer = $("flow-done");
     if (layer) layer.remove();
     if (!S.flowDone) return;
     S.flowDone = false;
-    // Tanlovni tozalaymiz: keyingi buyurtma toza boshlanishi kerak
-    S.biled = null;
-    S.shroud = null;
-    S.color = null;
+    // Keyingi buyurtma toza boshlansin (mashina saqlanadi)
+    S.cfg = null;
+    S.cfgTab = "lens";
+    S.cfgComment = "";
+    S.cfgShown = null;
     S.step = 1;
+    document.documentElement.classList.remove("st-lock");
   }
 
   /* ======================================================================
@@ -2352,7 +2799,7 @@
      yuklanadi: takror chaqiruv o'sha Promise'ni qaytaradi.
      ==================================================================== */
 
-  const SCRIPT_VERSION = "75"; // index.html dagi `?v=` bilan bir xil bo'lsin
+  const SCRIPT_VERSION = "78"; // index.html dagi `?v=` bilan bir xil bo'lsin
   const _scripts = new Map();
 
   function loadScript(src) {
@@ -6407,7 +6854,12 @@
       car_name: b.car_name || "",
       biled_name: b.biled_name || "",
       biled_id: b.biled_id,
-      summary: b.summary || [b.biled_name, b.shroud_name, b.color_name].filter(Boolean).join(" · "),
+      summary:
+        b.summary ||
+        [b.biled_name, b.shroud_name, b.color_name, b.glass ? "yangi shisha" : "", b.housing ? "yangi korpus" : ""]
+          .filter(Boolean)
+          .join(" · "),
+      warranty: b.warranty || null,
       comment: b.comment || "",
       total: Number(b.total) || 0,
       total_label: b.total_label || fmt(b.total),
@@ -6702,7 +7154,8 @@
         sub: b.car_name ? "O'rnatish · " + b.car_name : "Bi-LED o'rnatish",
         qty: 1,
         size: null,
-        p: wrParse(t && t.warranty) || { months: WR_BILED_MONTHS },
+        // Studiya buyurtmasida linza kafolati yozuvning o'zida (`warranty`)
+        p: wrParse(b.warranty || (t && t.warranty)) || { months: WR_BILED_MONTHS },
         start: st === "done" ? startOf(b) : null,
         created: orderTime(b),
         order_code: b.code || (b.id != null ? "#" + b.id : ""),
@@ -9160,9 +9613,13 @@
          ishlaydi va yangi qo'shilgan mashina darhol ko'rinadi. */
       S.cars = useCars(await fetchCarList());
     }
+    // 3D fonda yuklana boshlaydi — mijoz mashina tanlaguncha tayyor bo'ladi
+    ensureStudio3D().catch(() => {});
+    // Narxlar har ochilishda yangidan o'qiladi (admin o'zgartirgan bo'lishi mumkin)
+    S.studio = null;
     renderCars();
-    if (!S.tuning) await loadTuning();
-    setStep(S.car ? 2 : 1);
+    // Har doim avval mashina so'raladi (garajda bo'lsa — «Davom etish» tugmasi)
+    setStep(1);
   }
 
   /* ------------------------------------------------------------------ boot */
@@ -10025,6 +10482,8 @@
     if (p === "biled") return openMyOrders("biled");
     if (p === "bookings") return openMyOrders("booking");
     if (p === "services" || p === "navbat") return show("services");
+    // Bi-LED Studio (3D konfigurator) — bot tugmasi to'g'ridan ochishi mumkin
+    if (p === "studio" || p === "config" || p === "konfigurator") return openFlow();
     if (p === "admin" && S.me && S.me.is_admin) return show("admin");
   }
 
@@ -10069,19 +10528,25 @@
   });
 
   $("flow-next").onclick = () => {
-    if (S.step === 1 && !S.car) return toast("Mashinani tanlang");
-    if (S.step === 2 && !S.biled) return toast("Bi-LED linzani tanlang");
-    // Ochki va rang majburiy emas — tanlanmasa tugma «O'tkazib yuborish» bo'ladi
-    if (S.step === STEPS.length) return submitConfig();
-    haptic();
-    setStep(S.step + 1);
+    if (S.step === 1) return S.car ? setStep(2) : toast("Mashinani tanlang");
+    if (S.cfgTab === "sum") return submitStudio();
+    const tabs = stTabs();
+    const next = tabs[tabs.findIndex((t) => t.key === S.cfgTab) + 1];
+    if (next) stGoTab(next.key);
   };
-  $("flow-back").onclick = () => setStep(S.step - 1);
+  $("flow-back").onclick = () => {
+    haptic();
+    setStep(1);
+  };
   // Konfiguratorni yopish har doim ishlaydi — mashina tanlash majburiy emas
-  $("flow-close").onclick = () => {
+  const closeFlow = () => {
+    haptic();
     show("home");
     loadHome({ force: isHomeStale() });
   };
+  $("flow-close").onclick = closeFlow;
+  if ($("st-close")) $("st-close").onclick = closeFlow;
+  bindStudio();
 
   // Zaxira rejim belgisi — bosilganda holatni tushuntiradi
   if ($("offline-badge")) $("offline-badge").onclick = explainOffline;

@@ -73,7 +73,7 @@ const DEFAULT_MAX_AGE = 86400; // 24 soat
 // berishga to'g'ri keladi).
 // Har deploy'da ko'tariladi — `/health` dagi bu raqam Cloudflare'da
 // YANGI nusxa turganini tasdiqlashning eng oson yo'li.
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 const FEATURES = [
   // 2.0.0 — BOT Worker'da: webhook, menyu, holat tugmalari, mijoz↔admin
   // yozishmasi; /me — Bi-LED, navbat va KAFOLAT; mijoz navbatni bekor qiladi;
@@ -128,6 +128,11 @@ const FEATURES = [
   "admin_vip",
   "admin_message",
   "blocked_enforced",
+  // 2.1.0 — Bi-LED Studio (3D konfigurator): `/biled-order` `studio`
+  // tanlovini qabul qiladi, narx `catalog/configurator` + mashinaning
+  // `glass_price`/`housing_price` dan qayta hisoblanadi; admin panel
+  // `catalog/configurator` ni va mashina narxlarini yoza oladi.
+  "biled_studio",
 ];
 
 /** Mini App'dan yuklanadigan fayl chegarasi.
@@ -1035,6 +1040,10 @@ async function handleBiledOrder(request, env) {
   if (!phone) return json({ ok: false, error: "Telefon raqam noto'g'ri" }, 400);
 
   const token = await accessToken(env);
+  // 2.1.0 — Bi-LED Studio (3D konfigurator) tanlovi
+  if (body.studio && typeof body.studio === "object") {
+    return await createStudioOrder(env, c, token, verified, body, phone);
+  }
   const [cars, bileds, shrouds, colors] = await Promise.all([
     rtdbGetStrict(c.dbUrl, `${c.root}/catalog/cars`, token),
     rtdbGetStrict(c.dbUrl, `${c.root}/catalog/biled_types`, token),
@@ -1106,6 +1115,183 @@ async function handleBiledOrder(request, env) {
   // Admin darhol biladi (holat tugmalari bilan), mijoz esa tasdiq oladi
   await notifyBiled(env, c, token, key, record, verified.user).catch(() => {});
   return json({ ok: true, order: { id: key, code: record.code, total, total_label: fmtPrice(total) } }, 201);
+}
+
+// =====================================================================
+//  BI-LED STUDIO (3D konfigurator) — 2.1.0
+//
+//  Mijoz Mini App'da tanlaydi: linza (R50/R80/R90), fara ichi (xrom/qora),
+//  ochki (oddiy / BMW halqa / BMW yonadigan + rang), ochki rangi (xrom/qora),
+//  yangi shisha va yangi korpus. Narx HECH QACHON mijozdan olinmaydi:
+//    variantlar — `catalog/configurator/{qator}` (admin panel yozadi),
+//    qator yo'q bo'lsa — STUDIO_DEFAULTS;
+//    shisha/korpus — `catalog/cars/{id}.glass_price|housing_price`,
+//    bo'lmasa `glass`/`housing` qatorining standart narxi.
+//
+//  DIQQAT: STUDIO_DEFAULTS `docs/js/offline.js` dagi bilan AYNAN bir xil
+//  bo'lishi SHART — aks holda ekrandagi va yozilgan narx farq qiladi.
+//  Yozuv eski Bi-LED buyurtmasi bilan bir xil tugunga (`biled_orders`) va
+//  bir xil maydonlar bilan tushadi — admin, bot, kabinet va kafolat
+//  o'zgarishsiz ishlaydi; yangi maydonlar: glass*, housing*, ring_*,
+//  warranty, studio.
+// =====================================================================
+const STUDIO_DEFAULTS = {
+  lens_r50: { group: "lens", code: "r50", sort: 1, name: "Bi-LED R50", price: 1200000, size: "2.5\"", kelvin: "5000K", lumen: "6 500 lm", warranty: "1 yil", badge: "" },
+  lens_r80: { group: "lens", code: "r80", sort: 2, name: "Bi-LED R80", price: 1500000, size: "3.0\"", kelvin: "5500K", lumen: "8 500 lm", warranty: "1 yil", badge: "Ommabop" },
+  lens_r90: { group: "lens", code: "r90", sort: 3, name: "Bi-LED R90", price: 2200000, size: "3.0\"", kelvin: "6000K", lumen: "11 000 lm", warranty: "1 yil", badge: "Premium" },
+  inner_chrome: { group: "inner", code: "chrome", sort: 1, name: "Asl rang (xrom)", price: 0 },
+  inner_black: { group: "inner", code: "black", sort: 2, name: "Qora", price: 350000 },
+  ring_plain: { group: "ring", code: "plain", sort: 1, name: "Oddiy ochki", price: 250000 },
+  ring_bmw: { group: "ring", code: "bmw", sort: 2, name: "BMW halqa", price: 400000 },
+  ring_glow: { group: "ring", code: "glow", sort: 3, name: "BMW yonadigan halqa", price: 450000 },
+  glass: { group: "glass", code: "glass", sort: 1, name: "Yangi fara shishasi", price: 250000 },
+  housing: { group: "housing", code: "housing", sort: 1, name: "Yangi korpus", price: 600000 },
+};
+
+/** Bazadagi qatorlar standartlar ustiga qo'yiladi (faqat ma'lum kalitlar). */
+function studioCatalog(node) {
+  const raw = {};
+  for (const k of Object.keys(STUDIO_DEFAULTS)) raw[k] = { id: k, ...STUDIO_DEFAULTS[k] };
+  if (node && typeof node === "object" && !Array.isArray(node)) {
+    for (const k of Object.keys(node)) {
+      const row = node[k];
+      if (!raw[k] || !row || typeof row !== "object") continue;
+      for (const f of Object.keys(row)) {
+        if (row[f] !== null && row[f] !== undefined) raw[k][f] = row[f]; // "" — admin ataylab tozalagan
+      }
+      raw[k].id = k;
+    }
+  }
+  return raw;
+}
+
+function studioRowOk(row, group) {
+  return !!row && row.group === group && catalogRowAvailable(row);
+}
+
+function studioPrice(row) {
+  return Math.max(0, Math.round(Number(row && row.price) || 0));
+}
+
+/** Shisha/korpus narxi: mashinaga xos bo'lsa o'sha, aks holda standart (2 fara). */
+function studioCarPrice(kind, car, raw) {
+  const own = Number(car && car[`${kind}_price`]);
+  if (Number.isFinite(own) && own > 0) return Math.round(own);
+  return studioPrice(raw[kind]);
+}
+
+/** Buyurtma tarkibi (bot, admin va kabinet uchun bitta manba). */
+function biledParts(rec) {
+  const r = rec || {};
+  return [
+    r.biled_name || r.biled,
+    r.shroud_name || r.shroud,
+    r.color_name || r.color,
+    r.glass ? "Yangi shisha" : "",
+    r.housing ? "Yangi korpus" : "",
+  ].filter(Boolean);
+}
+
+async function createStudioOrder(env, c, token, verified, body, phone) {
+  const pick = body.studio || {};
+  const [cars, cfgNode] = await Promise.all([
+    rtdbGetStrict(c.dbUrl, `${c.root}/catalog/cars`, token),
+    rtdbGetStrict(c.dbUrl, `${c.root}/catalog/configurator`, token),
+  ]);
+  const raw = studioCatalog(cfgNode);
+  const car = catalogRowById(cars, body.car_id);
+  const lens = raw[clean(pick.lens, 40)];
+  const inner = raw[clean(pick.inner, 40)];
+  const ring = raw[clean(pick.ring, 40)];
+  const finish = pick.finish === "black" ? "black" : pick.finish === "chrome" ? "chrome" : null;
+  const glowRaw = String(pick.glow || "").toLowerCase();
+  const glow = /^#[0-9a-f]{6}$/.test(glowRaw) ? glowRaw : null;
+  const wantGlass = pick.glass === true;
+  const wantHousing = pick.housing === true;
+  if (
+    !catalogRowAvailable(car) ||
+    !studioRowOk(lens, "lens") ||
+    !studioRowOk(inner, "inner") ||
+    !studioRowOk(ring, "ring") ||
+    !finish ||
+    (ring.code === "glow" && !glow) ||
+    (wantGlass && !catalogRowAvailable(raw.glass)) ||
+    (wantHousing && !catalogRowAvailable(raw.housing))
+  ) {
+    return json({ ok: false, error: "Konfigurator tanlovi topilmadi yoki faol emas" }, 409);
+  }
+
+  const uid = String(verified.user.id);
+  const nonce = clean(body.client_key, 64).replace(/[^A-Za-z0-9_-]/g, "");
+  if (nonce.length < 16) return json({ ok: false, error: "client_key_required" }, 400);
+  const key = `bl_${uid}_${nonce}`;
+
+  const lensPrice = studioPrice(lens);
+  const innerPrice = studioPrice(inner);
+  const ringPrice = studioPrice(ring);
+  const glassPrice = wantGlass ? studioCarPrice("glass", car, raw) : 0;
+  const housingPrice = wantHousing ? studioCarPrice("housing", car, raw) : 0;
+  const total = lensPrice + innerPrice + ringPrice + glassPrice + housingPrice;
+  const ringGlow = ring.code === "glow" ? glow : null;
+  const ringName = [clean(ring.name, 120), finish === "black" ? "qora" : "xrom", ringGlow ? ringGlow.toUpperCase() : ""]
+    .filter(Boolean)
+    .join(" · ");
+
+  const record = {
+    uid: Number(uid),
+    car_id: car.id == null ? Number(body.car_id) : car.id,
+    car_name: clean(car.name, 200),
+    biled_id: lens.id,
+    biled_name: clean(lens.name, 200),
+    biled_price: lensPrice,
+    shroud_id: ring.id,
+    shroud_name: ringName,
+    shroud_price: ringPrice,
+    color_id: inner.id,
+    color_name: "Fara ichi: " + clean(inner.name, 120).toLowerCase(),
+    color_price: innerPrice,
+    ring_finish: finish,
+    ring_glow: ringGlow,
+    glass: wantGlass,
+    glass_price: glassPrice,
+    housing: wantHousing,
+    housing_price: housingPrice,
+    warranty: clean(lens.warranty, 60) || null,
+    studio: 2,
+    comment: clean(body.comment, 2000),
+    total,
+    name: clean(body.name || [verified.user.first_name, verified.user.last_name].filter(Boolean).join(" "), 200),
+    phone,
+    status: "new",
+    createdAt: Date.now(),
+    imported: false,
+    source: "miniapp_worker",
+  };
+  record.request_hash = await sha256Hex(JSON.stringify({
+    car_id: record.car_id,
+    studio: [lens.id, inner.id, ring.id, finish, ringGlow, wantGlass, wantHousing],
+    comment: record.comment,
+    phone: record.phone,
+  }));
+  record.code = biledCode(key, record);
+  return await commitBiledRecord(env, c, token, key, record, verified.user);
+}
+
+/** Idempotent yozish + bildirishnoma (eski va studiya buyurtmasi uchun bir xil). */
+async function commitBiledRecord(env, c, token, key, record, user) {
+  const created = await rtdbCreate(c.dbUrl, `${c.root}/biled_orders/${key}`, record, token);
+  if (!created.created) {
+    if (!created.value || created.value.request_hash !== record.request_hash) {
+      return json({ ok: false, error: "idempotency_conflict" }, 409);
+    }
+    const oldTotal = Number(created.value.total) || 0;
+    if (!created.value.notified_admin) {
+      await notifyBiled(env, c, token, key, created.value, user).catch(() => {});
+    }
+    return json({ ok: true, order: { id: key, code: biledCode(key, created.value), total: oldTotal, total_label: fmtPrice(oldTotal) }, repeated: true });
+  }
+  await notifyBiled(env, c, token, key, record, user).catch(() => {});
+  return json({ ok: true, order: { id: key, code: record.code, total: record.total, total_label: fmtPrice(record.total) } }, 201);
 }
 
 // =====================================================================
@@ -1346,7 +1532,11 @@ async function handleAdminEdit(request, env) {
 const CATALOG_WRITE_FIELDS = {
   products: new Set(["id", "_key", "name", "description", "price", "old_price", "stock", "code", "badge", "photo_url", "photo_id", "photo2_url", "photo2_id", "photo3_url", "photo3_id", "is_active", "deleted", "category_id", "categoryName", "car_id", "carName", "carNames", "product_type", "sizes", "warranty", "flashUntil", "sort", "createdAt", "updatedAt", "source"]),
   categories: new Set(["id", "_key", "name", "title", "icon", "sort", "is_active", "deleted", "createdAt", "updatedAt", "source"]),
-  cars: new Set(["id", "_key", "name", "years", "note", "sort", "photo_url", "photo_id", "is_active", "deleted", "createdAt", "updatedAt", "source"]),
+  // 2.1.0 — `glass_price`/`housing_price`: Bi-LED Studio va shisha almashtirish narxi (2 fara)
+  cars: new Set(["id", "_key", "name", "years", "note", "sort", "photo_url", "photo_id", "glass_price", "housing_price", "is_active", "deleted", "createdAt", "updatedAt", "source"]),
+  /* 2.1.0 — Bi-LED Studio variantlari: `catalog/configurator/{qator}`.
+     Qator kalitlari `STUDIO_DEFAULTS` dagi bilan bir xil (lens_r50, ring_glow...). */
+  configurator: new Set(["id", "_key", "group", "code", "name", "price", "size", "kelvin", "lumen", "warranty", "badge", "description", "sort", "is_active", "deleted", "createdAt", "updatedAt", "source"]),
   stories: new Set(["id", "_key", "category", "title", "heading", "body", "emoji", "color_from", "color_to", "photo_url", "photo_id", "video_url", "video_id", "link", "sort", "is_active", "deleted", "createdAt", "updatedAt", "source"]),
   banners: new Set(["id", "_key", "title", "subtitle", "tag", "color_from", "color_to", "photo_url", "photo_id", "video_url", "video_id", "sort", "is_active", "deleted", "createdAt", "updatedAt", "source"]),
   music: new Set(["id", "_key", "title", "audio_url", "audio_id", "duration", "sort", "is_active", "deleted", "createdAt", "updatedAt", "source"]),
@@ -1399,6 +1589,12 @@ const CATALOG_FIELD_CHECK = {
   price: (v) => catNum(v, 0, 100000000000),
   old_price: (v) => catNum(v, 0, 100000000000),
   stock: (v) => catNum(v, 0, 10000000),
+  glass_price: (v) => catNum(v, 0, 100000000000),
+  housing_price: (v) => catNum(v, 0, 100000000000),
+  group: (v) => catStr(v, 20),
+  size: (v) => catStr(v, 40),
+  kelvin: (v) => catStr(v, 40),
+  lumen: (v) => catStr(v, 40),
   duration: (v) => catNum(v, 0, MAX_TS),
   category_id: (v) => typeof v === "number" && Number.isFinite(v),
   car_id: (v) => typeof v === "number" && Number.isFinite(v),
@@ -2522,7 +2718,7 @@ async function notifyOrder(env, c, order, key) {
 
 /** Bi-LED o'rnatish buyurtmasi — adminga (tugmalar bilan) va mijozga. */
 async function notifyBiled(env, c, token, key, rec, user) {
-  const parts = [rec.biled_name, rec.shroud_name, rec.color_name].filter(Boolean).map(escHtml);
+  const parts = biledParts(rec).map(escHtml);
   const name = rec.name || [user && user.first_name, user && user.last_name].filter(Boolean).join(" ");
   const adminText =
     "🔥 <b>Yangi Bi-LED buyurtma</b>\n\n" +
@@ -2545,7 +2741,7 @@ async function notifyBiled(env, c, token, key, rec, user) {
       `🚗 ${escHtml(rec.car_name || "")}\n💡 ${parts.join(" · ")}\n` +
       `💰 Taxminiy narx: <b>${fmtPrice(rec.total)}</b>\n\n` +
       "Usta tez orada bog'lanib, o'rnatish vaqtini kelishadi 🔧\n" +
-      "🛡 O'rnatish topshirilgach 1 yillik kafolat shu botda boshlanadi.",
+      `🛡 O'rnatish topshirilgach ${escHtml(rec.warranty || "1 yil")}lik kafolat shu botda boshlanadi.`,
     { reply_markup: { inline_keyboard: [[{ text: "📦 Buyurtmani kuzatish", web_app: { url: appUrl(env, "biled") } }]] } }
   );
   return ok;
@@ -3975,7 +4171,7 @@ function customerOrderView(key, source, row, twin) {
 
 function customerBiledView(key, row) {
   const total = Number(row.total || 0);
-  const parts = [row.biled_name || row.biled, row.shroud_name || row.shroud, row.color_name || row.color].filter(Boolean);
+  const parts = biledParts(row);
   return {
     key: String(key),
     id: row.id != null ? row.id : String(key),
@@ -3985,6 +4181,9 @@ function customerBiledView(key, row) {
     biled_id: row.biled_id != null ? row.biled_id : null,
     shroud_name: row.shroud_name || row.shroud || "",
     color_name: row.color_name || row.color || "",
+    glass: !!row.glass,
+    housing: !!row.housing,
+    warranty: row.warranty || null,
     summary: parts.join(" · "),
     comment: row.comment || "",
     total,

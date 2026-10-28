@@ -339,6 +339,7 @@ window.ZimmerShop = (function () {
         tile("shop-banners", "amber", "img", "Bannerlar", "Rasm, tartib, o'chirish"),
       ]) +
       group("Xizmatlar", [
+        tile("shop-studio", "amber", "bolt", "Bi-LED konfigurator", "Linza, ochki, shisha va korpus narxlari"),
         tile("shop-srv", "gray", "wrench", "Xizmatlar va narxlar", "Narx, kafolat, video va «Tez kunda»"),
       ]) +
       "</div>";
@@ -393,6 +394,7 @@ window.ZimmerShop = (function () {
     });
 
     bind("shop-banners", openBanners);
+    bind("shop-studio", openStudioAdmin);
 
     // Sanoqchilar FONDA yuklanadi — menyu darhol ochiladi.
     refreshBadges();
@@ -525,6 +527,9 @@ window.ZimmerShop = (function () {
           ["💡", r.biled_name || r.biled],
           ["🕶", r.shroud_name || r.shroud],
           ["🎨", r.color_name || r.color],
+          // Bi-LED Studio: shisha va korpus almashtirish (narxi bilan)
+          ["🔆", r.glass ? "Yangi shisha · " + money(r.glass_price) : ""],
+          ["🧱", r.housing ? "Yangi korpus · " + money(r.housing_price) : ""],
           ["💬", r.comment],
         ],
       }));
@@ -4098,6 +4103,9 @@ window.ZimmerShop = (function () {
           photo_id: String(r.photo_id || ""),
           sort: Number(r.sort) || 0,
           is_active: r.is_active !== 0 && r.is_active !== false,
+          // Bi-LED Studio: mashinaga xos shisha/korpus narxi (bo'sh — standart)
+          glass_price: Number(r.glass_price) > 0 ? Number(r.glass_price) : null,
+          housing_price: Number(r.housing_price) > 0 ? Number(r.housing_price) : null,
         });
       });
     }
@@ -4525,6 +4533,254 @@ window.ZimmerShop = (function () {
     }
   }
 
+  /* ==================================================================
+     BI-LED STUDIO — KONFIGURATOR NARXLARI
+
+     Mijoz 3D konfiguratorda ko'radigan variantlar: 3 ta linza (R50/R80/
+     R90), fara ichi (xrom/qora), ochki (oddiy / BMW / BMW yonadigan),
+     yangi shisha va yangi korpus. Har biri `catalog/configurator/{qator}`
+     ga yoziladi (Worker `/admin/catalog-write`, `configurator` jadvali).
+     Shisha va korpus narxi mashinaga qarab: `catalog/cars/{id}.glass_price`
+     va `.housing_price` — bo'sh bo'lsa standart narx ishlaydi.
+
+     Barcha narx 2 fara uchun, o'rnatish bilan. Buyurtma summasini Worker
+     shu qiymatlardan QAYTA hisoblaydi — mijoz narxni o'zgartira olmaydi.
+     ================================================================== */
+  const CFG_P = "catalog/configurator";
+  const CFG_LOOK = {
+    lens_r50: "Ixcham 2.5\" linza, tiniq oyna",
+    lens_r80: "3.0\" linza, ko'k antirefleks qoplama",
+    lens_r90: "3.0\" giperboloid, ko'k lazer aksent",
+  };
+  const CFG_GROUPS = [
+    { title: "Bi-LED linzalar", icon: "💡", sub: "Nomi, narxi va xususiyatlari — mijoz kartochkada ko'radi", keys: ["lens_r50", "lens_r80", "lens_r90"], lens: true },
+    { title: "Fara ichi rangi", icon: "🎨", sub: "Xrom — asl rang, odatda bepul", keys: ["inner_chrome", "inner_black"] },
+    { title: "Ochki (maska)", icon: "◎", sub: "Xrom yoki qora — mijoz tanlaydi, narx turiga qarab", keys: ["ring_plain", "ring_bmw", "ring_glow"] },
+    { title: "Shisha va korpus — standart narx", icon: "🔆", sub: "Mashinaga alohida narx yozilmagan bo'lsa shu ishlaydi", keys: ["glass", "housing"] },
+  ];
+
+  function cfgDefaults() {
+    const off = window.ZimmerOffline;
+    return (off && off.STUDIO_DEFAULTS) || {};
+  }
+
+  function cfgRow(k) {
+    return Object.assign({ is_active: 1 }, cfgDefaults()[k] || {}, (S.cfgNode && S.cfgNode[k]) || {});
+  }
+
+  function cfgNum(v) {
+    const n = Number(v) || 0;
+    return n ? String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ") : "";
+  }
+
+  async function openStudioAdmin() {
+    S.view = "studio";
+    setHead("🔦 Bi-LED konfigurator", "Yuklanmoqda...");
+    body().innerHTML = '<div class="inv-skel"></div><div class="inv-skel"></div><div class="inv-skel"></div>';
+    try {
+      const [node, cars] = await Promise.all([fb().get(CFG_P), loadCarRows()]);
+      S.cfgNode = node && typeof node === "object" && !Array.isArray(node) ? node : {};
+      S.cfgCars = cars;
+      renderStudioAdmin();
+    } catch (err) {
+      fail(err, openStudioAdmin);
+    }
+  }
+
+  function renderStudioAdmin() {
+    S.view = "studio";
+    setHead("🔦 Bi-LED konfigurator", "Narxlar · 2 fara, o'rnatish bilan");
+    const field = (k, f, label, opts) => {
+      const o = opts || {};
+      const r = cfgRow(k);
+      const val = f === "price" ? cfgNum(r.price) : r[f] == null ? "" : String(r[f]);
+      const input = o.area
+        ? '<textarea class="admin-input cfa-in" rows="2" maxlength="600" data-row="' + k + '" data-f="' + f + '">' + esc(val) + "</textarea>"
+        : '<input type="text" class="admin-input cfa-in" data-row="' + k + '" data-f="' + f + '"' +
+          (f === "price" ? ' inputmode="numeric"' : "") + ' maxlength="' + (o.max || 60) + '" placeholder="' +
+          esc(o.ph || "") + '" value="' + esc(val) + '">';
+      return '<label class="cfa-f' + (o.wide ? " is-wide" : "") + '"><span>' + esc(label) + "</span>" + input + "</label>";
+    };
+    const sw = (k) =>
+      '<label class="cfa-sw" title="Mijozga ko\'rsatish"><input type="checkbox" data-row="' + k + '" data-f="is_active"' +
+      (cfgRow(k).is_active !== 0 && cfgRow(k).is_active !== false ? " checked" : "") + "><i></i></label>";
+    const card = (g, k) => {
+      const r = cfgRow(k);
+      return (
+        '<div class="cfa-card">' +
+        '<div class="cfa-card-h"><div><b>' + esc(r.name || k) + "</b><small>" +
+        esc(CFG_LOOK[k] || (r.code ? "Kod: " + r.code : "")) + "</small></div>" + sw(k) + "</div>" +
+        '<div class="cfa-grid">' +
+        field(k, "name", "Nomi", { max: 80 }) +
+        field(k, "price", "Narxi, so'm", { ph: "0" }) +
+        (g.lens
+          ? field(k, "size", "O'lcham", { ph: '3.0"' }) +
+            field(k, "kelvin", "Harorat", { ph: "5500K" }) +
+            field(k, "lumen", "Yorqinlik", { ph: "8 500 lm" }) +
+            field(k, "warranty", "Kafolat", { ph: "1 yil" }) +
+            field(k, "badge", "Belgi (ixtiyoriy)", { ph: "Ommabop", max: 24, wide: true })
+          : "") +
+        field(k, "description", "Tavsif", { area: true, wide: true }) +
+        "</div></div>"
+      );
+    };
+    const D = cfgDefaults();
+    const glassStd = cfgNum(cfgRow("glass").price) || "0";
+    const housingStd = cfgNum(cfgRow("housing").price) || "0";
+    const cars = (S.cfgCars || []).filter((c) => c.is_active);
+
+    body().innerHTML =
+      '<div class="adm-form" id="cfa-form">' +
+      '<div class="adm-hint-block">Mijoz 3D konfiguratorda shu narxlarni ko\'radi. Buyurtma summasini server ' +
+      "aynan shu yerdan qayta hisoblaydi. O'chirilgan variant (tugma o'chiq) mijozga ko'rinmaydi.</div>" +
+      CFG_GROUPS.map(
+        (g) =>
+          '<div class="admin-form-group"><div class="apx-head"><div class="apx-ic apx-ic-gold">' + g.icon + "</div>" +
+          '<div class="apx-tx"><b>' + esc(g.title) + "</b><span>" + esc(g.sub) + "</span></div></div>" +
+          g.keys.filter((k) => D[k]).map((k) => card(g, k)).join("") +
+          "</div>"
+      ).join("") +
+      '<div class="admin-form-group"><div class="apx-head"><div class="apx-ic apx-ic-blue">🚗</div>' +
+      "<div class=\"apx-tx\"><b>Mashina bo'yicha narx</b><span>Bo'sh qoldirilsa — standart: shisha " +
+      esc(glassStd) + ", korpus " + esc(housingStd) + " so'm</span></div></div>" +
+      '<input type="search" class="admin-input" id="cfa-car-q" placeholder="Mashinani qidirish…">' +
+      '<div class="cfa-cars"><div class="cfa-car is-head"><span>Mashina</span><span>Shisha</span><span>Korpus</span></div>' +
+      (cars.length
+        ? cars
+            .map(
+              (c) =>
+                '<div class="cfa-car" data-name="' + esc(c.name.toLowerCase()) + '"><b>' + esc(c.name) + "</b>" +
+                '<input type="text" inputmode="numeric" class="admin-input" data-car="' + esc(c.key) +
+                '" data-f="glass_price" placeholder="' + esc(glassStd) + '" value="' + esc(cfgNum(c.glass_price)) + '">' +
+                '<input type="text" inputmode="numeric" class="admin-input" data-car="' + esc(c.key) +
+                '" data-f="housing_price" placeholder="' + esc(housingStd) + '" value="' + esc(cfgNum(c.housing_price)) + '">' +
+                "</div>"
+            )
+            .join("")
+        : '<div class="adm-hint">Faol mashina yo\'q — «Mashinalar» bo\'limida qo\'shing.</div>') +
+      "</div></div>" +
+      "</div>" +
+      '<div class="shop-footer">' +
+      '<button class="btn btn-primary" id="cfa-save">💾 Saqlash</button>' +
+      '<button class="btn btn-ghost" id="cfa-cancel">Bekor qilish</button>' +
+      "</div>";
+
+    // narx maydonlari: yozayotganda «1 500 000» ko'rinishi
+    document.querySelectorAll('#cfa-form input[data-f$="price"]').forEach((el) => {
+      el.addEventListener("input", () => {
+        const n = parseNum(el.value);
+        const pos = el.value.length - el.selectionStart;
+        el.value = n == null ? "" : cfgNum(n) || "0";
+        try {
+          el.setSelectionRange(el.value.length - pos, el.value.length - pos);
+        } catch (_) {}
+      });
+    });
+    const q = $("cfa-car-q");
+    if (q) {
+      q.oninput = () => {
+        const v = q.value.trim().toLowerCase();
+        document.querySelectorAll(".cfa-car[data-name]").forEach((row) => {
+          row.classList.toggle("hidden", !!v && !row.dataset.name.includes(v));
+        });
+      };
+    }
+    $("cfa-save").onclick = saveStudioAdmin;
+    $("cfa-cancel").onclick = () => {
+      haptic();
+      renderMenu();
+    };
+  }
+
+  async function saveStudioAdmin() {
+    if (S.busy) return;
+    const off = window.ZimmerOffline;
+    try {
+      const sup = off && off.workerSupports ? await off.workerSupports("biled_studio") : null;
+      if (sup && sup.ok === false) {
+        return toast("⚠️ Cloudflare'dagi Worker eski (" + sup.version + "). cloudflare-worker.js ni qayta qo'ying (2.1.0+).", 8000);
+      }
+    } catch (_) {}
+
+    const D = cfgDefaults();
+    const edits = {};
+    document.querySelectorAll("#cfa-form [data-row]").forEach((el) => {
+      const k = el.dataset.row;
+      const f = el.dataset.f;
+      edits[k] = edits[k] || {};
+      if (f === "is_active") edits[k][f] = el.checked ? 1 : 0;
+      else if (f === "price") edits[k][f] = parseNum(el.value);
+      else edits[k][f] = String(el.value || "").trim();
+    });
+    for (const k of Object.keys(edits)) {
+      const e = edits[k];
+      if (e.name != null && e.name.length < 2) return toast("Nomi juda qisqa: " + (D[k] ? D[k].name : k));
+      if (e.price == null) return toast("Narxni kiriting: " + (e.name || k));
+    }
+
+    const writes = [];
+    const STR = ["name", "size", "kelvin", "lumen", "warranty", "badge", "description"];
+    Object.keys(edits).forEach((k) => {
+      const cur = cfgRow(k);
+      const e = edits[k];
+      const changed = Object.keys(e).some((f) => String(cur[f] == null ? "" : cur[f]) !== String(e[f] == null ? "" : e[f]));
+      if (!changed) return;
+      const base = D[k] || {};
+      // Maydonlar Worker `CATALOG_WRITE_FIELDS.configurator` bilan MOS
+      const rec = {
+        _key: k,
+        group: base.group,
+        code: base.code,
+        sort: Number(base.sort) || 0,
+        price: e.price,
+        is_active: e.is_active == null ? 1 : e.is_active,
+        updatedAt: Date.now(),
+        source: "miniapp",
+      };
+      STR.forEach((f) => {
+        if (e[f] !== undefined) rec[f] = e[f];
+        else if (cur[f] != null && base[f] !== undefined) rec[f] = String(cur[f]);
+      });
+      writes.push(["put", CFG_P + "/" + k, rec]);
+    });
+
+    const carWrites = {};
+    document.querySelectorAll("#cfa-form [data-car]").forEach((el) => {
+      const key = el.dataset.car;
+      const f = el.dataset.f;
+      const v = parseNum(el.value) || null;
+      const car = (S.cfgCars || []).find((c) => c.key === key);
+      const cur = car ? car[f] || null : null;
+      if (v !== cur) carWrites[key] = Object.assign(carWrites[key] || {}, { [f]: v });
+    });
+    Object.keys(carWrites).forEach((key) => {
+      writes.push(["patch", CARS_P + "/" + key, Object.assign(carWrites[key], { updatedAt: Date.now() })]);
+    });
+
+    if (!writes.length) return toast("O'zgarish yo'q");
+    S.busy = true;
+    const btn = $("cfa-save");
+    let done = 0;
+    try {
+      for (const [method, path, value] of writes) {
+        if (btn) btn.textContent = "Saqlanmoqda… " + (done + 1) + "/" + writes.length;
+        await (method === "put" ? fb().put(path, value) : fb().patch(path, value));
+        done++;
+      }
+      haptic("ok");
+      freshenCars();
+      if (app().state) app().state.studio = null; // mijoz oynasi yangidan o'qisin
+      toast("✅ Saqlandi · " + done + " ta o'zgarish");
+      S.busy = false;
+      await openStudioAdmin();
+    } catch (err) {
+      toast((err && err.message) || "Saqlanmadi" + (done ? " (" + done + " tasi saqlandi)" : ""));
+      if (btn) btn.textContent = "💾 Saqlash";
+    } finally {
+      S.busy = false;
+    }
+  }
+
   function back() {
     /* Xizmatlar oynasi ochiq bo'lsa — avval uning ichki qadami
        (forma -> ro'yxat), keyin ZimmerShop menyusiga. */
@@ -4559,7 +4815,8 @@ window.ZimmerShop = (function () {
       S.view === "banners" ||
       S.view === "banner-form" ||
       S.view === "cars" ||
-      S.view === "car-form"
+      S.view === "car-form" ||
+      S.view === "studio"
     ) {
       renderMenu();
       return true;
@@ -4578,6 +4835,7 @@ window.ZimmerShop = (function () {
     if (S.view === "board") return openBookingsBoard();
     if (S.view === "banners" || S.view === "banner-form") return openBanners();
     if (S.view === "cars" || S.view === "car-form") return openCars();
+    if (S.view === "studio") return openStudioAdmin();
     if (S.view === "add") return openAdd();
     return open();
   }

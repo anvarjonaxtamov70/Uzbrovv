@@ -1,5 +1,14 @@
 # Cloudflare Worker — bot va do'kon (bepul, uxlamaydi)
 
+> ## 🔦 2.1.0: Bi-LED Studio (3D konfigurator)
+>
+> Yangi konfigurator buyurtmasi va admin paneldagi **«Bi-LED konfigurator»**
+> narxlari faqat **2.1.0** Worker bilan ishlaydi. Pastdagi «5 qadam» bilan
+> `cloudflare-worker.js` ni qayta qo'ying, so'ng `/health` da
+> `"version": "2.1.0"` va `features` ichida `"biled_studio"` borligini
+> tekshiring. Eski Worker turgan bo'lsa Mini App buni o'zi aytadi
+> («Worker eski — yangilash kerak»).
+
 > ## 🤖 2.0.0: BOT ENDI SHU YERDA — Render kerak emas
 >
 > Telegram bot Cloudflare Worker'ga ko'chdi (webhook). Bepul (kuniga

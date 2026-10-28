@@ -22,23 +22,37 @@ Mini App — **GitHub Pages**. Render endi shart emas — sozlash:
 
 ---
 
-## 🎯 Buyurtma berish oqimi (konfigurator)
+## 🎯 Bi-LED Studio — 3D konfigurator
 
-Mijoz ilovaga kirganda salomlashadi, so'ng 4 qadam:
+Mijoz ikki qadamda farasini yig'adi:
 
-| Qadam | Nima tanlanadi | Ko'rinish |
-|---|---|---|
-| 1️⃣ | **Mashina** — Gentra yoki Nexia 2 | Vektor siluet, yoniq fara aksenti |
-| 2️⃣ | **Bi-LED linza** — 5 xil model (ZES, Koito, Hella, Aozoom) | Fara chizmasi paydo bo'ladi, linza yonadi |
-| 3️⃣ | **Ochki (maska)** — klassik, Devil Eyes, Angel Eyes, sport, karbon | Halqa fara ichida real vaqtda o'zgaradi |
-| 4️⃣ | **Fara optikasi rangi** — xrom, matt qora, tutun, qizil, oltin | Korpus gradienti almashadi |
-| ✅ | Yakuniy narx + izoh → buyurtma | Confetti + ✓ animatsiyasi |
+| Qadam | Nima bo'ladi |
+|---|---|
+| 1⃣ **Mashina** | Har doim avval so'raladi (garajda bo'lsa — «Davom etish»). Shisha va korpus narxi mashinaga bog'liq |
+| 2⃣ **3D studiya** | Tepada jonli 3D fara, pastda bo'limlar: Linza · Fara ichi · Ochki · Shisha · Korpus · Yakun |
 
-Har bir tanlovda **fara SVG'si qayta chiziladi**: linza yorug'ligi, nur konusi,
-DRL chizig'i, ochki halqasi va korpus rangi o'zgaradi. Rasm fayllari kerak emas —
-hammasi vektor va CSS animatsiya.
+Variantlar:
 
-Buyurtma yuborilgach mijoz **asosiy menyuga** o'tadi.
+- **Bi-LED linza** — R50 / R80 / R90. Har birining 3D ko'rinishi farq qiladi
+  (o'lcham, ko'k antirefleks qoplama, R90 da ko'k lazer aksent, yorqinlik).
+- **Fara ichi** — asl rang (xrom) yoki qora.
+- **Ochki** — oddiy yoki BMW halqa (yonmaydi), xrom yoki qora; BMW yonadigan
+  halqa — mijoz istalgan rangni tanlaydi, halqa o'sha rangda yonib, fara
+  ichini ham bo'yaydi.
+- **Shisha** va **korpus** — «hozirgisi qoladi» yoki «yangisi» (narxi mashinaga qarab).
+
+3D sahnada: barmoq bilan aylantirish, yaqinlashtirish; yorug'lik rejimlari
+(o'chiq · gabarit · yaqin · uzoq); kamera (umumiy · linza · yon · **nur** —
+devorda haqiqiy nur izi va yaqin nurning kesish chizig'i). Hammasi kod bilan
+yasalgan (`docs/js/headlight3d.js`, three.js) — rasm yoki 3D fayl kerak emas.
+WebGL yo'q telefonda xuddi shu tanlovlar SVG chizmada ko'rsatiladi.
+
+Narxlar: **Boshqaruv → Bi-LED konfigurator** (Firebase `catalog/configurator`
+va `catalog/cars/{id}.glass_price|housing_price`). Buyurtma summasini Worker
+qayta hisoblaydi — mijoz narxni o'zgartira olmaydi. To'g'ridan havola:
+`?p=studio` (yoki `startapp=studio`).
+
+Buyurtma yuborilgach «qabul qilindi» oynasi chiqadi va mijoz Kabinetda kuzatadi.
 
 ## 🏠 Asosiy menyu (Avto_A1 uslubida)
 

@@ -58,7 +58,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=77">
+  <link rel="stylesheet" href="styles.css?v=78">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- Zoom jestlarini to'xtatish. `touch-action: manipulation` (CSS)
        double-tap zoom'ni o'chiradi va BOSISHNI buzmaydi; quyidagi JS esa
@@ -142,82 +142,62 @@
   <button class="btn btn-ghost" id="gate-retry">Qayta urinish</button>
 </section>
 
-<!-- ==================== KONFIGURATOR ==================== -->
-<section id="flow" class="page hidden">
-  <header class="topbar">
-    <button class="icon-btn" id="flow-back" aria-label="Orqaga"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.5 5 7.5 12l7 7"/></svg></button>
-    <div class="topbar-mid">
-      <div class="topbar-title" id="flow-title">Mashinani tanlang</div>
-      <div class="topbar-sub" id="flow-sub">1-qadam / 4</div>
+<!-- ==================== KONFIGURATOR — BI-LED STUDIO (3D) ====================
+     Ikki qadam:
+       1) mashina (shisha va korpus narxi mashinaga bog'liq);
+       2) 3D studiya: tepada jonli fara (aylantirish, yorug'lik rejimi,
+          kamera), pastda variantlar paneli (linza · fara ichi · ochki ·
+          shisha · korpus · yakun).
+     3D dvigatel: js/headlight3d.js + vendor/three.min.js — faqat shu oyna
+     ochilganda yuklanadi. WebGL bo'lmasa js/headlight.js (SVG) chiziladi. -->
+<section id="flow" class="page hidden st">
+  <!-- 1. mashina -->
+  <div class="st-car" id="st-car">
+    <header class="st-top">
+      <button class="st-ib" id="flow-close" type="button" aria-label="Yopish"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+      <div class="st-top-mid"><b>Bi-LED Studio</b><small>1 / 2 · Mashina</small></div>
+      <span class="st-ib is-ghost" aria-hidden="true"></span>
+    </header>
+    <div class="st-car-hero">
+      <span class="st-kicker"><i></i>3D konfigurator</span>
+      <h1>Mashinangiz qaysi?</h1>
+      <p>Shisha va korpus narxi mashinaga qarab hisoblanadi. Keyin farangizni 3D ko'rinishda o'zingiz yig'asiz.</p>
     </div>
-    <button class="icon-btn ghost" id="flow-close" aria-label="Yopish"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
-  </header>
-
-  <div class="progress"><i id="progress-fill"></i></div>
-
-  <!-- fara jonli ko'rinishi: ro'yxat aylanganda joyida turadi (sticky) -->
-  <div class="preview hidden" id="preview">
-    <div class="preview-stage">
-      <div class="preview-halo"></div>
-      <div class="preview-svg" id="headlight"></div>
-      <div class="preview-media hidden" id="preview-media"></div>
-      <div class="preview-tabs hidden" id="preview-tabs"></div>
-    </div>
-    <div class="preview-caption" id="preview-caption"></div>
+    <div class="st-mine hidden" id="st-mine"></div>
+    <label class="st-search">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+      <input id="st-car-q" type="search" placeholder="Qidirish: Gentra, Cobalt, Nexia…" autocomplete="off" enterkeyhint="search">
+    </label>
+    <div class="cars" id="cars"></div>
+    <div class="st-car-empty hidden" id="st-car-empty"><b>Hech narsa topilmadi</b><small>Boshqa nom bilan qidirib ko'ring.</small></div>
   </div>
 
-  <div class="flow-body">
-    <!-- 1. mashina -->
-    <div class="step" id="fstep-car">
-      <h2 class="step-title">Mashinangiz qaysi?</h2>
-      <p class="step-sub">Faqat modelingizga mos yechimlarni ko'rsatamiz</p>
-      <div class="cars" id="cars"></div>
-    </div>
-
-    <!-- 2. bi-led -->
-    <div class="step hidden" id="fstep-biled">
-      <h2 class="step-title">Bi&#8209;LED linzani tanlang</h2>
-      <p class="step-sub">Fara ichiga o'rnatiladigan linza — yorug'lik shu yerdan chiqadi</p>
-      <div class="opts" id="biled-list"></div>
-    </div>
-
-    <!-- 3. ochki -->
-    <div class="step hidden" id="fstep-shroud">
-      <h2 class="step-title">Ochki (maska)</h2>
-      <p class="step-sub">Linza ustidagi bezak halqa — faraning yuzi shu bilan belgilanadi</p>
-      <div class="opts" id="shroud-list"></div>
-    </div>
-
-    <!-- 4. optika rangi -->
-    <div class="step hidden" id="fstep-color">
-      <h2 class="step-title">Fara optikasi rangi</h2>
-      <p class="step-sub">Korpus va reflektor rangi</p>
-      <div class="swatches" id="color-list"></div>
-    </div>
-
-    <!-- 5. yakun -->
-    <div class="step hidden" id="fstep-summary">
-      <h2 class="step-title">Konfiguratsiya tayyor</h2>
-      <p class="step-sub">Tekshirib, buyurtmani yuboring</p>
-      <div class="summary card" id="summary"></div>
-      <label class="field">
-        <span>📝 Izoh (ixtiyoriy)</span>
-        <textarea id="order-comment" rows="2" placeholder="Masalan: shanba kuni kelmoqchiman"></textarea>
-      </label>
-      <div class="trust">
-        <div><b>🛡</b> 1 yil kafolat</div>
-        <div><b>🔧</b> Professional o'rnatish</div>
-        <div><b>💳</b> Bo'lib to'lash mumkin</div>
+  <!-- 2. 3D studiya -->
+  <div class="st-studio hidden" id="st-studio">
+    <div class="st-stage" id="st-stage">
+      <div class="st-canvas" id="st-canvas"></div>
+      <div class="st-loader" id="st-loader" aria-live="polite">
+        <span class="st-loader-ring" aria-hidden="true"></span>
+        <b>3D studiya tayyorlanmoqda</b>
+        <small>Bir necha soniya</small>
       </div>
+      <header class="st-top st-float">
+        <button class="st-ib" id="flow-back" type="button" aria-label="Mashina tanlashga qaytish"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.5 5 7.5 12l7 7"/></svg></button>
+        <div class="st-top-mid"><b id="flow-title">Bi-LED Studio</b><small id="st-car-name">2 / 2</small></div>
+        <button class="st-ib" id="st-close" type="button" aria-label="Yopish"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+      </header>
+      <div class="st-views" id="st-views" role="tablist" aria-label="Kamera"></div>
+      <div class="st-hint" id="st-hint" aria-hidden="true"><i></i>Aylantirish uchun suring</div>
+      <div class="st-lights" id="st-lights" role="tablist" aria-label="Yorug'lik"></div>
     </div>
-  </div>
-
-  <div class="sticky-cta hidden" id="flow-cta">
-    <div class="cta-total">
-      <span>Jami</span>
-      <b id="flow-total">0</b>
+    <div class="st-panel" id="st-panel">
+      <div class="st-tabs" id="st-tabs" role="tablist" aria-label="Variantlar"></div>
+      <div class="st-pane" id="st-pane"></div>
     </div>
-    <button class="btn btn-primary" id="flow-next">Davom etish</button>
+    <div class="st-cta" id="flow-cta">
+      <div class="st-total"><small>Jami · 2 fara, o'rnatish bilan</small><b id="flow-total">0</b></div>
+      <button class="btn btn-primary st-next" id="flow-next" type="button">Davom etish</button>
+    </div>
   </div>
 </section>
 
@@ -1081,16 +1061,16 @@
         pochta filiallari). U faqat rasmiylashtirishda «BTS Pochta»
         tanlanganda kerak, lekin har ochilishda o'qilardi.
      ========================================================================== -->
-<script defer src="config.js?v=77"></script>
+<script defer src="config.js?v=78"></script>
 <!-- Brauzerdan bazaga to'g'ridan yozish (Avto_A1 modeli) -->
-<script defer src="js/fb.js?v=75"></script>
+<script defer src="js/fb.js?v=78"></script>
 <!-- Telefon galereyasidan rasm yuklash (siqish + EXIF burilishi) -->
-<script defer src="js/upload.js?v=75"></script>
+<script defer src="js/upload.js?v=78"></script>
 <!-- Zaxira rejim: Render o'chganda katalogni Firebase'dan o'qiydi.
      app.js dan OLDIN yuklanishi kerak — u `window.ZimmerOffline` ni ishlatadi. -->
-<script defer src="js/offline.js?v=77"></script>
-<script defer src="js/headlight.js?v=77"></script>
-<script defer src="js/cars.js?v=75"></script>
-<script defer src="js/app.js?v=77"></script>
+<script defer src="js/offline.js?v=78"></script>
+<script defer src="js/headlight.js?v=78"></script>
+<script defer src="js/cars.js?v=78"></script>
+<script defer src="js/app.js?v=78"></script>
 </body>
 </html>
