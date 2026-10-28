@@ -1,5 +1,17 @@
 # Cloudflare Worker — bot va do'kon (bepul, uxlamaydi)
 
+> ## 🧵 2.3.0: Chexollar, zalog, kafolat, «Tez kunda»
+>
+> Rul chexol materiallari, o'rindiq dizaynlari, navbat zalogi (chek bilan),
+> xizmat kafolati, admin «Kafolatlar» ro'yxati va «Ishga tushganda xabar
+> bering» — **2.3.0** Worker bilan ishlaydi. `cloudflare-worker.js` ni qo'ying
+> va `/health` da `"version": "2.3.0"` ni tekshiring.
+>
+> ⚠️ Zalog standart holatda **yoqilgan (100 000 so'm)**. Mijoz kartaga
+> o'tkazishi uchun Worker → Settings → Variables and Secrets da
+> `PAY_CARD_NUMBER` va `PAY_CARD_HOLDER` bo'lishi shart. Zalogni o'chirish yoki
+> summani o'zgartirish: Mini App → Boshqaruv → «Navbat zalogi».
+
 > ## 🪟 2.2.0: Fara shishasi — narx mashinaga qarab
 >
 > «Fara shishasini almashtirish» navbatida mijoz mashinasini tanlaydi va

@@ -54,6 +54,22 @@ qayta hisoblaydi — mijoz narxni o'zgartira olmaydi. To'g'ridan havola:
 
 Buyurtma yuborilgach «qabul qilindi» oynasi chiqadi va mijoz Kabinetda kuzatadi.
 
+## 🛠 Xizmatlar (2.3.0)
+
+- **Fara polirovka** — «oldin/keyin» tayoqchasi (xira ↔ toza), kunduzi/kechasi.
+- **Fara shishasi** — narx mashinaga qarab, navbat mashina bilan.
+- **Rul chexol** — admin qo'shgan materiallar va ranglar; rul chizmasida
+  gardish tanlangan rangda, choklar ip rangida.
+- **O'rindiq chexol** — 20 qismli o'rindiq, admin bo'yagan dizaynlar.
+- **Akvaprint, Tonirovka, Broni plyonka** — «Tez kunda» (narx qo'yilganda ochiladi),
+  «Ishga tushganda xabar bering».
+- **Zalog** — har navbatga oldindan to'lov (standart 100 000 so'm, karta + chek),
+  admin chekni ko'rib tasdiqlaydi.
+- **Xizmat kafolati** — admin «Bajarildi» da muddatni belgilaydi; mijoz
+  Kabinetda, admin «Kafolatlar» bo'limida ko'radi.
+
+Batafsil reja va holat: [YANGILANISH_REJASI.md](YANGILANISH_REJASI.md).
+
 ## 🏠 Asosiy menyu (Avto_A1 uslubida)
 
 - 📸 **Stories** — gradient halqali doiralar, to'liq ekran ko'rish, progress chiziq, 5s avtomatik

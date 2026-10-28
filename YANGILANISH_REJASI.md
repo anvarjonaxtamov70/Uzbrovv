@@ -8,12 +8,12 @@ qorong'i fon, brend rangi rang generatoridan (`--h/--s/--l`).
 |---|---|---|
 | 1 | Bi-LED Studio — 3D konfigurator | ✅ tayyor (PR #140, #141) |
 | 2 | Fara polirovka — «oldin/keyin» surgich | ✅ tayyor (PR #142) |
-| 3 | Fara shishasini almashtirish — mashinaga qarab narx + navbat | ✅ tayyor |
-| 4 | Rul chexol — materiallar va ranglar (admin boshqaradi) | ⏳ keyingi |
-| 5 | O'rindiq chexol — 20 qismli o'rindiq, dizaynlar (admin boshqaradi) | ⏳ |
-| 6 | «Tez kunda»: Akvaprint, Tonirovka, Broni plyonka | ⏳ |
-| 7 | Navbat uchun 100 000 so'm oldindan to'lov (zalog) → admin tasdig'i | ⏳ savol bor |
-| 8 | Xizmat kafolati — admin muddat belgilaydi, mijoz va admin ko'radi | ⏳ |
+| 3 | Fara shishasini almashtirish — mashinaga qarab narx + navbat | ✅ tayyor (PR #143) |
+| 4 | Rul chexol — materiallar va ranglar (admin boshqaradi) | ✅ tayyor |
+| 5 | O'rindiq chexol — 20 qismli o'rindiq, dizaynlar (admin boshqaradi) | ✅ tayyor |
+| 6 | «Tez kunda»: Akvaprint, Tonirovka, Broni plyonka | ✅ tayyor |
+| 7 | Navbat uchun 100 000 so'm oldindan to'lov (zalog) → admin tasdig'i | ✅ tayyor (karta + chek) |
+| 8 | Xizmat kafolati — admin muddat belgilaydi, mijoz va admin ko'radi | ✅ tayyor |
 
 ---
 
@@ -70,53 +70,67 @@ admin panelda narxlarni tekshiring — hozirgi qiymatlar vaqtinchalik standart.
   Admin ro'yxatida va mijoz kabinetida navbat yonida mashina ko'rinadi.
 - Eski Mini App (mashinasiz so'rov) avvalgidek ishlayveradi.
 
-## 4. Rul chexol tikish
+## 4. Rul chexol tikish ✅
 
-- Admin: materiallar ro'yxati (nomi, narxi, tavsif) va har material uchun
-  ranglar (nomi, rang kodi). Qo'shish / o'zgartirish / o'chirish / tartib.
-- Mijoz: rul ko'rinishi (tikiladigan qismlari ajratilgan), material va rang
-  tanlanganda rulning **aynan tikiladigan joyi** o'sha rangga kiradi.
-  Ip rangi alohida.
-- Narx = material narxi; buyurtma → navbat.
+- **Admin → «Rul chexol materiallari»**: material qo'shish / tahrirlash / yashirish /
+  o'chirish. Har material: nomi, narxi, teksturasi (teri, perforatsiyali teri,
+  alkantara, karbon, mato), kafolati, tavsifi va **ranglari** (nomi + rang).
+  Formada jonli rul — bosilgan rang shu zahoti ko'rinadi.
+- **Mijoz**: rul chizmasi (`docs/js/covers.js`), material kartalari, rang va ip
+  (chok) rangi. Tanlanganda rulning **chexol tikiladigan gardishi** o'sha rang va
+  teksturada, choklar ip rangida chiziladi. Narx — material narxi.
+- Navbatda material, rang va ip saqlanadi (`option_*`, `details`); narxni
+  Worker katalogdan oladi.
 
-## 5. O'rindiq chexol tikish
+## 5. O'rindiq chexol tikish ✅
 
-- Bitta o'rindiq, **20 qismga** bo'lingan (bosh tayanch, yelka, o'rta panel,
-  yon bolsterlar, o'tirgich va h.k.). Har qism alohida bo'yaladi.
-- Admin: dizaynlar — nomi, narxi, har 20 qism rangi, ip rangi; saqlash,
-  o'zgartirish, nusxa olish, o'chirish.
-- Mijoz: dizaynlar karuseli, tanlanganda o'rindiq jonli o'zgaradi.
+- O'rindiq **20 qismga** bo'lingan (bosh tayanch, yelkalar, bolsterlar, markaz
+  bo'laklari, bel, o'tirg'ich, old chet, yon panellar).
+- **Admin → «O'rindiq dizaynlari»**: qismni bosib rangini tanlash (palitra yoki
+  o'z rangi), guruhga qo'llash (hammasi / markaz / bolsterlar / yon panellar /
+  bosh tayanch), ip rangi, nomi, narxi, kafolati, tavsifi; nusxa olish,
+  yashirish, o'chirish.
+- **Mijoz**: katta o'rindiq + dizaynlar karuseli, navbatda dizayn saqlanadi.
 
-## 6. «Tez kunda» — Akvaprint, Tonirovka, Broni plyonka
+## 6. «Tez kunda» — Akvaprint, Tonirovka, Broni plyonka ✅
 
-- Har biriga alohida chiroyli oyna (animatsiyali fon, nima bo'lishi haqida
-  qisqa matn, «Xabar bering» tugmasi — ishga tushganda botda xabar keladi).
+- Har biriga jonli illyustratsiya (akvaprint — to'lqin va naqsh, tonirovka —
+  asta qorayadigan oyna, broni — kuzov bo'ylab yaltiroq qatlam va qaytgan
+  toshlar), qisqa tavsif va «🔔 Ishga tushganda xabar bering».
+- Bu xizmatlar **narxi qo'yilmaguncha** «Tez kunda» (Mini App ham, Worker ham).
+  Admin narx qo'ysa — xizmat o'zi ochiladi.
+- «Xabar bering» bosilsa adminga Telegram'da xabar boradi, ro'yxat
+  `service_waitlist/{xizmat}/{mijoz}` da saqlanadi.
 
-## 7. Oldindan to'lov (zalog) — 100 000 so'm
+## 7. Oldindan to'lov (zalog) ✅
 
-- Har bir xizmat navbatida: vaqt tanlangach **100 000 so'm** oldindan to'lov.
-- To'lov o'tgach navbat «To'lov tekshirilmoqda» holatiga o'tadi, admin
-  **tasdiqlaydi** → «Tasdiqlangan». Tasdiqlanmasa slot bo'shatiladi.
-- Summa admin panelda o'zgartiriladi.
-- **Savol:** to'lov usuli (pastda).
+- Navbat 3 qadam: **Kun → Vaqt → Zalog**. Zalog qadamida summa, karta raqami
+  (nusxa tugmasi), egasi va «Chek rasmini yuklash». Navbat chek bilan band
+  qilinadi.
+- Admin Telegram xabarida «💳 Zalog … — chekni ko'rish» havolasi, panelda
+  chek rasmi. «✅ Tasdiqlash» bosilsa zalog «qabul qilingan» bo'ladi va mijozga
+  xabar ketadi. Bekor qilinsa vaqt bo'shaydi.
+- **Admin → «Navbat zalogi»**: summa (standart 100 000 so'm) va yoqish/o'chirish.
+- Karta raqami — Worker sozlamasi `PAY_CARD_NUMBER`, `PAY_CARD_HOLDER`.
+- To'lov usuli: kartaga o'tkazma + chek (shartnoma kerak emas). Click/Payme
+  avtomatik to'lovini keyinroq qo'shish mumkin.
 
-## 8. Xizmat kafolati
+## 8. Xizmat kafolati ✅
 
-- Ish «Bajarildi» qilinganda admin kafolat muddatini belgilaydi
-  (masalan 6 oy, 1 yil, 90 kun) — xizmat turi uchun standart muddat ham bo'ladi.
-- Mijoz Kabinet → «Kafolat» da, admin panelda esa barcha faol kafolatlar
-  ro'yxati — xuddi tovar kafolati kabi teskari sanoq bilan.
-- Fara shishasi, Bi-LED o'rnatish, polirovka va boshqa xizmatlar uchun.
+- Admin navbatni **«✔️ Bajarildi»** (yoki Bi-LED'ni «✨ Topshirildi») qilganda
+  kafolat muddati so'raladi: Kafolatsiz / 1 oy / 3 oy / 6 oy / 1 yil / 2 yil
+  yoki o'zi yozadi (45 kun, 8 oy…). Standart — material/dizayn yoki xizmat
+  kafolati. Telegram tugmasi orqali bajarilsa — standart muddat.
+- Kafolat shu lahzadan boshlanadi, mijozga «🛡 Kafolat boshlandi» xabari ketadi;
+  Kabinet → Kafolat bo'limida xuddi tovar kafolati kabi teskari sanoq.
+- **Admin → «Kafolatlar»**: barcha mijozlarning kafolatlari (faol / kutilmoqda /
+  tugagan, qidiruv), qolgan kunlar, va **muddatni o'zgartirish**.
 
 ---
 
 ## Ochiq savollar
 
-1. **Zalog qanday to'lanadi?**
-   a) karta raqamiga o'tkazma + chek rasmi (hozir ishlaydi, shartnoma kerak emas);
-   b) Click / Payme merchant (avtomatik tasdiq, merchant shartnomasi va kalitlar kerak);
-   c) Telegram to'lovi (provider token kerak).
-2. **R50 / R80 / R90** ning haqiqiy xususiyatlari va narxlari — admin panelda
-   o'zgartiriladi, lekin 3D ko'rinishi to'g'ri bo'lishi uchun asosiy farqlarini
-   (o'lchami, rangi, lazer bormi) aytib bering.
-3. Korpus almashtirishning standart narxi (hozir 600 000 — vaqtinchalik).
+1. **R50 / R80 / R90** ning haqiqiy xususiyatlari (3D ko'rinish uchun).
+2. Zalog keyin xizmat narxidan **ayiriladimi**? (Hozir matnda aytilmagan.)
+3. Shisha almashtirishda **1 fara / 2 fara** tanlovi kerakmi?
+4. Click/Payme orqali avtomatik to'lov kerakmi (merchant shartnomasi bilan)?
