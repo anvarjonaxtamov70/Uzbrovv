@@ -554,12 +554,21 @@ def _reset_confirm_kb():
     return kb.as_markup()
 
 
-@router.callback_query(F.data == "adm:reset")
-async def reset_start(callback: CallbackQuery, state: FSMContext) -> None:
+async def _ask_reset_password(message: Message, state: FSMContext) -> None:
     await state.clear()
     await state.set_state(ResetData.password)
     await state.update_data(attempts=0)
-    await callback.message.answer(RESET_INFO, reply_markup=cancel_kb())
+    await message.answer(RESET_INFO, reply_markup=cancel_kb())
+
+
+@router.message(Command("tozalash"))
+async def reset_command(message: Message, state: FSMContext) -> None:
+    await _ask_reset_password(message, state)
+
+
+@router.callback_query(F.data == "adm:reset")
+async def reset_start(callback: CallbackQuery, state: FSMContext) -> None:
+    await _ask_reset_password(callback.message, state)
     await callback.answer()
 
 
