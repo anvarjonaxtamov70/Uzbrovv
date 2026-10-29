@@ -348,6 +348,7 @@ window.ZimmerShop = (function () {
         tile("shop-wheel", "brown", "wheel", "Rul chexol materiallari", "Material, narx va ranglar"),
         tile("shop-seat", "purple", "seat", "O'rindiq dizaynlari", "20 qism · ip rangi · narx"),
         tile("shop-dep", "green", "card", "Navbat zalogi", "Oldindan to'lov summasi"),
+        tile("shop-pay", "blue", "card", "To'lov kartasi", "Karta raqami va egasi"),
         tile("shop-srv", "gray", "wrench", "Xizmatlar va narxlar", "Narx, kafolat, video va «Tez kunda»"),
       ]) +
       "</div>";
@@ -406,6 +407,7 @@ window.ZimmerShop = (function () {
     bind("shop-wheel", openWheelAdmin);
     bind("shop-seat", openSeatAdmin);
     bind("shop-dep", openDepositAdmin);
+    bind("shop-pay", openPaymentAdmin);
     bind("shop-war", openWarrantiesAdmin);
 
     // Sanoqchilar FONDA yuklanadi — menyu darhol ochiladi.
@@ -5478,6 +5480,69 @@ window.ZimmerShop = (function () {
     });
   }
 
+  /* ==================================================================
+     💳 TO'LOV KARTASI — `private/payment` (yopiq tugun, Worker 2.4.0+)
+     Mijoz checkout'da va navbat zalogida shu kartani ko'radi.
+     ================================================================== */
+  async function openPaymentAdmin() {
+    S.view = "payment";
+    setHead("💳 To'lov kartasi", "Yuklanmoqda...");
+    loading();
+    let pay = null;
+    try {
+      pay = await window.ZimmerOffline.adminPayment();
+    } catch (err) {
+      return fail(err, openPaymentAdmin);
+    }
+    const p = pay || {};
+    const src = { admin: "Admin paneldan kiritilgan", secret: "Worker sozlamasidan (PAY_CARD_NUMBER)", none: "Kiritilmagan" }[p.source] || "";
+    setHead("💳 To'lov kartasi", p.card_number ? "Hozirgi karta" : "Karta kiritilmagan");
+    body().innerHTML =
+      '<div class="adm-form">' +
+      '<div class="admin-form-group">' +
+      '<div class="pc-card"><small>Hozirgi karta</small><b>' + esc(p.card_number || "—") + "</b>" +
+      "<span>" + esc(p.card_holder || "") + "</span><em>" + esc(src) + "</em></div>" +
+      "</div>" +
+      '<div class="admin-form-group"><div class="apx-head"><div class="apx-ic apx-ic-blue">💳</div>' +
+      '<div class="apx-tx"><b>Yangi karta</b><span>16 ta raqam · Humo / Uzcard / Visa</span></div></div>' +
+      '<input type="text" class="admin-input" id="pc-num" inputmode="numeric" autocomplete="off" maxlength="19" placeholder="8600 0000 0000 0000">' +
+      '<input type="text" class="admin-input" id="pc-holder" maxlength="80" autocomplete="off" placeholder="Karta egasi (mas: ANVAR AXTAMOV)" value="' + esc(p.card_holder || "") + '">' +
+      '<div class="apx-sale-note" id="pc-note">Saqlangach mijozlar ilovani qayta ochganda yangi kartani ko\'radi.</div>' +
+      "</div></div>" +
+      '<div class="shop-footer"><button class="btn btn-primary" id="pc-save">💾 Yangi kartani saqlash</button></div>';
+    const num = $("pc-num");
+    num.oninput = () => {
+      const d = num.value.replace(/\D/g, "").slice(0, 16);
+      num.value = d.replace(/(\d{4})(?=\d)/g, "$1 ");
+    };
+    $("pc-save").onclick = async () => {
+      if (S.busy) return;
+      const digits = num.value.replace(/\D/g, "");
+      const holder = ($("pc-holder").value || "").trim();
+      if (digits.length !== 16) return toast("Karta raqami 16 ta raqam bo'lishi kerak");
+      if (holder.length < 3) return toast("Karta egasini kiriting");
+      if (!(await ask("Yangi karta saqlansinmi?\n\n" + num.value + "\n" + holder))) return;
+      S.busy = true;
+      try {
+        const saved = await window.ZimmerOffline.adminPayment({ card_number: digits, card_holder: holder });
+        // Shu ilovaning o'zida ham darhol yangilansin
+        const st = app().state;
+        if (st && saved) {
+          st.pay = Object.assign({}, st.pay || {}, { card: saved.card_number, holder: saved.card_holder });
+          st.workerConfig = Object.assign({}, st.workerConfig || {}, { pay_card_number: saved.card_number, pay_card_holder: saved.card_holder });
+        }
+        haptic("ok");
+        toast("✅ Yangi karta saqlandi");
+        S.busy = false;
+        openPaymentAdmin();
+      } catch (err) {
+        toast((err && err.message) || "Saqlanmadi");
+      } finally {
+        S.busy = false;
+      }
+    };
+  }
+
   function back() {
     /* Xizmatlar oynasi ochiq bo'lsa — avval uning ichki qadami
        (forma -> ro'yxat), keyin ZimmerShop menyusiga. */
@@ -5509,6 +5574,7 @@ window.ZimmerShop = (function () {
       S.view === "wheel" ||
       S.view === "seat" ||
       S.view === "deposit" ||
+      S.view === "payment" ||
       S.view === "warranties" ||
       S.view === "add" ||
       S.view === "edit" ||
@@ -5542,6 +5608,7 @@ window.ZimmerShop = (function () {
     if (S.view === "wheel" || S.view === "wheel-form") return openWheelAdmin();
     if (S.view === "seat" || S.view === "seat-form") return openSeatAdmin();
     if (S.view === "deposit") return openDepositAdmin();
+    if (S.view === "payment") return openPaymentAdmin();
     if (S.view === "warranties") return openWarrantiesAdmin();
     if (S.view === "add") return openAdd();
     return open();

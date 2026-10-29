@@ -2324,7 +2324,7 @@
       /* Zaxira rejimda AI ishlamaydi (server o'chgan). Shogird buni
          bilib turib mahalliy bilimga o'tadi — mijoz har savolda
          kutib, keyin xato ko'rmasin. */
-      ai_enabled: false,
+      ai_enabled: null, // Worker `/me` aytadi (2.4.0+: GROQ_API_KEY bor-yo'qligi)
     };
   }
 
@@ -2801,7 +2801,7 @@
      yuklanadi: takror chaqiruv o'sha Promise'ni qaytaradi.
      ==================================================================== */
 
-  const SCRIPT_VERSION = "81"; // index.html dagi `?v=` bilan bir xil bo'lsin
+  const SCRIPT_VERSION = "82"; // index.html dagi `?v=` bilan bir xil bo'lsin
   const _scripts = new Map();
 
   function loadScript(src) {
@@ -10870,11 +10870,29 @@
         (sgContactLine() || "Aloqa ma'lumoti kabinetdagi «Biz bilan aloqa» da."),
     },
     {
-      k: ["to'lov", "tolov", "karta", "naqd", "plastik", "bo'lib to'lash", "nasiya"],
+      k: ["to'lov", "tolov", "karta", "naqd", "plastik", "bo'lib to'lash", "nasiya", "zalog", "oldindan"],
       a: () =>
         "To'lov usullari: naqd, plastik karta va ilova orqali o'tkazma.\n" +
-        "Usulni 🧺 Savatcha → «Rasmiylashtirish» ning oxirgi qadamida tanlaysiz. " +
-        "Karta rekvizitlari shu yerda ko'rinadi.",
+        "Tovar uchun usulni 🧺 Savatcha → «Rasmiylashtirish» ning oxirgi qadamida tanlaysiz.\n\n" +
+        "Xizmatga navbat olishda oldindan zalog to'lanadi: kartaga o'tkazib, chek rasmini " +
+        "yuklaysiz, usta chekni ko'rib navbatni tasdiqlaydi." +
+        (S.pay && S.pay.card ? "\n\n💳 Karta: " + S.pay.card + (S.pay.holder ? " (" + S.pay.holder + ")" : "") : ""),
+    },
+    {
+      k: ["chexol", "chehol", "rul", "o'rindiq", "orindiq", "sidenya"],
+      a: () =>
+        "Rul va o'rindiq chexollarini tikamiz:\n" +
+        "• Rul — material (teri, alkantara, karbon…), rangi va ip rangini tanlaysiz, " +
+        "rul ko'rinishida darhol ko'rasiz\n" +
+        "• O'rindiq — tayyor dizaynlardan tanlaysiz\n\n" +
+        "🛠 Xizmatlar → «Rul chexol» yoki «O'rindiq chexol» → «🗓 Navbat olish».",
+    },
+    {
+      k: ["r50", "r80", "r90", "linza", "bi-led", "biled", "konfigurator", "ochki", "angel"],
+      a: () =>
+        "Bi-LED linzalarni 3D konfiguratorda o'zingiz tanlaysiz: R50, R80 yoki R90, " +
+        "fara ichi rangi, ochki (oddiy, BMW halqa yoki yonadigan halqa), yangi shisha va korpus — " +
+        "narx darhol hisoblanadi.\n\n🛠 Xizmatlar → «Bi-LED konfigurator».",
     },
     {
       k: ["navbat", "band qil", "yozil", "qachonga", "vaqt olsam", "zapis"],
@@ -11004,7 +11022,7 @@
 
   function sgSubText() {
     if (S.sg.aiOn === false) return "Asosiy ma'lumotlar rejimi";
-    return "Ustaxona yordamchisi";
+    return "AI yordamchi · onlayn";
   }
 
   /** Savol yuborish — yozishmaning yagona kirish nuqtasi. */
@@ -11035,7 +11053,35 @@
     if (!S.services) loadServices(false).catch(() => {});
 
     let reply = null;
-    if (!S.offline && S.sg.aiOn !== false) {
+    /* 2.4.0 — AI Worker orqali (Render shart emas). Tarix Mini App'da
+       saqlanadi va har so'rovga oxirgi 8 ta xabar qo'shiladi — Shogird
+       oldingi gapni (mashina, muammo) eslab qoladi. */
+    const Z = window.ZimmerOffline;
+    const viaWorker = !!(Z && Z.shogird && Z.workerReady && Z.workerReady());
+    if (viaWorker && S.sg.aiOn !== false) {
+      try {
+        const history = (S.sg.msgs || [])
+          .slice(0, -1)
+          .slice(-8)
+          .map((m) => ({ role: m.role === "me" ? "me" : "sg", text: String(m.text || "").slice(0, 1200) }));
+        const res = await Z.shogird(text, history);
+        if (res && res.ok) {
+          reply = res;
+        } else if (res && (res.reason === "no_key" || res.reason === "bad_key")) {
+          S.sg.aiOn = false;
+        }
+      } catch (err) {
+        if (err && (err.code === "too_fast" || err.code === "busy")) {
+          sgTyping(false);
+          sgSetBusy(false);
+          toast(err.message || "Bir oz kuting");
+          return;
+        }
+        // Worker eski (shogird_ai yo'q) — qayta so'ramaymiz, mahalliy bilim ishlaydi
+        if (err && err.code === "worker_outdated") S.sg.aiOn = false;
+        console.warn("[shogird] AI javob bermadi:", err && (err.code || err.message));
+      }
+    } else if (!S.offline && S.sg.aiOn !== false) {
       try {
         const res = await api("/api/shogird", { method: "POST", body: { text: text } });
         if (res && res.ok) {
@@ -11239,7 +11285,7 @@
       /* Shogird: AI kaliti sozlanganmi. `false` bo'lsa har savolda
          serverga borib xato kutib o'tirmaydi — darhol mahalliy bilimdan
          javob beradi (`sgLocal`). */
-      S.sg.aiOn = cfg.ai_enabled !== false;
+      S.sg.aiOn = cfg.ai_enabled == null ? true : !!cfg.ai_enabled;
       S.me = me;
       // Mijozni tanib qolish uchun keshlaymiz — server o'chganda ismi,
       // telefoni va mashinasi eslanadi.
