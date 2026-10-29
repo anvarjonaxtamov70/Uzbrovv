@@ -1,0 +1,1935 @@
+/* ==========================================================================
+   UZBROVV — OFFLINE (zaxira) REJIM
+
+   MUAMMO
+   Mini App'ning HAR BIR ekrani Render'dagi API'ga (`/api/*`) bog'langan edi.
+   Render bepul tarifda uxlaydi yoki kvota tugasa butunlay to'xtaydi — o'sha
+   payt ilova "Server javob bermadi" ekranida qotib qolardi. Ya'ni do'kon
+   umuman ochilmasdi.
+
+   Avto_A1 da bunday emas: uning ilovasi Firebase'ni TO'G'RIDAN-TO'G'RI
+   o'qiydi, Render esa faqat botni ishlatadi. Shuning uchun bot o'chsa ham
+   do'kon ishlaydi.
+
+   YECHIM
+   Zimmer boti allaqachon butun katalogni Firebase'ga ko'chirib turadi
+   (`services/sync.py` -> `{root}/catalog/{jadval}/{id}`). Demak ma'lumot
+   BULUTDA MAVJUD — faqat brauzer uni o'qiy olmasdi.
+
+   Bu modul Firebase RTDB'ning REST interfeysidan katalogni o'qiydi va
+   `/api/home` javobining AYNAN SHAKLIDA qaytaradi. Shu sababli
+   `renderCatalog()`, `renderBanners()`, stories — hech biri o'zgarmaydi.
+
+   NEGA firebase SDK EMAS?
+   Bizga faqat O'QISH kerak. SDK ~300 KB qo'shadi va autentifikatsiya
+   talab qiladi. Oddiy `fetch` bilan bitta GET yetarli — ilova og'irlashmaydi.
+
+   CHEKLOVLAR (ataylab)
+   • Faqat O'QISH. Buyurtma/navbat serverni talab qiladi (ombor kamaytirish,
+     adminga xabar) — ular offline'da bloklanadi va mijozga aniq aytiladi.
+   • Telegram `file_id` bilan saqlangan rasmlar ko'rinmaydi: ularni faqat
+     Render'dagi `/api/media/...` proksisi bera oladi. Tashqi URL'li
+     (Firebase Storage) rasmlar normal ko'rinadi.
+   ========================================================================== */
+
+(function () {
+  "use strict";
+
+  var CFG = window.ZIMMER_CONFIG || {};
+  var DB = (CFG.FIREBASE_DB_URL || "").replace(/\/$/, "");
+  var ROOT = (CFG.FIREBASE_ROOT || "zimmer").replace(/^\/|\/$/g, "");
+  var CURRENCY = CFG.CURRENCY || "so'm";
+  // Cloudflare Worker — Render o'chganda buyurtma, profil va rasm proksisi
+  var WORKER = (CFG.WORKER_URL || "").replace(/\/$/, "");
+  var BOOKING_ATTEMPT_STORE = "zimmer_booking_attempt";
+  var BILED_ATTEMPT_STORE = "zimmer_biled_attempt";
+
+  function randomAttemptKey(prefix) {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return prefix + window.crypto.randomUUID().replace(/-/g, "");
+    }
+    var bytes = new Uint8Array(18);
+    if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
+    else for (var i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+    return prefix + Array.prototype.map.call(bytes, function (b) {
+      return b.toString(16).padStart(2, "0");
+    }).join("");
+  }
+
+  /* Navbat/BiLED urinish kaliti sessionStorage'da saqlanadi (checkout
+     `orderAttemptKey` bilan bir xil naqsh). {key, hash} — `hash` bu
+     normalizatsiyalangan payload'ning imzosi. Bir xil payload qayta yuborilsa
+     AYNI kalit ishlatiladi; payload o'zgarsa yangisiga aylanadi; kalit faqat
+     tasdiqlangan tarmoq javobidan keyin tozalanadi. Shu sababli WebView
+     noaniq muvaffaqiyatdan keyin qayta yuklansa ham dublikat yaralmaydi —
+     Worker o'sha kalit + payload uchun idempotent replay qaytaradi. */
+  function loadAttempt(store) {
+    try {
+      var raw = sessionStorage.getItem(store);
+      if (!raw) return null;
+      var obj = JSON.parse(raw);
+      if (obj && typeof obj.key === "string" && typeof obj.hash === "string") return obj;
+    } catch (_) {}
+    return null;
+  }
+
+  function persistAttempt(store, attempt) {
+    try {
+      sessionStorage.setItem(store, JSON.stringify(attempt));
+    } catch (_) {}
+  }
+
+  function clearAttempt(store) {
+    try {
+      sessionStorage.removeItem(store);
+    } catch (_) {}
+  }
+
+  function attemptFor(store, prefix, payload) {
+    var hash = JSON.stringify(payload || {});
+    var current = loadAttempt(store);
+    if (!current || current.hash !== hash) {
+      current = { hash: hash, key: randomAttemptKey(prefix) };
+      persistAttempt(store, current);
+    }
+    return current;
+  }
+
+  /* Stories halqalari KODDA belgilanadi — `utils/stories.py` dagi
+     STORY_CATEGORIES bilan bir xil bo'lishi SHART. Aks holda offline'da
+     halqalar boshqacha ko'rinadi. */
+  var STORY_RINGS = [
+    ["aksiyalar", "Aksiyalar", "🔥", "#34c77b", "#0f3d27"],
+    ["bugun", "Bugun", "⚡️", "#5ad69a", "#123524"],
+    ["mijozlar", "Mijozlar", "💬", "#2fb4a0", "#0c2f2a"],
+    ["natijalar", "Natijalar", "🏆", "#7edca8", "#133325"],
+    ["kafolat", "Kafolat", "🛡", "#239a5c", "#0e1f17"],
+    ["lokatsiya", "Manzil", "📍", "#4cd68f", "#10301f"],
+    ["tolov", "To'lov", "💳", "#3ccf9a", "#0c2c22"],
+    ["aloqa", "Aloqa", "📞", "#6fe0b0", "#113126"],
+  ];
+
+  /* ------------------------------------------------------------------
+     3-QATLAM: MAHALLIY KESH
+
+     Firebase ham javob bermasligi mumkin (qoidalar hali qo'yilmagan,
+     internet yo'q, baza manzili xato). O'sha holatda ham BIR MARTA
+     muvaffaqiyatli kirgan mijoz do'konni ko'rishi kerak — aks holda u
+     to'siq ekranini ko'radi va bu juda yoqimsiz.
+
+     Shuning uchun har muvaffaqiyatli yuklashdan keyin katalog
+     localStorage'ga yoziladi va oxirgi chora sifatida shu ishlatiladi.
+     ------------------------------------------------------------------ */
+  var CACHE_KEY = "zimmer_home_cache";
+  var CACHE_MAX_AGE = 30 * 24 * 3600 * 1000; // 30 kun
+
+  /* ------------------------------------------------------------------
+     4-QATLAM: STATIK NUSXA (catalog.json)
+
+     Kesh ham bo'sh bo'lishi mumkin — mijoz ilovaga BIRINCHI MARTA
+     kirganda. Aynan shu holat 2026-08-26 da yuz berdi:
+        Render  -> 503 (bepul kvota tugagan)
+        Firebase-> 401 (qoidalar hali Console'ga qo'yilmagan)
+        kesh    -> bo'sh (birinchi kirish)
+     Natijada mijoz «Ulanish yo'q» devoriga urildi.
+
+     `catalog.json` ilovaning O'ZI bilan BIR MANZILDAN (GitHub Pages)
+     beriladi. Shuning uchun u:
+        • Render'ga bog'liq emas;
+        • Firebase'ga bog'liq emas (so'rov paytida);
+        • qoidalar talab qilmaydi;
+        • CORS muammosi bermaydi;
+        • birinchi kirishda ham ishlaydi.
+
+     Fayl `scripts/build_catalog_snapshot.py` bilan yasaladi; workflow uni
+     Firebase'dan (ochiq bo'lganda) yangilab turadi.
+     ------------------------------------------------------------------ */
+  var SNAPSHOT_URL = "catalog.json";
+  var _snapshot; // undefined = hali so'ralmagan, null = yo'q
+
+  async function snapshot() {
+    if (_snapshot !== undefined) return _snapshot;
+    try {
+      // Nisbiy manzil — ilova qaysi papkada bo'lsa, fayl ham shu yerda.
+      var res = await fetch(SNAPSHOT_URL, { cache: "no-cache" });
+      if (!res.ok) throw new Error("catalog.json -> " + res.status);
+      var data = await res.json();
+      if (!data || !data.catalog || !data.catalog.length) throw new Error("bo'sh");
+      // Nusxa ham filtrlanadi: u kuniga bir marta yasaladi, ya'ni admin
+      // o'chirgan tovar ertagacha ichida qolib turishi mumkin.
+      pruneHome(data);
+      if (!data.catalog.length) throw new Error("bo'sh (hammasi o'chirilgan)");
+      data._offline = true;
+      _snapshot = data;
+    } catch (err) {
+      console.error("[offline] statik nusxa o'qilmadi:", err);
+      _snapshot = null;
+    }
+    return _snapshot;
+  }
+
+  function available() {
+    return !!DB;
+  }
+
+  /** Muvaffaqiyatli yuklangan katalogni keshga yozadi. */
+  function save(home) {
+    if (!home || !home.catalog || !home.catalog.length) return;
+    try {
+      localStorage.setItem(
+        CACHE_KEY,
+        JSON.stringify({ at: Date.now(), home: home })
+      );
+    } catch (_) {
+      // Kvota tugagan bo'lishi mumkin — kesh ixtiyoriy, e'tibor bermaymiz
+    }
+  }
+
+  /** Keshni O'CHIRADI. Admin tovar o'chirgan/qo'shgandan keyin chaqiriladi.
+   *
+   *  Ilgari `app.state.home = null` qilinardi — u faqat XOTIRADAGI nusxani
+   *  tozalardi. localStorage'dagi 30 kunlik kesh joyida qolardi va ilova
+   *  qayta ochilganda o'chirilgan tovar YANA ko'rinardi. */
+  function clearCache() {
+    try {
+      localStorage.removeItem(CACHE_KEY);
+    } catch (_) {}
+  }
+
+  /** Tirik yozuvmi? (`rows()` dagi shart bilan bir xil) */
+  function isLive(p) {
+    return !!p && !p.deleted && p.is_active !== 0 && p.is_active !== false;
+  }
+
+  /** Kesh/statik nusxadagi katalogdan o'chirilgan tovarlarni olib tashlaydi.
+   *
+   *  Kesh — bu eski `/api/home` javobining aynan nusxasi. U server tomonda
+   *  allaqachon filtrlangan, LEKIN o'shandan keyin admin tovar o'chirgan
+   *  bo'lishi mumkin. Shu sababli har safar qaytarishdan oldin filtrlaymiz. */
+  function pruneHome(home) {
+    if (!home || !Array.isArray(home.catalog)) return home;
+    home.catalog = home.catalog
+      .map(function (group) {
+        var copy = {};
+        Object.keys(group).forEach(function (k) {
+          copy[k] = group[k];
+        });
+        copy.products = (group.products || []).filter(isLive);
+        return copy;
+      })
+      .filter(function (group) {
+        return group.products.length > 0;
+      });
+    return home;
+  }
+
+  /** Keshdagi katalog (yoki null). Juda eski bo'lsa ishlatilmaydi. */
+  function cached() {
+    try {
+      var raw = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+      if (!raw || !raw.home || !raw.home.catalog) return null;
+      if (Date.now() - (raw.at || 0) > CACHE_MAX_AGE) return null;
+      var home = pruneHome(raw.home);
+      if (!home.catalog.length) return null; // hammasi o'chirilgan — kesh foydasiz
+      home._offline = true;
+      home._cached = true;
+      home._cachedAt = raw.at;
+      return home;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /** Kesh, bo'lmasa statik nusxa. Kesh ustuvor: u JONLI serverdan kelgan. */
+  async function cachedOrSnapshot() {
+    return cached() || (await snapshot());
+  }
+
+  async function cachedOrSnapshotCars() {
+    var list = cachedCars();
+    if (list.length) return list;
+    var snap = await snapshot();
+    return (snap && snap.cars) || [];
+  }
+
+  /** Ko'rsatishga ARZIYDIGAN ma'lumot bormi? (kesh yoki statik nusxa) */
+  async function hasAnyData() {
+    return !!(await cachedOrSnapshot());
+  }
+
+  function hasCache() {
+    return !!cached();
+  }
+
+  /** `{root}/catalog/{jadval}` tugunini o'qiydi. Xato bo'lsa null. */
+  async function readNode(table) {
+    var url = DB + "/" + ROOT + "/catalog/" + table + ".json";
+    var res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error("Firebase " + table + " -> " + res.status);
+    return await res.json();
+  }
+
+  /** RTDB tuguni dict yoki massiv bo'lishi mumkin — ikkisini ham tekislaydi. */
+  function rows(node) {
+    if (!node) return [];
+    var out = [];
+    if (Array.isArray(node)) {
+      node.forEach(function (v) {
+        if (v && typeof v === "object") out.push(v);
+      });
+    } else if (typeof node === "object") {
+      Object.keys(node).forEach(function (k) {
+        var v = node[k];
+        if (v && typeof v === "object") {
+          if (v.id === undefined) v.id = isNaN(+k) ? k : +k;
+          out.push(v);
+        }
+      });
+    }
+    // O'chirilgan va nofaol yozuvlar ko'rinmasin
+    return out.filter(function (r) {
+      return !r.deleted && r.is_active !== 0 && r.is_active !== false;
+    });
+  }
+
+  /* ==================================================================
+     BIR TOVARNING IKKI NUSXASI (bulutda eski kalit qolgani uchun)
+
+     QANDAY PAYDO BO'LADI
+     Mini App tovarni bulutga O'ZI yozadi va kalit sifatida o'z id sini
+     qo'yadi (900001 — `docs/js/fb.js: ID_BASE`). Render uyg'onganda
+     `services/sync.py: restore_catalog` uni SQLite'ga ko'chiradi, lekin
+     `id` ustuni ko'chirilmaydi (`EDITABLE["products"]` da yo'q) — SQLite
+     o'zining id sini beradi, masalan 47. So'ng `push_all_catalog` bulutga
+     PATCH bilan `47` kalitini QO'SHADI (PATCH ortiqcha kalitni o'chirmaydi).
+
+     Natijada bulutda AYNI tovar ikki kalit ostida turadi (900001 va 47) va
+     do'konda IKKI MARTA ko'rinadi. `app.js: buildShopProducts` bunga
+     yordam bermaydi — u `id` bo'yicha takrorni tekshiradi, bu ikkisining
+     esa id si BOSHQA.
+
+     NEGA BU YERDA HAM TEKSHIRAMIZ
+     Asosiy tuzatish server tomonida (eski kalit endi haqiqatan o'chiriladi),
+     lekin u faqat Render UYG'ONGANDA ishlaydi. Bepul tarifda Render
+     uxlab yotgan bo'lishi mumkin, bulutda esa allaqachon yig'ilib qolgan
+     takrorlar bor. Shuning uchun ko'rsatishdan oldin shu yerda ham
+     filtrlaymiz — mijoz bir tovarni ikki marta ko'rmaydi.
+
+     QANDAY ANIQLANADI
+     Nom + mashina + kategoriya bir xil bo'lsa VA nusxalarning biri server
+     makonidan (id < 900000), ikkinchisi Mini App makonidan (id >= 900000)
+     bo'lsa — bu bitta tovar. Serverdagisini qoldiramiz: uning id si
+     buyurtma, savat va saqlanganlarda ishlatiladi.
+
+     ATAYLAB EHTIYOTKOR: faqat nom bo'yicha birlashtirmaymiz. Bir xil nomli
+     tovar turli mashina yoki kategoriya uchun bo'lishi mumkin — u HAQIQATAN
+     ikki xil tovar va yashirilishi mumkin emas (yashirsak, sotuvchi
+     sababini bilmay tovarini yo'qotardi).
+     ================================================================== */
+  var MINIAPP_ID_BASE = 900000; // docs/js/fb.js: ID_BASE bilan bir xil
+
+  function twinKey(r) {
+    var norm = function (v) {
+      return String(v == null ? "" : v).trim().toLowerCase().replace(/\s+/g, " ");
+    };
+    return [norm(r.name || r._key), norm(r.carName), norm(r.categoryName)].join("|");
+  }
+
+  function dropTwins(list) {
+    var groups = {};
+    var order = [];
+    list.forEach(function (r) {
+      var k = twinKey(r);
+      if (!groups[k]) {
+        groups[k] = [];
+        order.push(k);
+      }
+      groups[k].push(r);
+    });
+
+    var out = [];
+    var hidden = 0;
+    order.forEach(function (k) {
+      var group = groups[k];
+      if (group.length < 2) {
+        out.push(group[0]);
+        return;
+      }
+      var server = [];
+      var mini = [];
+      group.forEach(function (r) {
+        var id = Number(r.id);
+        if (isFinite(id) && id >= MINIAPP_ID_BASE) mini.push(r);
+        else server.push(r);
+      });
+      // Ikki makonda ham nusxa bor -> Mini App nusxasi eskirgan.
+      if (server.length && mini.length) {
+        hidden += mini.length;
+        server.forEach(function (r) {
+          out.push(r);
+        });
+        return;
+      }
+      // Aks holda bular haqiqatan boshqa-boshqa tovar — hammasi qoladi.
+      group.forEach(function (r) {
+        out.push(r);
+      });
+    });
+
+    if (hidden) {
+      console.warn(
+        "[offline] " +
+          hidden +
+          " ta takror tovar yashirildi: bulutda eski kalit qolgan. " +
+          "Render uyg'onganda `restore_catalog` uni o'chiradi."
+      );
+    }
+    return out;
+  }
+
+  /** `utils/helpers.py:fmt_price` bilan AYNAN bir xil: 120000 -> "120 000 so'm"
+   *
+   *  DIQQAT: `toLocaleString("ru-RU")` ishlatilmaydi — u ajratgich sifatida
+   *  ODDIY BO'SHLIQ emas, UZILMAS BO'SHLIQ (U+00A0) qo'yadi. Server esa
+   *  `f"{n:,}".replace(",", " ")` bilan oddiy bo'shliq beradi. Ko'z bilan
+   *  farq sezilmaydi, lekin matn taqqoslash va qidirishda ular boshqa-boshqa
+   *  satr bo'lib qoladi. Shuning uchun qo'lda guruhlaymiz.
+   */
+  function priceLabel(v) {
+    var n = Math.round(Number(v) || 0);
+    var sign = n < 0 ? "-" : "";
+    var digits = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    return sign + digits + " " + CURRENCY;
+  }
+
+  function externalUrl(raw) {
+    var s = (raw == null ? "" : String(raw)).trim();
+    return /^https?:\/\//.test(s) ? s : null;
+  }
+
+  /** Telegram `file_id` ni Worker media proksisining manziliga aylantiradi.
+   *
+   *  Ilgari `file_id` bilan saqlangan rasmlar zaxira rejimda UMUMAN
+   *  ko'rinmasdi: ularni faqat bot tokeni bilan ochish mumkin, ya'ni
+   *  Render'dagi `/api/media/...` proksisi kerak edi. Worker o'sha ishni
+   *  bajaradi va u uxlamaydi — shuning uchun endi ESKI rasmlar ham
+   *  Render'siz ko'rinadi.
+   */
+  function mediaUrl(fileId) {
+    var id = (fileId == null ? "" : String(fileId)).trim();
+    if (!id || !WORKER) return null;
+    return WORKER + "/media?id=" + encodeURIComponent(id);
+  }
+
+  /** Rasm manzili: avval tashqi URL, bo'lmasa Worker orqali `file_id`. */
+  function photo(urlValue, fileId) {
+    return externalUrl(urlValue) || mediaUrl(fileId);
+  }
+
+  /* RTDB bo'sh kataklari bor massivni LUG'AT qilib beradi
+     (`{"0":{...},"2":{...}}`). Ikki shaklni ham tekislaymiz. */
+  function listOf(raw) {
+    if (Array.isArray(raw)) return raw;
+    if (raw && typeof raw === "object") return Object.keys(raw).map(function (k) { return raw[k]; });
+    return [];
+  }
+
+  /** Razmerlar: `[{size:"H4", stock:3}]`. Nomsiz qatorlar tashlanadi. */
+  function toSizes(raw) {
+    return listOf(raw)
+      .filter(function (s) {
+        return s && typeof s === "object" && String(s.size || "").trim();
+      })
+      .map(function (s) {
+        return {
+          size: String(s.size).trim(),
+          stock: Math.max(0, Number(s.stock) || 0),
+        };
+      });
+  }
+
+  /** SQLite qatorini `/api/home` dagi mahsulot shakliga keltiradi. */
+  function toProduct(r) {
+    var images = [
+      photo(r.photo_url, r.photo_id),
+      photo(r.photo2_url, r.photo2_id),
+      photo(r.photo3_url, r.photo3_id),
+    ].filter(Boolean);
+
+    /* RAZMERLAR. `product_type` bo'lmasa ham `sizes` to'la bo'lishi mumkin
+       (eski yozuv) — shu holatda ham razmerli deb ko'rsatamiz, aks holda
+       admin kiritgan razmerlar mijozga umuman ko'rinmay qolardi. */
+    var sizes = toSizes(r.sizes);
+    var sized = r.product_type === "razmerli" || sizes.length > 0;
+
+    /* MOS MASHINALAR. Admin paneli ko'p tanlovni `carNames` massivida
+       yozadi; eski tovarlarda esa bitta `carName` bor. Ikkisi ham bitta
+       ro'yxatga keltiriladi — mijoz tomoni bitta maydonni o'qiydi. */
+    var carNames = listOf(r.carNames)
+      .map(function (v) {
+        return String(v == null ? "" : v).trim();
+      })
+      .filter(Boolean);
+    if (!carNames.length) {
+      var one = String(r.carName || r.car_name || "").trim();
+      if (one) carNames = [one];
+    }
+
+    return {
+      id: r.id,
+      name: r.name || "",
+      description: r.description || null,
+      price: Number(r.price) || 0,
+      old_price: r.old_price ? Number(r.old_price) : null,
+      badge: r.badge || null,
+      /* Umumiy qoldiq. Razmerli tovarda bu razmer qoldiqlarining
+         YIG'INDISI — shu sababli savat, «Tugagan» belgisi va buyurtma
+         tekshiruvi hech qanday o'zgarishsiz ishlaydi. Bulutdagi `stock`
+         eskirgan bo'lishi mumkin (bot sinxroni), shuning uchun razmerlar
+         bor bo'lsa yig'indiga ISHONAMIZ. */
+      stock: sized ? sizes.reduce(function (s, x) { return s + x.stock; }, 0) : Number(r.stock) || 0,
+      /* Tovar turi va razmerlar ro'yxati — tovar oynasidagi razmer
+         tanlagichi shu ikkisiga qarab chiziladi. */
+      product_type: sized ? "razmerli" : "oddiy",
+      sizes: sizes,
+      /* Kafolat muddati — admin panelda har tovarga alohida qo'yiladi
+         («1 yil», «3 oy», «19 kun»). Bo'lmasa `null` va mijoz tomonida
+         kafolat satri umuman chizilmaydi. */
+      warranty: r.warranty || null,
+      /* Mashina NOMI — birinchisi (eski `car_name` maydoni bilan mos).
+         To'liq ro'yxat `car_names` da. */
+      car_name: carNames[0] || null,
+      car_names: carNames,
+      car_id: r.car_id == null ? null : r.car_id,
+      price_label: priceLabel(r.price),
+      old_price_label: r.old_price ? priceLabel(r.old_price) : null,
+      photo_url: images[0] || null,
+      photo_external: !!images[0],
+      video_url: photo(r.video_url, r.video_id),
+      video_external: true,
+      has_media: !!images[0],
+      images: images,
+      _offline: true,
+    };
+  }
+
+  function toBanner(r) {
+    var pic = photo(r.photo_url, r.photo_id);
+    return {
+      id: r.id,
+      title: r.title || "",
+      subtitle: r.subtitle || "",
+      tag: r.tag || "",
+      color_from: r.color_from || "#239a5c",
+      color_to: r.color_to || "#0e1f17",
+      photo_url: pic,
+      photo_external: !!pic,
+      video_url: photo(r.video_url, r.video_id),
+      video_external: true,
+      has_media: !!pic,
+    };
+  }
+
+  /** Stories'ni halqalarga guruhlaydi (`/api/home` dagi tuzilish). */
+  function toStoryRings(storyRows) {
+    return STORY_RINGS.map(function (def) {
+      var key = def[0];
+      var items = storyRows
+        .filter(function (r) {
+          return String(r.category || "bugun") === key;
+        })
+        .sort(function (a, b) {
+          return (a.sort || 0) - (b.sort || 0) || (a.id || 0) - (b.id || 0);
+        })
+        .map(function (r) {
+          var pic = photo(r.photo_url, r.photo_id);
+          return {
+            id: r.id,
+            heading: r.heading || r.title || "",
+            body: r.body || "",
+            emoji: r.emoji || def[2],
+            color_from: r.color_from || def[3],
+            color_to: r.color_to || def[4],
+            photo_url: pic,
+            photo_external: !!pic,
+            video_url: photo(r.video_url, r.video_id),
+            video_external: true,
+            has_media: !!pic,
+            /* Story ko'ruvchisi uchun: "qancha vaqt oldin" yozuvi va
+               tovarga o'tish havolasi. Ilgari bu maydonlar tashlanib
+               ketardi va sarlavhada vaqt ko'rsatib bo'lmasdi. */
+            title: r.title || "",
+            link: r.link || "",
+            createdAt: Number(r.createdAt) || 0,
+            updatedAt: Number(r.updatedAt) || 0,
+          };
+        });
+
+      return {
+        key: key,
+        title: def[1],
+        emoji: def[2],
+        color_from: def[3],
+        color_to: def[4],
+        count: items.length,
+        items: items,
+      };
+    }).filter(function (ring) {
+      return ring.count > 0;
+    });
+  }
+
+  /**
+   * `/api/home` javobining zaxira nusxasi.
+   * Katalog o'qilmasa null qaytaradi (chaqiruvchi asl xatoni ko'rsatadi).
+   */
+  /* ==================================================================
+     DIQQAT — O'CHIRILGAN TOVAR QAYTIB KELISHI (tuzatildi)
+
+     Ilgari shu yerda quyidagi qator turardi:
+
+         if (!products.length) return await cachedOrSnapshot();
+
+     Ya'ni «Firebase'da tovar yo'q» -> keshga yoki `catalog.json` ga qayt.
+     Admin omborda HAMMA tovarni o'chirsa, `rows()` ularni filtrlaydi va
+     tirik tovar 0 bo'lib qoladi -> kod 30 kunlik keshni yoki repodagi
+     DEMO (seed) nusxani ko'rsatadi. Natijada admin hammasini o'chirgan,
+     lekin bosh menyuda tovarlar (yoki «LED lampa H4» kabi demo tovarlar)
+     turaveradi.
+
+     Endi uch holat AJRATILADI:
+
+       1. o'qish YIQILDI (401/403/internet)  -> kesh yoki statik nusxa
+          (mijoz to'siq ekranini ko'rmasin — bu zaxiraning asl maqsadi);
+       2. tugun UMUMAN yo'q (null)           -> kesh yoki statik nusxa
+          (baza hali to'ldirilmagan, birinchi o'rnatish);
+       3. tugun BOR, lekin tirik tovar 0     -> DO'KON BO'SH ko'rsatiladi.
+          Bu HAQIQAT: admin hammasini o'chirgan. Keshga qaytish — yolg'on.
+     ================================================================== */
+  async function home(opts) {
+    // `strict: true` — kesh va statik nusxaga QAYTMAYDI, faqat Firebase.
+    // Onlayn holatda shu rejim ishlatiladi: Firebase o'qilmasa `/api/home`
+    // ga o'tish kerak, eski keshni ko'rsatish emas.
+    var strict = !!(opts && opts.strict);
+    var fallback = function () {
+      return strict ? null : cachedOrSnapshot();
+    };
+
+    // Firebase sozlanmagan bo'lsa — to'g'ridan keshga
+    if (!available()) return await fallback();
+
+    var products, categories, banners, stories, rawProducts, rawCategories;
+    try {
+      // Mahsulot va kategoriya MAJBURIY — do'kon shulardan iborat.
+      var pair = await Promise.all([readNode("products"), readNode("categories")]);
+      rawProducts = pair[0];
+      rawCategories = pair[1];
+    } catch (err) {
+      // Eng ko'p uchraydigan sabab: `database.rules.json` hali Firebase
+      // Console'ga qo'yilmagan, shuning uchun o'qish rad etiladi (401/403).
+      console.error("[offline] Firebase katalogi o'qilmadi:", err);
+      return await fallback();
+    }
+
+    // 2-holat: tugun umuman yo'q — baza hali to'ldirilmagan.
+    if (!rawProducts) {
+      console.warn("[offline] Firebase'da `catalog/products` tuguni yo'q — zaxiraga o'tilyapti.");
+      return await fallback();
+    }
+
+    // Bulutda bir tovarning ikki kaliti qolgan bo'lishi mumkin — bittasini
+    // qoldiramiz (izohni `dropTwins` ustida ko'ring).
+    products = dropTwins(rows(rawProducts));
+    categories = rows(rawCategories);
+
+    // 3-holat: tugun bor, lekin hammasi o'chirilgan/yashirilgan.
+    // Pastda `catalog: []` bilan davom etamiz — kesh/nusxaga QAYTMAYMIZ.
+    if (!products.length) {
+      console.warn("[offline] Tirik tovar yo'q — do'kon BO'SH ko'rsatiladi (o'chirilgan).");
+    }
+
+    // Bannerlar va stories — ixtiyoriy, yiqilsa e'tibor bermaymiz.
+    try {
+      banners = rows(await readNode("banners"));
+    } catch (_) {
+      banners = [];
+    }
+    try {
+      stories = rows(await readNode("stories"));
+    } catch (_) {
+      stories = [];
+    }
+
+    // Mahsulotlarni kategoriyalarga taqsimlaymiz. Bulutda bog'lanish NOM
+    // bilan saqlanadi (`categoryName`) — ID'lar deploy orasida o'zgargani uchun.
+    var byName = {};
+    categories.forEach(function (c) {
+      byName[String(c.name || c._key || "").toLowerCase()] = c;
+    });
+
+    var groups = [];
+    var index = {};
+    function bucket(cat) {
+      var key = String(cat.name || cat._key || "Mahsulotlar");
+      if (!index[key]) {
+        index[key] = {
+          id: cat.id != null ? cat.id : key,
+          name: key,
+          icon: cat.icon || null,
+          /* `sort` — filtr chiplarining TARTIBI. Server ham shu maydonni
+             yuboradi (`queries.get_catalog`); bulut yo'lida ham bo'lishi
+             kerak, aks holda Render uxlaganda chiplar boshqa tartibda
+             ko'rinardi. */
+          sort: Number(cat.sort) || 0,
+          products: [],
+        };
+        groups.push(index[key]);
+      }
+      return index[key];
+    }
+
+    products
+      .sort(function (a, b) {
+        return (b.id || 0) - (a.id || 0);
+      })
+      .forEach(function (r) {
+        var name = String(r.categoryName || r._categoryName || "").toLowerCase();
+        var cat = byName[name] || categories[0] || { name: "Mahsulotlar" };
+        bucket(cat).products.push(toProduct(r));
+      });
+
+    return {
+      car_id: null,
+      banners: banners.sort(function (a, b) {
+        return (a.sort || 0) - (b.sort || 0);
+      }).map(toBanner),
+      stories: toStoryRings(stories),
+      catalog: groups.filter(function (g) {
+        return g.products.length > 0;
+      }),
+      // Saqlanganlar serverda turadi; offline'da mahalliy nusxa ishlatiladi.
+      favorite_ids: [],
+      _offline: true,
+    };
+  }
+
+  /* Mashinalar alohida keshlanadi: ular `/api/home` javobiga kirmaydi,
+     lekin konfigurator va «mashinamga mos» filtri uchun kerak. */
+  var CARS_KEY = "zimmer_cars_cache";
+
+  function saveCars(list) {
+    if (!list || !list.length) return;
+    try {
+      localStorage.setItem(CARS_KEY, JSON.stringify({ at: Date.now(), cars: list }));
+    } catch (_) {}
+  }
+
+  /** Mashinalar keshini bo'shatadi. Admin panelidan mashina qo'shil/o'chirilsa
+   *  chaqiriladi — aks holda 30 kunlik kesh eski ro'yxatni ushlab turadi va
+   *  konfiguratorda yangi mashina ko'rinmasdi. */
+  function clearCarsCache() {
+    try {
+      localStorage.removeItem(CARS_KEY);
+    } catch (_) {}
+  }
+
+  function cachedCars() {
+    try {
+      var raw = JSON.parse(localStorage.getItem(CARS_KEY) || "null");
+      if (!raw || !Array.isArray(raw.cars)) return [];
+      if (Date.now() - (raw.at || 0) > CACHE_MAX_AGE) return [];
+      return raw.cars;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /** Mashinalar ro'yxati (`/api/cars` ning zaxirasi). */
+  async function cars() {
+    if (!available()) return await cachedOrSnapshotCars();
+    try {
+      var list = rows(await readNode("cars"))
+        .sort(function (a, b) {
+          return (a.sort || 0) - (b.sort || 0);
+        })
+        .map(function (r) {
+          var pic = photo(r.photo_url, r.photo_id);
+          return {
+            id: r.id,
+            name: r.name || "",
+            years: r.years || null,
+            note: r.note || null,
+            /* Siluet kaliti. Bulut yozuvida `slug` ustuni SAQLANMAYDI
+               (Firebase katalog sxemasida u yo'q), shuning uchun bo'lmasa
+               nomdan yasaymiz — `ZimmerCars.typeOf` nomdagi kalit so'zga
+               qarab to'g'ri siluetni tanlaydi (Damas->van, Matiz->hatch,
+               Tracker->suv...). Aks holda panel orqali qo'shilgan mashina
+               mijozda har doim umumiy sedan bo'lib ko'rinardi. */
+            slug: r.slug || String(r.name || "").trim().toLowerCase(),
+            photo_url: pic,
+            has_media: !!pic,
+            // Bi-LED Studio: mashinaga xos shisha/korpus narxi (bo'lmasa standart)
+            glass_price: Number(r.glass_price) > 0 ? Number(r.glass_price) : null,
+            housing_price: Number(r.housing_price) > 0 ? Number(r.housing_price) : null,
+          };
+        });
+      return list.length ? list : await cachedOrSnapshotCars();
+    } catch (err) {
+      console.error("[offline] mashinalar o'qilmadi — keshga o'tilyapti:", err);
+      return await cachedOrSnapshotCars();
+    }
+  }
+
+  /** SQLite qatorini `/api/tuning` dagi linza shakliga keltiradi. */
+  function toBiled(r) {
+    var pic = photo(r.photo_url, r.photo_id);
+    return {
+      id: r.id,
+      name: r.name || "",
+      brand: r.brand || null,
+      size: r.size || null,
+      kelvin: r.kelvin || null,
+      lumen: r.lumen || null,
+      warranty: r.warranty || null,
+      description: r.description || null,
+      price: Number(r.price) || 0,
+      price_label: priceLabel(r.price),
+      badge: r.badge || null,
+      glow: r.glow || null,
+      photo_url: pic,
+      photo_external: !!pic,
+      video_url: photo(r.video_url, r.video_id),
+      video_external: true,
+      has_media: !!pic,
+    };
+  }
+
+  function toShroud(r) {
+    var pic = photo(r.photo_url, r.photo_id);
+    return {
+      id: r.id,
+      name: r.name || "",
+      style: r.style || null,
+      ring_color: r.ring_color || null,
+      description: r.description || null,
+      price: Number(r.price) || 0,
+      price_label: priceLabel(r.price),
+      photo_url: pic,
+      photo_external: !!pic,
+      video_url: photo(r.video_url, r.video_id),
+      video_external: true,
+      has_media: !!pic,
+    };
+  }
+
+  function toColor(r) {
+    var pic = photo(r.photo_url, r.photo_id);
+    return {
+      id: r.id,
+      name: r.name || "",
+      hex_from: r.hex_from || null,
+      hex_to: r.hex_to || null,
+      description: r.description || null,
+      price: Number(r.price) || 0,
+      price_label: priceLabel(r.price),
+      photo_url: pic,
+      photo_external: !!pic,
+      video_url: photo(r.video_url, r.video_id),
+      video_external: true,
+      has_media: !!pic,
+    };
+  }
+
+  /** `/api/tuning` zaxirasi — konfigurator variantlari.
+   *
+   *  MUHIM: `biled_types`, `shrouds`, `optic_colors` jadvallari ALLAQACHON
+   *  bulutga ko'chiriladi (`database/queries.py: CATALOG_KEY` da bor,
+   *  `services/sync.py: push_all_catalog` ularni yuboradi). Ya'ni ma'lumot
+   *  bor edi — shu paytgacha faqat frontend uni O'QIMASDI va konfigurator
+   *  Render'siz ishlamasdi. Backendga o'zgartirish KERAK EMAS.
+   */
+  async function tuning() {
+    try {
+      var three = await Promise.all([
+        readNode("biled_types"),
+        readNode("shrouds"),
+        readNode("optic_colors"),
+      ]);
+      var out = {
+        biled_types: rows(three[0]).map(toBiled),
+        shrouds: rows(three[1]).map(toShroud),
+        colors: rows(three[2]).map(toColor),
+      };
+      // Linzalar bo'lmasa konfigurator ma'nosiz — keshga tayanamiz.
+      if (out.biled_types.length) {
+        saveBlob(TUNING_KEY, out);
+        return out;
+      }
+      return cachedOr(TUNING_KEY, out);
+    } catch (err) {
+      console.error("[offline] tuning o'qilmadi — keshga o'tilyapti:", err);
+      return cachedOr(TUNING_KEY, { biled_types: [], shrouds: [], colors: [] });
+    }
+  }
+
+  /* ==================================================================
+     BI-LED STUDIO (3D konfigurator) — variantlar va narxlar
+
+     Manba: `zimmer/catalog/configurator/{qator}` (hammaga o'qiladi).
+     Admin panelda «Bi-LED konfigurator» bo'limi shu yerga yozadi.
+     Bazada qator bo'lmasa — quyidagi STANDART qiymat ishlatiladi, ya'ni
+     konfigurator admin hech narsa kiritmasdan ham ishlaydi.
+
+     DIQQAT: `cloudflare-worker.js` dagi `STUDIO_DEFAULTS` bilan AYNAN
+     bir xil bo'lishi SHART — buyurtma narxini Worker shu jadvaldan qayta
+     hisoblaydi (mijoz yuborgan narxga ishonilmaydi).
+
+     Narxlar 2 fara (komplekt) uchun, o'rnatish bilan.
+     Mashinaga qarab: `catalog/cars/{id}.glass_price` va `.housing_price`
+     — bo'lmasa shu yerdagi standart narx.
+     ================================================================== */
+  var STUDIO_KEY = "zimmer_studio_cache";
+  var STUDIO_DEFAULTS = {
+    lens_r50: {
+      group: "lens", code: "r50", sort: 1, name: "Bi-LED R50", price: 1200000,
+      size: "2.5\"", kelvin: "5000K", lumen: "6 500 lm", warranty: "1 yil", badge: "",
+      description: "Ixcham linza. Kunlik shahar yurishi uchun tekis va aniq nur.",
+    },
+    lens_r80: {
+      group: "lens", code: "r80", sort: 2, name: "Bi-LED R80", price: 1500000,
+      size: "3.0\"", kelvin: "5500K", lumen: "8 500 lm", warranty: "1 yil", badge: "Ommabop",
+      description: "Ko'k antirefleks qoplamali 3 dyuymli linza. Kesish chizig'i keskin, nur keng.",
+    },
+    lens_r90: {
+      group: "lens", code: "r90", sort: 3, name: "Bi-LED R90", price: 2200000,
+      size: "3.0\"", kelvin: "6000K", lumen: "11 000 lm", warranty: "1 yil", badge: "Premium",
+      description: "Eng yorug' model: giperboloid linza va ko'k lazer aksent. Uzoq nur juda uzoqqa yetadi.",
+    },
+    inner_chrome: {
+      group: "inner", code: "chrome", sort: 1, name: "Asl rang (xrom)", price: 0,
+      description: "Zavod xrom ko'rinishi saqlanadi — yorug'likni eng yaxshi qaytaradi.",
+    },
+    inner_black: {
+      group: "inner", code: "black", sort: 2, name: "Qora", price: 350000,
+      description: "Fara ichi qora rangga bo'yaladi — agressiv, zamonaviy ko'rinish.",
+    },
+    ring_plain: {
+      group: "ring", code: "plain", sort: 1, name: "Oddiy ochki", price: 250000,
+      description: "Silliq klassik maska. Yonmaydi. Xrom yoki qora.",
+    },
+    ring_bmw: {
+      group: "ring", code: "bmw", sort: 2, name: "BMW halqa", price: 400000,
+      description: "BMW uslubidagi bo'rtiq halqa. Yonmaydi. Xrom yoki qora.",
+    },
+    ring_glow: {
+      group: "ring", code: "glow", sort: 3, name: "BMW yonadigan halqa", price: 450000,
+      description: "Halqa siz tanlagan rangda yonadi (angel eyes). Gabarit bilan birga yonadi.",
+    },
+    glass: {
+      group: "glass", code: "glass", sort: 1, name: "Yangi fara shishasi", price: 250000,
+      description: "Sarg'aygan, xira yoki yorilgan shisha o'rniga yangi tiniq shisha, germetik bilan.",
+    },
+    housing: {
+      group: "housing", code: "housing", sort: 1, name: "Yangi korpus", price: 600000,
+      description: "Eskirgan, yorilgan yoki quloqlari singan korpus yangisiga almashtiriladi.",
+    },
+  };
+  /** BMW yonadigan halqa uchun tayyor ranglar (mijoz istalganini ham tanlay oladi). */
+  var STUDIO_GLOWS = [
+    ["#f4f8ff", "Oq"],
+    ["#9fe7ff", "Muz"],
+    ["#2f7bff", "Ko'k"],
+    ["#8a5cff", "Binafsha"],
+    ["#ff4fa3", "Pushti"],
+    ["#ff2d2d", "Qizil"],
+    ["#ff8a00", "To'q sariq"],
+    ["#ffd60a", "Sariq"],
+    ["#2bff88", "Yashil"],
+    ["#19e3d1", "Firuza"],
+  ];
+
+  /** Bazadagi qatorlarni standartlar ustiga qo'yadi va guruhlaydi. */
+  function buildStudio(node) {
+    var raw = {};
+    Object.keys(STUDIO_DEFAULTS).forEach(function (k) {
+      raw[k] = Object.assign({ id: k }, STUDIO_DEFAULTS[k]);
+    });
+    if (node && typeof node === "object" && !Array.isArray(node)) {
+      Object.keys(node).forEach(function (k) {
+        var row = node[k];
+        if (!raw[k] || !row || typeof row !== "object") return; // faqat ma'lum qatorlar
+        Object.keys(row).forEach(function (f) {
+          if (row[f] !== null && row[f] !== undefined) raw[k][f] = row[f]; // "" — admin ataylab tozalagan
+        });
+        raw[k].id = k;
+      });
+    }
+    var on = function (r) {
+      return !r.deleted && r.is_active !== 0 && r.is_active !== false;
+    };
+    var group = function (g) {
+      return Object.keys(raw)
+        .map(function (k) {
+          var r = raw[k];
+          r.price = Math.max(0, Number(r.price) || 0);
+          r.price_label = priceLabel(r.price);
+          return r;
+        })
+        .filter(function (r) {
+          return r.group === g && on(r);
+        })
+        .sort(function (a, b) {
+          return (a.sort || 0) - (b.sort || 0);
+        });
+    };
+    return {
+      lenses: group("lens"),
+      inner: group("inner"),
+      rings: group("ring"),
+      glass: on(raw.glass) ? raw.glass : null,
+      housing: on(raw.housing) ? raw.housing : null,
+      glows: STUDIO_GLOWS.map(function (g) {
+        return { hex: g[0], name: g[1] };
+      }),
+      raw: raw,
+    };
+  }
+
+  /** Konfigurator variantlari (Firebase -> kesh -> standart). */
+  async function studio() {
+    if (!available()) return buildStudio(readBlob(STUDIO_KEY));
+    try {
+      var node = await readNode("configurator");
+      saveBlob(STUDIO_KEY, node || {});
+      return buildStudio(node);
+    } catch (err) {
+      console.warn("[offline] konfigurator o'qilmadi — kesh/standart:", err);
+      return buildStudio(readBlob(STUDIO_KEY));
+    }
+  }
+
+  /** Mashinaga qarab shisha/korpus narxi (2 fara). Mashinada yo'q bo'lsa — standart. */
+  function studioCarPrice(kind, car, cfg) {
+    var own = car ? Number(car[kind + "_price"]) : 0;
+    if (own > 0) return own;
+    var row = cfg && cfg[kind];
+    return row ? Number(row.price) || 0 : 0;
+  }
+
+  /* ==================================================================
+     CHEXOL VA NAVBAT SOZLAMALARI (2.3.0)
+       catalog/wheel_materials — rul chexol materiallari (ranglari bilan)
+       catalog/seat_designs    — o'rindiq dizaynlari (20 qism)
+       catalog/settings/booking — zalog: {deposit, deposit_on}
+     Hammasi ochiq o'qiladi; narxni Worker yana katalogdan oladi.
+     ================================================================== */
+  var BOOKING_DEFAULTS = { deposit: 100000, deposit_on: 1 };
+
+  function listRows(raw) {
+    if (Array.isArray(raw)) return raw.filter(function (x) { return x && typeof x === "object"; });
+    if (raw && typeof raw === "object") {
+      return Object.keys(raw)
+        .map(function (k) { return raw[k]; })
+        .filter(function (x) { return x && typeof x === "object"; });
+    }
+    return [];
+  }
+
+  /** Jadval: kalit -> id, o'chirilgan/nofaol tashlanadi, `sort` bo'yicha. */
+  async function keyedRows(table, all) {
+    var node = await readNode(table);
+    var out = [];
+    if (node && typeof node === "object") {
+      Object.keys(node).forEach(function (k) {
+        var r = node[k];
+        if (!r || typeof r !== "object" || r.deleted) return;
+        if (!all && (r.is_active === 0 || r.is_active === false)) return;
+        out.push(Object.assign({}, r, { id: k, key: k }));
+      });
+    }
+    out.sort(function (a, b) {
+      return (Number(a.sort) || 0) - (Number(b.sort) || 0) || String(a.name || "").localeCompare(String(b.name || ""));
+    });
+    return out;
+  }
+
+  async function wheelMaterials(all) {
+    var rows = await keyedRows("wheel_materials", all);
+    return rows.map(function (r) {
+      r.price = Math.max(0, Number(r.price) || 0);
+      r.price_label = priceLabel(r.price);
+      r.colors = listRows(r.colors).filter(function (c) { return /^#[0-9a-f]{6}$/i.test(String(c.hex || "")); });
+      return r;
+    });
+  }
+
+  async function seatDesigns(all) {
+    var rows = await keyedRows("seat_designs", all);
+    return rows.map(function (r) {
+      r.price = Math.max(0, Number(r.price) || 0);
+      r.price_label = priceLabel(r.price);
+      r.zones = r.zones && typeof r.zones === "object" ? r.zones : {};
+      return r;
+    });
+  }
+
+  async function bookingSettings() {
+    try {
+      var node = await readNode("settings");
+      var r = (node && node.booking) || {};
+      var dep = Number(r.deposit);
+      return {
+        deposit: Number.isFinite(dep) && dep >= 0 ? Math.round(dep) : BOOKING_DEFAULTS.deposit,
+        deposit_on: r.deposit_on === undefined ? BOOKING_DEFAULTS.deposit_on : r.deposit_on ? 1 : 0,
+      };
+    } catch (_) {
+      return Object.assign({}, BOOKING_DEFAULTS);
+    }
+  }
+
+  /* Videoga ruxsat etilgan xizmat temalari — `config.py:
+     VIDEO_SERVICE_THEMES` bilan AYNAN bir xil bo'lishi kerak.
+     Odatda bu qoida faqat serverda turadi va `video_allowed` sifatida
+     yuboriladi; bulut yo'lida esa server YO'Q (Render uxlagan), shuning
+     uchun bu yerda takrorlanishi majburiy. */
+  var VIDEO_SERVICE_THEMES = ["polish", "clean", "glass"];
+
+  /** `/api/services` zaxirasi — navbat uchun xizmatlar.
+   *  `services` jadvali ham bulutga ko'chiriladi (CATALOG_KEY da bor). */
+  async function services() {
+    try {
+      var list = rows(await readNode("services")).map(function (r) {
+        var soon = !!Number(r.coming_soon);
+        var theme = r.theme || null;
+        var allowed = VIDEO_SERVICE_THEMES.indexOf(String(theme || "").toLowerCase()) !== -1;
+        var video = allowed && /^https?:\/\//i.test(String(r.video_url || ""))
+          ? String(r.video_url)
+          : null;
+        return {
+          id: r.id,
+          name: r.name || "",
+          duration_min: Number(r.duration_min) || 0,
+          /* «Tez kunda» xizmatda narx YO'Q (0 emas — yo'q).
+             `0` mijozga «bepul» degan ma'no berib qolishi mumkin edi. */
+          price: soon ? null : Number(r.price) || 0,
+          price_label: soon ? null : priceLabel(r.price),
+          coming_soon: soon,
+          /* «Xizmatlar» bo'limi uchun: kafolat, tavsif va kartochka
+             dizayni kaliti (`app.js: SERVICE_THEMES`). */
+          warranty: r.warranty || null,
+          description: r.description || null,
+          theme: theme,
+          sort: Number(r.sort) || 0,
+          /* VIDEO. Ruxsat qoidasi serverdagi bilan bir xil bo'lishi
+             kerak (`config.VIDEO_SERVICE_THEMES`) — bulut yo'lida server
+             yo'q, shuning uchun qoida shu yerda takrorlanadi. Faqat
+             tashqi URL ishlaydi: Telegram `file_id` ni brauzer o'qiy
+             olmaydi, uni faqat Render `/media/...` orqali beradi. */
+          video_allowed: allowed,
+          video_url: video,
+          video_external: !!video,
+          has_video: !!video,
+        };
+      });
+      if (list.length) {
+        /* Barqaror tartib: `sort`, keyin `id`. Bu — MA'LUMOT qatlami,
+           shuning uchun bu yerda faqat oddiy tartiblash.
+
+           GURUHLASH (konfigurator tepada, «Tez kunda» oxirida) esa
+           `app.js: sortServices()` da — u ko'rsatish uchun YAGONA
+           mas'ul va ro'yxat qaysi manbadan kelganidan qat'i nazar
+           qo'llanadi. Shu sababli qoida bu yerda TAKRORLANMAYDI. */
+        list.sort(function (a, b) {
+          return (a.sort || 0) - (b.sort || 0) || (a.id || 0) - (b.id || 0);
+        });
+        saveBlob(SERVICES_KEY, list);
+        return list;
+      }
+      return cachedOr(SERVICES_KEY, list);
+    } catch (err) {
+      console.error("[offline] xizmatlar o'qilmadi — keshga o'tilyapti:", err);
+      return cachedOr(SERVICES_KEY, []);
+    }
+  }
+
+
+
+  /* ---- Umumiy kesh (bosh sahifa keshi alohida — u `save`/`cached`) ----
+     Firebase ham o'qilmagan holat uchun: mijoz ilgari ko'rgan variantlar
+     saqlanib qoladi, ya'ni konfigurator butunlay bo'sh chiqmaydi. */
+  var TUNING_KEY = "zimmer_tuning_cache";
+  var SERVICES_KEY = "zimmer_services_cache";
+  var BLOB_MAX_AGE = 30 * 24 * 3600 * 1000; // 30 kun
+
+  function saveBlob(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify({ at: Date.now(), v: value }));
+    } catch (_) {
+      // Kvota tugagan bo'lishi mumkin — kesh ixtiyoriy
+    }
+  }
+
+  function readBlob(key) {
+    try {
+      var raw = JSON.parse(localStorage.getItem(key) || "null");
+      if (!raw || raw.v == null) return null;
+      if (Date.now() - (raw.at || 0) > BLOB_MAX_AGE) return null;
+      return raw.v;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /** Keshda saqlangan nusxa bo'lsa uni, aks holda berilgan zaxirani qaytaradi. */
+  function cachedOr(key, fallback) {
+    var hit = readBlob(key);
+    return hit || fallback;
+  }
+
+  /* ==================================================================
+     NAVBAT VA BI-LED — bazaga to'g'ridan
+
+     Bo'sh vaqtlarni hisoblash mantig'i `utils/helpers.py` dan AYNAN
+     ko'chirilgan (`available_dates`, `free_slots`), shuning uchun brauzer
+     va server bir xil natija beradi:
+        ish vaqti 09:00–18:00, qadam 30 daqiqa, 7 kun oldinga,
+        bugungi kun uchun hozirdan kamida 30 daqiqa keyin.
+     ================================================================== */
+  var WORK_START_H = 9;
+  var WORK_END_H = 18;
+  var SLOT_MIN = 30;
+  var DAYS_AHEAD = 7;
+  var TZ_OFFSET_MIN = 5 * 60; // Asia/Tashkent (config.py: TIMEZONE)
+
+  var WEEKDAYS = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"];
+  var MONTHS = ["yanvar", "fevral", "mart", "aprel", "may", "iyun",
+                "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr"];
+
+  /** Do'kon vaqti (mijoz telefonidagi mintaqaga BOG'LIQ EMAS). */
+  function shopNow() {
+    var d = new Date();
+    return new Date(d.getTime() + (TZ_OFFSET_MIN + d.getTimezoneOffset()) * 60000);
+  }
+
+  function isoOf(d) {
+    var m = String(d.getMonth() + 1);
+    var day = String(d.getDate());
+    return d.getFullYear() + "-" + (m.length < 2 ? "0" + m : m) + "-" + (day.length < 2 ? "0" + day : day);
+  }
+
+  /** `utils/helpers.py: date_label` bilan bir xil: "12-avgust, Chorshanba" */
+  function dateLabel(iso) {
+    var p = iso.split("-");
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    return d.getDate() + "-" + MONTHS[d.getMonth()] + ", " + WEEKDAYS[(d.getDay() + 6) % 7];
+  }
+
+  /** `short_date_label`: "Bugun" / "Ertaga" / "12-avg (Chor)" */
+  function shortDateLabel(iso) {
+    var today = isoOf(shopNow());
+    if (iso === today) return "Bugun";
+    var t = shopNow();
+    t.setDate(t.getDate() + 1);
+    if (iso === isoOf(t)) return "Ertaga";
+    var p = iso.split("-");
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    return d.getDate() + "-" + MONTHS[d.getMonth()].slice(0, 3) +
+           " (" + WEEKDAYS[(d.getDay() + 6) % 7].slice(0, 3) + ")";
+  }
+
+  function availableDates() {
+    var out = [];
+    var base = shopNow();
+    for (var i = 0; i < DAYS_AHEAD; i++) {
+      var d = new Date(base.getTime());
+      d.setDate(d.getDate() + i);
+      out.push(isoOf(d));
+    }
+    return out;
+  }
+
+  function toMinutes(t) {
+    var p = String(t).split(":");
+    return (+p[0] || 0) * 60 + (+p[1] || 0);
+  }
+  function toTime(m) {
+    var h = Math.floor(m / 60), mm = m % 60;
+    return (h < 10 ? "0" + h : h) + ":" + (mm < 10 ? "0" + mm : mm);
+  }
+
+  /** `utils/helpers.py: free_slots` ning aynan nusxasi. */
+  function freeSlots(iso, durationMin, taken) {
+    var workStart = WORK_START_H * 60;
+    var workEnd = WORK_END_H * 60;
+    var step = Math.max(SLOT_MIN, 5);
+    var duration = Math.max(durationMin || 0, step);
+
+    var busy = (taken || []).map(function (x) {
+      var s = toMinutes(x[0]);
+      return [s, s + Math.max(x[1] || 0, step)];
+    });
+
+    var minStart = workStart;
+    if (iso === isoOf(shopNow())) {
+      var n = shopNow();
+      var lead = n.getHours() * 60 + n.getMinutes() + 30;
+      minStart = Math.max(minStart, Math.ceil(lead / step) * step);
+    }
+
+    var out = [];
+    for (var start = workStart; start + duration <= workEnd; start += step) {
+      if (start < minStart) continue;
+      var clash = busy.some(function (b) {
+        return start < b[1] && b[0] < start + duration;
+      });
+      if (!clash) out.push(toTime(start));
+    }
+    return out;
+  }
+
+  /** Bazadagi band vaqtlar: [["09:30", 60], ...]
+   *
+   *  MANBA — `slots/{sana}` TUGUNI, `bookings` EMAS.
+   *
+   *  NEGA O'ZGARDI. Ilgari bu funksiya BUTUN `bookings` tugunini o'qirdi va
+   *  bandlikni o'zi ajratardi. `bookings` ichida esa mijozning ISMI va
+   *  TELEFONI bor — ya'ni bo'sh vaqtni ko'rsatish uchun butun mijozlar
+   *  ro'yxatini ochiq qilishga to'g'ri kelgan edi. Istalgan odam bitta
+   *  so'rov bilan hammaning telefonini yuklab olardi.
+   *
+   *  Endi bandlik alohida, SHAXSIY MA'LUMOTSIZ tugunda turadi:
+   *      slots/2026-09-01/{navbat_id} = { time: "14:00", duration_min: 60 }
+   *  `bookings` esa qoidalarda o'qish uchun YOPIQ (faqat bot va Worker).
+   *
+   *  Yozuvni bot (`services/sync.py -> push_booking_slot`) va ilovaning
+   *  o'zi (`createBooking`) qo'shadi. Bekor qilinganda o'chiriladi.
+   */
+  async function takenSlots(iso) {
+    if (!window.ZimmerFB || !iso) return [];
+    try {
+      var node = await window.ZimmerFB.get("slots/" + iso);
+      if (!node || typeof node !== "object") return [];
+      var out = [];
+      Object.keys(node).forEach(function (k) {
+        var s = node[k];
+        if (!s || typeof s !== "object" || !s.time) return;
+        out.push([String(s.time), Number(s.duration_min) || SLOT_MIN]);
+      });
+      return out;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /** `/api/dates` zaxirasi. */
+  async function bookingDates(durationMin) {
+    var list = availableDates();
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var iso = list[i];
+      var slots = freeSlots(iso, durationMin, await takenSlots(iso));
+      out.push({
+        date: iso,
+        label: dateLabel(iso),
+        short_label: shortDateLabel(iso),
+        free_count: slots.length,
+      });
+    }
+    return out;
+  }
+
+  /** `/api/slots` zaxirasi. */
+  async function bookingSlots(iso, durationMin) {
+    return {
+      date: iso,
+      label: dateLabel(iso),
+      slots: freeSlots(iso, durationMin, await takenSlots(iso)),
+    };
+  }
+
+  /** Navbatni band qilish — faqat imzolangan Worker endpointi orqali.
+   *  Slot overlap tekshiruvi va rezervatsiya serverdagi ETag CAS ichida. */
+  async function createBooking(payload) {
+    // Yangi route — avval Worker feature flag'ini tekshiramiz (item 7).
+    await ensureWorkerFeature("secure_booking");
+    // Mashinaga qarab narx (shisha almashtirish) — Worker 2.2.0+
+    if (payload && payload.car_id != null) await ensureWorkerFeature("booking_car_price");
+    // Rul/o'rindiq tanlovi va zalog cheki — Worker 2.3.0+
+    if (payload && payload.deposit_receipt) await ensureWorkerFeature("booking_deposit");
+    if (payload && payload.options) await ensureWorkerFeature("service_options");
+    var attempt = attemptFor(BOOKING_ATTEMPT_STORE, "bk_", payload);
+    var body = Object.assign({}, payload || {}, { client_key: attempt.key });
+    var result = await callWorker("/booking", body);
+    clearAttempt(BOOKING_ATTEMPT_STORE); // FAQAT tasdiqlangan javobdan keyin
+    return result;
+  }
+
+  /** Bi-LED buyurtmasi — narx va nomlar Worker'da katalogdan olinadi. */
+  async function createBiledOrder(payload) {
+    await ensureWorkerFeature("secure_biled_order");
+    var attempt = attemptFor(BILED_ATTEMPT_STORE, "bl_", payload);
+    var body = Object.assign({}, payload || {}, { client_key: attempt.key });
+    var result = await callWorker("/biled-order", body);
+    clearAttempt(BILED_ATTEMPT_STORE); // FAQAT tasdiqlangan javobdan keyin
+    return result;
+  }
+
+  /** Bi-LED Studio buyurtmasi (3D konfigurator). Yo'l o'sha `/biled-order`,
+   *  lekin tanlov `studio` obyektida keladi va narxni Worker
+   *  `catalog/configurator` + mashina narxidan qayta hisoblaydi.
+   *  Eski Worker bu shaklni bilmaydi — avval feature tekshiriladi. */
+  async function createStudioOrder(payload) {
+    await ensureWorkerFeature("biled_studio");
+    var attempt = attemptFor(BILED_ATTEMPT_STORE, "bl_", payload);
+    var body = Object.assign({}, payload || {}, { client_key: attempt.key });
+    var result = await callWorker("/biled-order", body);
+    clearAttempt(BILED_ATTEMPT_STORE);
+    return result;
+  }
+
+  /* ==================================================================
+     WORKER — Render o'chganda buyurtma va profil
+
+     Cloudflare Worker uxlamaydi va bepul. U service-account tokeni
+     bilan Firebase'ga yozadi, shuning uchun brauzerga RTDB huquqi
+     berish KERAK EMAS (Avto_A1 da beriladi va natijada mijoz soxta
+     summa yozib qo'ya oladi).
+
+     Barcha chaqiruvlar `initData` bilan ketadi — Worker imzoni HMAC
+     bilan tekshiradi. Xatolar YASHIRILMAYDI, chaqiruvchiga qaytariladi.
+     ================================================================== */
+
+  function workerReady() {
+    return !!WORKER;
+  }
+
+  /** Worker'ning `/health` javobi — versiya va qo'llaydigan amallar ro'yxati.
+   *
+   *  NEGA KERAK: Cloudflare GitHub'dan O'ZI yangilanmaydi — kod qo'lda
+   *  qo'yiladi. Shu sababli repoda yangi endpoint bo'lsa-da, Cloudflare'da
+   *  eski nusxa turishi mumkin. O'sha holatda `/admin/catalog` 404 qaytaradi
+   *  va foydalanuvchi «Bunday manzil yo'q» degan tushunarsiz xatoni ko'radi.
+   *
+   *  Bu funksiya `features` ro'yxatini beradi, shunda panel muammoni O'ZI
+   *  aniqlab, «Worker eski — yangilash kerak» deb aniq aytadi.
+   *
+   *  `initData` KERAK EMAS — `/health` maxfiy ma'lumot bermaydi.
+   */
+  async function workerHealth() {
+    if (!WORKER) return null;
+    try {
+      var res = await fetch(WORKER + "/health", { cache: "no-store" });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /** Worker berilgan amalni qo'llaydimi. Aniqlab bo'lmasa `null`. */
+  async function workerSupports(feature) {
+    var h = await workerHealth();
+    if (!h || !Array.isArray(h.features)) return null;
+    return { ok: h.features.indexOf(feature) !== -1, version: h.version || "?" };
+  }
+
+  /** Yangi Worker route'iga murojaatdan OLDIN e'lon qilingan feature flag'ni
+   *  tekshiradi (item 7). WORKER_URL yo'q yoki Worker eski (feature yo'q)
+   *  bo'lsa — endpoint 404 bilan tushunarsiz yiqilishidan OLDIN aniq xabar
+   *  beramiz. Health'ni aniqlab bo'lmasa (tarmoq uzilishi) BLOKLAMAYMIZ:
+   *  callWorker haqiqiy tarmoq xatosini qaytaradi. */
+  async function ensureWorkerFeature(feature) {
+    if (!WORKER) {
+      throw { code: "no_worker", message: "WORKER_URL sozlanmagan — bu amal Worker'ni talab qiladi" };
+    }
+    var sup = await workerSupports(feature);
+    if (sup && sup.ok === false) {
+      throw {
+        code: "worker_outdated",
+        message: "Worker eski (" + sup.version + ") — bu amal uchun yangilash kerak. Cloudflare'da Worker'ni yangilang.",
+      };
+    }
+  }
+
+  function initData() {
+    try {
+      return (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  async function callWorker(path, payload) {
+    if (!WORKER) throw { code: "no_worker", message: "WORKER_URL sozlanmagan" };
+    var data = initData();
+    if (!data) throw { code: "no_init_data", message: "Telegram imzosi yo'q" };
+
+    /* Vaqt chegarasi: tarmoq «osilib» qolsa tugma abadiy «Yuborilmoqda…»
+       bo'lib turmasin. Buyurtma idempotent — qayta urinish xavfsiz. */
+    var ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 25000) : 0;
+    var res;
+    try {
+      res = await fetch(WORKER + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.assign({ initData: data }, payload || {})),
+        signal: ctrl ? ctrl.signal : undefined,
+      });
+    } catch (_) {
+      throw { code: "network", message: "Internetga ulanmadi" };
+    } finally {
+      clearTimeout(timer);
+    }
+
+    var body = null;
+    try {
+      body = await res.json();
+    } catch (_) {}
+
+    if (!res.ok || !body || body.ok !== true) {
+      /* To'liq strukturaviy xato tanasini SAQLAYMIZ. Booking UI slot_taken'dan
+         keyin `err.slots` ni, status oqimi `err.allowed` ni, buyurtma oqimi
+         `err.problems` ni o'qiydi — ularni yutib yubormaymiz. */
+      throw {
+        code: (body && body.error) || "http_" + res.status,
+        message: (body && (body.message || body.error)) || "Xatolik",
+        problems: body && body.problems,
+        slots: body && body.slots,
+        allowed: body && body.allowed,
+        status: res.status,
+        body: body || null,
+      };
+    }
+    return body;
+  }
+
+  /** Mini App ichidan VIDEO (yoki rasm) yuklaydi.
+   *
+   *  NEGA WORKER ORQALI
+   *  `ZimmerUpload` (ImgBB) faqat RASM qabul qiladi, Render'dagi yuklash
+   *  esa server uxlaganda ishlamaydi. Brauzer Telegram'ga to'g'ridan
+   *  murojaat qila olmaydi — bot tokeni kerak va uni brauzerga berish
+   *  mumkin emas. Worker faylni bot orqali adminning o'z chatiga yuborib,
+   *  muddatsiz `file_id` ni qaytaradi.
+   *
+   *  `XMLHttpRequest` ishlatiladi (fetch emas): faqat u yuklash
+   *  foizini beradi — katta video yuklanayotganda admin qotib qolgan deb
+   *  o'ylamasligi kerak. */
+  function adminUpload(file, kind, onProgress) {
+    return new Promise(function (resolve, reject) {
+      if (!WORKER) return reject({ code: "no_worker", message: "WORKER_URL sozlanmagan" });
+      var data = initData();
+      if (!data) return reject({ code: "no_init_data", message: "Telegram imzosi yo'q" });
+      if (!file) return reject({ code: "no_file", message: "Fayl tanlanmagan" });
+
+      var form = new FormData();
+      form.append("initData", data);
+      form.append("kind", kind === "photo" ? "photo" : "video");
+      form.append("file", file, file.name || "upload");
+
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", WORKER + "/admin/upload");
+      xhr.timeout = 180000; // 3 daqiqa — mobil internetda katta video sekin ketadi
+
+      if (xhr.upload && typeof onProgress === "function") {
+        xhr.upload.onprogress = function (e) {
+          if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+        };
+      }
+      xhr.onload = function () {
+        var body = null;
+        try {
+          body = JSON.parse(xhr.responseText);
+        } catch (_) {}
+        if (xhr.status >= 200 && xhr.status < 300 && body && body.ok === true) return resolve(body);
+        reject({
+          code: (body && body.error) || "http_" + xhr.status,
+          message: (body && (body.message || body.error)) || "Yuklanmadi",
+        });
+      };
+      xhr.onerror = function () {
+        reject({ code: "network", message: "Internetga ulanmadi" });
+      };
+      xhr.ontimeout = function () {
+        reject({ code: "timeout", message: "Yuklash juda uzoq davom etdi — kaltaroq video tanlang" });
+      };
+      xhr.send(form);
+    });
+  }
+
+  /** Story'ga javob yuboradi (Instagram'dagi "Reply to story" kabi).
+   *
+   *  Worker imzoni tekshirib, adminning Telegram'iga QAYSI bo'lim va
+   *  QAYSI story ekanini yozib yuboradi, hamda `story_replies` tuguniga
+   *  saqlaydi (admin paneli shu yerdan o'qiydi).
+   *
+   *  Brauzerdan to'g'ridan yuborib bo'lmaydi: bot tokeni Worker'da va
+   *  mijozning kim ekani faqat server tomonda ishonchli aniqlanadi. */
+  function storyReply(payload) {
+    return callWorker("/story-reply", payload);
+  }
+
+  /** Mijoz profili + buyurtma tarixi (`/api/me` va `/api/orders` zaxirasi). */
+  function me() {
+    return callWorker("/me", {});
+  }
+
+  /** Profilni saqlash — telefon, ism, mashina. */
+  function saveProfile(fields) {
+    return callWorker("/profile", fields || {});
+  }
+
+  /** Buyurtma yaratish. Summa Worker tomonida KATALOGDAN hisoblanadi.
+   *  `client_key` — idempotent kalit: ikki marta bosilsa bitta buyurtma. */
+  function createOrder(order) {
+    return callWorker("/order", order);
+  }
+
+  /* ==================================================================
+     ADMIN — Render'siz katalog boshqaruvi
+
+     Worker har chaqiruvda imzoni tekshirib, uid ni ADMIN_IDS bilan
+     solishtiradi. Ya'ni bu funksiyalarni oddiy mijoz chaqirsa 403
+     oladi — himoya brauzerda emas, Worker tomonida.
+
+     Yangi tovar `pending_products` ga tushadi (katalogga EMAS): bot
+     katalogni to'liq qayta yozadi, shu sababli to'g'ridan yozilgan
+     tovar keyingi sinxronda o'chib ketardi.
+     ================================================================== */
+
+  /** Ombor ko'rinishi: katalog + kutilayotgan tuzatishlar + qoralamalar. */
+  function adminCatalog() {
+    return callWorker("/admin/catalog", {});
+  }
+
+  /** Yangi tovar qo'shish. `client_key` — ikki marta bosilsa bitta yozuv. */
+  function adminAddProduct(product) {
+    return callWorker("/admin/product", product || {});
+  }
+
+  /** Mavjud tovarning narx / qoldiq / ko'rinishini o'zgartirish. */
+  function adminEdit(fields) {
+    return callWorker("/admin/edit", fields || {});
+  }
+
+  /** Do'kon buyurtmalari — Worker `pending_orders` VA `orders` ni birlashtirib
+   *  beradi (faqat tasdiqlangan admin). Batafsil: cloudflare-worker.js. */
+  function adminOrders() {
+    return callWorker("/admin/orders", {});
+  }
+
+  /** Mijoz profillari (`users`) — yopiq tugun, Worker service-account bilan
+   *  o'qiydi (faqat tasdiqlangan admin). `{ ok, users: {uid:{profile}} }`
+   *  qaytaradi. Batafsil: cloudflare-worker.js `handleAdminUsers`. */
+  function adminUsers() {
+    return callWorker("/admin/users", {});
+  }
+
+  /** Mijozlar oynasi (Avto_A1 modeli) — faqat tasdiqlangan admin.
+   *  Bloklash `blocked_users/{uid}`, qo'lda VIP `crm_vip/{uid}`, xabar —
+   *  bot orqali mijozning chatiga. */
+  function adminBlock(uid, block, name, phone) {
+    return callWorker("/admin/block", { uid: String(uid), block: !!block, name: name || "", phone: phone || "" });
+  }
+  function adminVip(uid, vip) {
+    return callWorker("/admin/vip", { uid: String(uid), vip: !!vip });
+  }
+  function adminMessage(uid, text) {
+    return callWorker("/admin/message", { uid: String(uid), text: String(text || "") });
+  }
+
+  /* ==================================================================
+     MENING BUYURTMALARIM (Worker qabul qilganlari)
+
+     MANBA — WORKER `/me`, to'g'ridan Firebase EMAS.
+
+     NEGA O'ZGARDI. Ilgari bu funksiya `pending_orders` tugunini
+     `orderBy="uid"` bilan so'rardi. Lekin Realtime Database'da so'rov
+     uchun BUTUN tugunni o'qish huquqi kerak — ya'ni «faqat o'zimning
+     buyurtmalarim» degan cheklov qoidalar bilan qo'yilmaydi. Natijada
+     `pending_orders` hammaga ochiq turishi kerak edi va u yerda har bir
+     mijozning ISMI, TELEFONI va MANZILI bor.
+
+     Worker esa initData imzosini tekshiradi va xizmat kaliti bilan FAQAT
+     shu mijozning buyurtmalarini qaytaradi (`cloudflare-worker.js` ->
+     `handleMe`). Ya'ni funksiya bir xil ishlaydi, lekin baza yopiq qoladi.
+
+     Bu KERAK, chunki bot Worker buyurtmasini SQLite'ga faqat ishga
+     tushganda (yoki 2 daqiqalik tekshiruvda) ko'chiradi. Ya'ni mijoz
+     buyurtma bergandan keyin uni `/api/orders` da darhol topmaydi va
+     «buyurtmam yo'qoldi» deb o'ylaydi.
+     ================================================================== */
+  async function myOrders(uid) {
+    var id = Number(uid) || 0;
+    if (!id || !WORKER) return [];
+    var all = await myAll();
+    return all ? all.orders : [];
+  }
+
+  /** Worker `/me` — BITTA so'rovda hammasi: profil, do'kon buyurtmalari,
+   *  Bi-LED, navbatlar, KAFOLATLAR va to'lov sozlamalari (2.0.0+).
+   *  Eski Worker'da `biled`/`bookings`/`warranties` bo'lmaydi — `null`. */
+  async function myAll() {
+    if (!WORKER) return null;
+    var res;
+    try {
+      res = await callWorker("/me", {});
+    } catch (err) {
+      console.warn("[offline] /me o'qilmadi:", err);
+      if (err && err.code === "blocked") throw err;
+      return null;
+    }
+    return {
+      raw: res || null,
+      me: (res && res.me) || null,
+      orders: mapOrders(res && res.orders),
+      biled: res && Array.isArray(res.biled) ? res.biled : null,
+      bookings: res && Array.isArray(res.bookings) ? res.bookings : null,
+      warranties: res && Array.isArray(res.warranties) ? res.warranties : null,
+      config: (res && res.config) || null,
+      now: Number(res && res.now) || 0,
+    };
+  }
+
+  function mapOrders(raw) {
+    var list = Array.isArray(raw) ? raw : [];
+    return list
+      .map(function (r) {
+        var total = Number(r.total) || 0;
+        return {
+          id: r.code || "", // profil kartochkasida ko'rinadigan belgi
+          key: r.key || "",
+          code: r.code || "",
+          sqlite_id: r.sqlite_id || null,
+          total: total,
+          total_label: r.total_label || priceLabel(total),
+          status: r.status || "new",
+          status_at: Number(r.status_at) || 0,
+          warranty_from: Number(r.warranty_from) || 0,
+          items: itemRows(r.items),
+          address: r.address || "",
+          delivery_info: r.delivery_info || "",
+          payment_method: r.payment_method || "",
+          createdAt: Number(r.createdAt) || 0,
+          _worker: true,
+        };
+      })
+      .sort(function (a, b) {
+        return b.createdAt - a.createdAt;
+      });
+  }
+
+  /** Mijoz O'Z navbatini bekor qiladi (Worker 2.0.0+, Render'siz). */
+  function cancelBooking(key) {
+    return callWorker("/booking-cancel", { key: String(key || "") });
+  }
+
+  /** `items` ro'yxat yoki lug'at bo'lishi mumkin — ikkisini ham tekislaydi.
+   *  RTDB siyrak massivni LUG'AT qilib saqlaydi, shuning uchun ilgari
+   *  `Array.isArray()` tekshiruvi tovarlarni jimgina yo'q qilardi. */
+  function itemRows(raw) {
+    if (!raw || typeof raw !== "object") return [];
+    var list = Array.isArray(raw) ? raw : Object.keys(raw).map(function (k) { return raw[k]; });
+    return list
+      .filter(function (i) { return i && typeof i === "object"; })
+      .map(function (i) {
+        return {
+          product_id: i.product_id == null ? null : i.product_id,
+          name: String(i.name || ""),
+          price: Number(i.price) || 0,
+          qty: Number(i.qty) || 1,
+          // Razmerli tovar: Worker buyurtma qatoriga `size` yozadi (v1.6.0+)
+          size: i.size ? String(i.size) : null,
+          // Sotilgan paytdagi kafolat sharti va turkum (Worker 2.0.0+)
+          warranty: i.warranty ? String(i.warranty) : null,
+          cat: i.cat ? String(i.cat) : null,
+        };
+      });
+  }
+
+  /** Buyurtma holatini o'zgartirish — mijozga xabar Worker yuboradi.
+   *  `kind`   : "order" | "biled" | "booking"
+   *  `source` : do'kon buyurtmasi uchun "pending" yoki "db". */
+  function adminOrderStatus(key, status, source, kind, extra) {
+    return callWorker(
+      "/admin/order-status",
+      Object.assign(
+        {
+          key: key,
+          status: status,
+          source: source || "pending",
+          kind: kind || "order",
+        },
+        extra || {}
+      )
+    );
+  }
+
+  /** 🎓 Shogird AI (Worker 2.4.0+). `history` — oxirgi xabarlar. */
+  async function shogird(text, history) {
+    await ensureWorkerFeature("shogird_ai");
+    return callWorker("/shogird", { text: text, history: history || [] });
+  }
+
+  /** To'lov kartasi (admin): o'qish va o'zgartirish — Worker 2.4.0+. */
+  async function adminPayment(set) {
+    await ensureWorkerFeature("admin_payment");
+    var body = set ? { action: "set", card_number: set.card_number, card_holder: set.card_holder } : { action: "get" };
+    var res = await callWorker("/admin/payment", body);
+    return (res && res.payment) || null;
+  }
+
+  /** 🧹 Botni tozalash (admin, alohida parol) — Worker 2.5.0+.
+   *  mode: "full" — buyurtma/navbat/statistika/xabarlar; "incomplete" — faqat
+   *  ismi yoki raqami yo'q foydalanuvchilar. Parol serverda tekshiriladi. */
+  async function adminReset(mode, password) {
+    await ensureWorkerFeature("admin_reset");
+    return callWorker("/admin/reset", {
+      mode: mode === "incomplete" ? "incomplete" : "full",
+      password: String(password || ""),
+      confirm: "TOZALASH",
+    });
+  }
+
+  /** Barcha kafolatlar (admin) — Worker 2.3.0+. */
+  async function adminWarranties() {
+    await ensureWorkerFeature("admin_warranties");
+    var res = await callWorker("/admin/warranties", {});
+    return { list: (res && res.warranties) || [], now: Number(res && res.now) || Date.now() };
+  }
+
+  /** Bajarilgan ish kafolatini o'zgartirish (admin). */
+  function adminWarrantySet(kind, key, warranty) {
+    return callWorker("/admin/warranty-set", { kind: kind, key: key, warranty: warranty });
+  }
+
+  /** «Tez kunda» xizmat: ishga tushganda xabar berish. */
+  async function serviceNotify(serviceId) {
+    await ensureWorkerFeature("service_notify");
+    return callWorker("/service-notify", { service_id: serviceId });
+  }
+
+  /* ==================================================================
+     BI-LED BUYURTMALARI VA NAVBATLAR (admin panel uchun)
+
+     Bu ikki tugun qoidalarda o'qishga OCHIQ (`database.rules.json`:
+     `biled_orders` va `bookings` -> `.read: true`). Shu sababli ularni
+     Worker'siz, to'g'ridan o'qiymiz — Worker o'chgan bo'lsa ham admin
+     ro'yxatni ko'radi.
+
+     Holatni o'zgartirish esa Worker orqali bo'ladi: mijozga Telegram
+     xabarini yuborish uchun bot tokeni kerak, u faqat Worker'da.
+     ================================================================== */
+  /* Bi-LED buyurtmalari va navbatlar — WORKER orqali.
+     `biled_orders` va `bookings` tugunlarida mijozning ismi va telefoni bor,
+     shuning uchun ular qoidalarda o'qish uchun YOPIQ. Worker initData
+     imzosini tekshiradi va faqat adminga beradi (`handleAdminOrders`). */
+  async function adminBiledOrders() {
+    return await workerAdminList("biled");
+  }
+
+  async function adminBookings() {
+    return await workerAdminList("booking");
+  }
+
+  async function workerAdminList(kind) {
+    if (!WORKER) {
+      console.warn(
+        "[offline] " + kind + " ro'yxati uchun WORKER_URL kerak " +
+          "(baza tugunlari maxfiylik uchun yopiq)"
+      );
+      return [];
+    }
+    try {
+      var res = await callWorker("/admin/orders", { kind: kind });
+      var list = (res && res.orders) || [];
+      return Array.isArray(list) ? list : [];
+    } catch (err) {
+      console.warn("[offline] " + kind + " ro'yxati o'qilmadi:", err);
+      return [];
+    }
+  }
+
+  /* `readOrderNode()` OLIB TASHLANDI.
+     U buyurtma tugunlarini (`orders`, `biled_orders`, `bookings`) brauzerdan
+     to'g'ridan o'qirdi — ya'ni o'sha tugunlar qoidalarda hammaga ochiq
+     turishi kerak edi va ularda mijozning ismi bilan telefoni bor edi.
+     O'rniga `workerAdminList()` ishlatiladi: Worker imzoni tekshiradi va
+     ro'yxatni faqat adminga beradi. */
+
+  window.ZimmerOffline = {
+    available: available,
+    home: home,
+    cars: cars,
+    tuning: tuning,
+    // Bi-LED Studio (3D konfigurator)
+    studio: studio,
+    buildStudio: buildStudio,
+    studioCarPrice: studioCarPrice,
+    STUDIO_DEFAULTS: STUDIO_DEFAULTS,
+    services: services,
+    // Navbat va Bi-LED — imzolangan Worker endpointlari orqali
+    bookingDates: bookingDates,
+    bookingSlots: bookingSlots,
+    createBooking: createBooking,
+    createBiledOrder: createBiledOrder,
+    createStudioOrder: createStudioOrder,
+    wheelMaterials: wheelMaterials,
+    seatDesigns: seatDesigns,
+    bookingSettings: bookingSettings,
+    serviceNotify: serviceNotify,
+    adminWarranties: adminWarranties,
+    shogird: shogird,
+    adminPayment: adminPayment,
+    adminReset: adminReset,
+    adminWarrantySet: adminWarrantySet,
+    freeSlots: freeSlots,
+    dateLabel: dateLabel,
+    shortDateLabel: shortDateLabel,
+    availableDates: availableDates,
+    // Worker
+    workerReady: workerReady,
+    workerHealth: workerHealth,
+    workerSupports: workerSupports,
+    me: me,
+    saveProfile: saveProfile,
+    createOrder: createOrder,
+    storyReply: storyReply,
+    adminUpload: adminUpload,
+    /** Stories bo'limlari (admin paneli shu ro'yxatdan tanlaydi).
+     *  `utils/stories.py: STORY_CATEGORIES` bilan bir xil bo'lishi SHART. */
+    storyRings: function () {
+      return STORY_RINGS.map(function (d) {
+        return { key: d[0], title: d[1], emoji: d[2], color_from: d[3], color_to: d[4] };
+      });
+    },
+    // Worker — admin
+    adminCatalog: adminCatalog,
+    adminAddProduct: adminAddProduct,
+    adminEdit: adminEdit,
+    adminOrders: adminOrders,
+    adminUsers: adminUsers,
+    adminBlock: adminBlock,
+    adminVip: adminVip,
+    adminMessage: adminMessage,
+    adminBiledOrders: adminBiledOrders,
+    adminBookings: adminBookings,
+    myOrders: myOrders,
+    myAll: myAll,
+    mapOrders: mapOrders,
+    cancelBooking: cancelBooking,
+    itemRows: itemRows,
+    adminOrderStatus: adminOrderStatus,
+    mediaUrl: mediaUrl,
+    save: save,
+    cached: cached,
+    clearCache: clearCache,
+    isLive: isLive,
+    hasCache: hasCache,
+    hasAnyData: hasAnyData,
+    snapshot: snapshot,
+    saveCars: saveCars,
+    clearCarsCache: clearCarsCache,
+  };
+})();
