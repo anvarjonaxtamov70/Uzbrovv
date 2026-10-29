@@ -1,5 +1,7 @@
 """Loyiha sozlamalari (.env faylidan o'qiladi)."""
 
+import hashlib
+import hmac
 import logging
 import os
 import re
@@ -205,6 +207,10 @@ class Config:
     # eskilari o'chiriladi (Firebase cheksiz o'smasin). 0 — hech qachon
     # o'chirilmasin.
     backup_keep_days: int
+    # «Botni tozalash» tugmasi paroli. Ochiq matn env'da (`RESET_PASSWORD`)
+    # berilishi mumkin; berilmasa koddagi PBKDF2 xeshi bilan solishtiriladi
+    # (repo ochiq — parolning o'zi kodda saqlanmaydi).
+    reset_password: str
 
     @property
     def has_mini_app(self) -> bool:
@@ -350,7 +356,26 @@ config = Config(
     # Kunlik zaxira nusxalari necha kun saqlanadi (eskilari o'chiriladi).
     # 0 — hech qachon o'chirilmaydi. Standart: 14 kun.
     backup_keep_days=_int_env("BACKUP_KEEP_DAYS", 14),
+    reset_password=os.getenv("RESET_PASSWORD", ""),
 )
+
+
+# «Botni tozalash» parolining standart xeshi (PBKDF2-SHA256).
+_RESET_SALT = b"uzbrovv-reset-v1"
+_RESET_ITERATIONS = 200_000
+_RESET_HASH = "5be12399ca9acd1ee667c90ae2c5af163d93144cb19cdcf9455eb0d176c1c845"
+
+
+def check_reset_password(candidate: str | None) -> bool:
+    """«Botni tozalash» parolini tekshiradi (vaqtga chidamli solishtirish)."""
+    if not candidate:
+        return False
+    if config.reset_password:
+        return hmac.compare_digest(candidate.encode(), config.reset_password.encode())
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", candidate.encode(), _RESET_SALT, _RESET_ITERATIONS
+    ).hex()
+    return hmac.compare_digest(digest, _RESET_HASH)
 
 
 # =====================================================================

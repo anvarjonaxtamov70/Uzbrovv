@@ -1237,7 +1237,10 @@ async def biled_stats(since: str | None = None) -> dict[str, Any]:
 async def get_stats(today: str) -> dict[str, int]:
     db = get_db()
     queries = {
-        "users": ("SELECT COUNT(*) FROM users", ()),
+        "users": (
+            "SELECT COUNT(*) FROM users WHERE phone IS NOT NULL AND TRIM(phone) <> ''",
+            (),
+        ),
         "bookings_total": ("SELECT COUNT(*) FROM bookings", ()),
         "bookings_today": ("SELECT COUNT(*) FROM bookings WHERE date = ?", (today,)),
         "bookings_new": ("SELECT COUNT(*) FROM bookings WHERE status = 'new'", ()),
@@ -2934,3 +2937,95 @@ async def outbox_meta_set(key: str, value: str) -> None:
         (key, value),
     )
     await db.commit()
+
+
+# ============================================================ botni tozalash
+#
+# «Botni yangidek qilish»: tovarlar, narxlar, katalog, kontent, adminlar va
+# ro'yxatdan o'tgan mijozlar QOLADI. Buyurtmalar, navbatlar, Bi-LED
+# buyurtmalari, savat, saqlanganlar va ularga bog'liq Firebase navbati
+# (outbox) o'chiriladi. Statistika shu jadvallardan hisoblangani uchun u
+# ham nolga tushadi.
+
+# Mijoz ismi o'rniga qo'yiladigan "to'ldiruvchi" nomlar — ism yo'q deb hisoblanadi.
+PLACEHOLDER_NAMES = ("mijoz", "nomsiz mijoz")
+
+_RESET_TABLES = ("order_items", "orders", "biled_orders", "bookings", "cart_items", "favorites")
+
+# Outbox'da qolib ketsa, o'chirilgan ma'lumotni bulutga QAYTA yozadigan manzillar.
+_RESET_OUTBOX_PATTERNS = (
+    "orders",
+    "orders/%",
+    "biled_orders",
+    "biled_orders/%",
+    "bookings",
+    "bookings/%",
+    "pending_orders",
+    "pending_orders/%",
+    "slots",
+    "slots/%",
+    "users/%/favorites",
+)
+
+
+async def reset_activity() -> dict[str, int]:
+    """Buyurtma/navbat/statistika ma'lumotlarini o'chiradi. Qaytaradi: jadval -> soni."""
+    counts: dict[str, int] = {}
+    async with _write_transaction() as db:
+        for table in _RESET_TABLES:
+            async with db.execute(f"SELECT COUNT(*) FROM {table}") as cur:
+                counts[table] = int((await cur.fetchone())[0])
+            await db.execute(f"DELETE FROM {table}")
+        where = " OR ".join("path LIKE ?" for _ in _RESET_OUTBOX_PATTERNS)
+        await db.execute(f"DELETE FROM firebase_outbox WHERE {where}", _RESET_OUTBOX_PATTERNS)
+    return counts
+
+
+def _incomplete_user_sql() -> str:
+    placeholders = ", ".join("?" for _ in PLACEHOLDER_NAMES)
+    return (
+        "(phone IS NULL OR TRIM(phone) = ''"
+        " OR full_name IS NULL OR TRIM(full_name) = ''"
+        f" OR LOWER(TRIM(full_name)) IN ({placeholders}))"
+    )
+
+
+async def purge_incomplete_users(keep_ids: Sequence[int] = ()) -> int:
+    """Telefoni yoki ismi yo'q mijozlarni o'chiradi. Qaytaradi: o'chirilganlar soni.
+
+    Tegilmaydi: adminlar (`keep_ids`), bloklangan foydalanuvchilar (blok
+    belgisi yo'qolmasin) va buyurtma/navbati bor foydalanuvchilar (tarix
+    buzilmasin). Bunday foydalanuvchi keyin yozsa, `touch_user` uni yana
+    qo'shadi, lekin telefon kiritmaguncha bulutga yozilmaydi va
+    mijozlar ro'yxatida ko'rinmaydi.
+    """
+    keep = [int(uid) for uid in keep_ids]
+    keep_sql = f" AND user_id NOT IN ({', '.join('?' for _ in keep)})" if keep else ""
+    select = (
+        "SELECT user_id FROM users WHERE "
+        + _incomplete_user_sql()
+        + " AND is_blocked = 0"
+        + keep_sql
+        + " AND user_id NOT IN (SELECT user_id FROM orders)"
+        " AND user_id NOT IN (SELECT user_id FROM bookings)"
+        " AND user_id NOT IN (SELECT user_id FROM biled_orders)"
+    )
+    params = (*PLACEHOLDER_NAMES, *keep)
+    async with _write_transaction() as db:
+        async with db.execute(select, params) as cur:
+            ids = [int(row["user_id"]) for row in await cur.fetchall()]
+        for start in range(0, len(ids), 500):
+            chunk = ids[start : start + 500]
+            marks = ", ".join("?" for _ in chunk)
+            await db.execute(f"DELETE FROM cart_items WHERE user_id IN ({marks})", chunk)
+            await db.execute(f"DELETE FROM favorites WHERE user_id IN ({marks})", chunk)
+            await db.execute(f"DELETE FROM users WHERE user_id IN ({marks})", chunk)
+    return len(ids)
+
+
+def is_complete_profile(name: str | None, phone: str | None) -> bool:
+    """Mijozda ham ism, ham telefon bormi (to'ldiruvchi nom hisobga olinmaydi)."""
+    clean_name = (name or "").strip()
+    return bool(
+        (phone or "").strip() and clean_name and clean_name.lower() not in PLACEHOLDER_NAMES
+    )

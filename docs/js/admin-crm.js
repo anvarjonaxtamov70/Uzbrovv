@@ -376,9 +376,14 @@ window.ZimmerCRM = (function () {
       }
     });
 
-    const arr = Object.keys(map).map((k) => {
+    /* Faqat ismi VA telefoni bor mijozlar ko'rsatiladi. «Mijoz» /
+       «Nomsiz mijoz» — bot qo'yadigan to'ldiruvchi nom, ism hisoblanmaydi. */
+    const PLACEHOLDER = { "mijoz": 1, "nomsiz mijoz": 1 };
+    const complete = (c) =>
+      !!c.phone && !!c.name && !PLACEHOLDER[c.name.toLowerCase()];
+
+    const arr = Object.keys(map).filter((k) => complete(map[k])).map((k) => {
       const c = map[k];
-      if (!c.name) c.name = "Nomsiz mijoz";
       c.manual = !!vipMap[c.uid];
       c.blocked = !!blockedMap[c.uid];
       c.autoVip = c.done >= VIP_ORDERS || c.spent >= VIP_SPENT;
