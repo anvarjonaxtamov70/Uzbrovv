@@ -1,6 +1,6 @@
 {
  "car_id": null,
- "_generated_at": "2026-10-29T04:11:49Z",
+ "_generated_at": "2026-10-29T06:16:40Z",
  "banners": [
   {
    "id": 900001,
@@ -489,7 +489,7 @@
      "price": 430000,
      "old_price": 500000,
      "badge": "R50",
-     "stock": 10,
+     "stock": 9,
      "car_id": null,
      "product_type": "oddiy",
      "sizes": [],
