@@ -585,6 +585,7 @@ window.ZimmerShop = (function () {
           ["🛡", r.warranty && r.status === "done" ? "Kafolat: " + r.warranty : ""],
         ],
         receipt: r.deposit_receipt || "",
+        deposit_amount: Number(r.deposit_amount) || 0,
         warranty: r.warranty || "",
       }));
     }
@@ -1139,7 +1140,8 @@ window.ZimmerShop = (function () {
       (goods ? '<div class="ord-goods">' + goods + "</div>" : "") +
       (meta ? '<div class="ord-meta">' + meta + "</div>" : "") +
       (o.receipt && /^https:\/\//i.test(o.receipt)
-        ? '<button type="button" class="ord-receipt" data-receipt="' + esc(o.receipt) + '">' +
+        ? (RC_ORDERS.set(String(o.key), o), "") +
+          '<button type="button" class="ord-receipt" data-receipt="' + esc(o.receipt) + '" data-rkey="' + esc(o.key) + '">' +
           '<span class="ord-rc-img"><img src="' + esc(o.receipt) + '" alt="Zalog cheki" loading="lazy" decoding="async"></span>' +
           '<span class="ord-rc-tx"><b>Zalog cheki</b><small>Bosing — to\'liq ekranda ochiladi</small></span>' +
           '<span class="ord-rc-go" aria-hidden="true">›</span></button>'
@@ -1155,12 +1157,26 @@ window.ZimmerShop = (function () {
   /* Zalog cheki — ilovaning o'z galereyasida (kattalashtirish, surish,
      pastga surib yopish). Havola orqali brauzerga CHIQMAYDI. Hodisa
      hujjat darajasida bir marta tutiladi — kartochkalar qayta chizilsa ham ishlaydi. */
+  const RC_ORDERS = new Map(); // kartochkada cheki bor navbatlar (kalit -> yozuv)
   document.addEventListener("click", (e) => {
     const b = e.target.closest && e.target.closest("[data-receipt]");
     if (!b) return;
     e.preventDefault();
     const url = b.dataset.receipt;
+    const o = RC_ORDERS.get(String(b.dataset.rkey || "")) || null;
     haptic("light");
+    // iOS 26 «Rasmlar» uslubidagi chek ko'ruvchi: rasm doim TO'LIQ ko'rinadi
+    if (window.ZimmerReceipt) {
+      const sub = o
+        ? [o.name, o.deposit_amount ? money(o.deposit_amount) : "", o.service_name].filter(Boolean).join(" · ")
+        : "";
+      const actions = [];
+      if (o && o.status === "new" && o.kind === "booking") {
+        actions.push({ label: "✕ Bekor", danger: true, run: () => setOrderStatus(o, "cancelled") });
+        actions.push({ label: "✅ Tasdiqlash", primary: true, run: () => setOrderStatus(o, "confirmed") });
+      }
+      return window.ZimmerReceipt.open({ url: url, title: "Zalog cheki", sub: sub, actions: actions });
+    }
     if (app().openViewer) return app().openViewer([url], 0);
     window.open(url, "_blank");
   });

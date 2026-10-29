@@ -967,6 +967,7 @@
     /* Ustma-ust qatlamlar: avval eng ustidagisi yopiladi. Aks holda
        Telegram'ning «orqaga» tugmasi rasm ko'ruvchi ochiq turganda ham
        sahifani almashtirib yuborardi. */
+    if (window.ZimmerReceipt && window.ZimmerReceipt.isOpen()) return window.ZimmerReceipt.close();
     if (viewerOpen()) return closeViewer();
     if (storyOpen()) return closeStory();
     if (currentProduct) return closeProductModal();
@@ -2801,7 +2802,7 @@
      yuklanadi: takror chaqiruv o'sha Promise'ni qaytaradi.
      ==================================================================== */
 
-  const SCRIPT_VERSION = "83"; // index.html dagi `?v=` bilan bir xil bo'lsin
+  const SCRIPT_VERSION = "84"; // index.html dagi `?v=` bilan bir xil bo'lsin
   const _scripts = new Map();
 
   function loadScript(src) {
@@ -2836,6 +2837,8 @@
       await loadScript("js/admin-shop.js");
       await loadScript("js/admin-crm.js");
       await loadScript("js/admin-stories.js");
+      // Zalog cheki ko'ruvchi (faqat adminga kerak)
+      await loadScript("js/receipt.js");
     })().catch((err) => {
       _adminBundle = null; // qayta urinishga imkon beramiz
       throw err;
@@ -9640,11 +9643,15 @@
         BK.receiptPct = 0;
         paintBooking();
         try {
-          const res = await ZimmerUpload.uploadFile(f, (pct) => {
-            BK.receiptPct = Math.round(pct);
-            const b = document.querySelector("#dp-up b");
-            if (b && BK.receiptBusy) b.textContent = "Yuklanmoqda… " + BK.receiptPct + "%";
-          });
+          const res = await ZimmerUpload.uploadFile(
+            f,
+            (pct) => {
+              BK.receiptPct = Math.round(pct);
+              const b = document.querySelector("#dp-up b");
+              if (b && BK.receiptBusy) b.textContent = "Yuklanmoqda… " + BK.receiptPct + "%";
+            },
+            "receipt" // skrinshot: baland va mayda yozuvli — yuqori sifat
+          );
           BK.receipt = res.url;
           haptic("ok");
         } catch (err) {

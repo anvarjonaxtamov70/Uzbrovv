@@ -62,6 +62,9 @@ window.ZimmerUpload = (function () {
     banner: { maxSide: 1920, quality: 0.9 },
     /** Story — to'liq ekranli vertikal media. */
     story: { maxSide: 1600, quality: 0.86 },
+    /** Zalog cheki — ko'pincha baland SKRINSHOT, mayda yozuv o'qilishi kerak.
+     *  1600 da 1170×2532 skrinshot 739 px kenglikka tushib, raqamlar xiralashardi. */
+    receipt: { maxSide: 2560, quality: 0.9 },
   };
 
   /** Berilgan sozlamani tekshirib, chegaralar ichiga qamab qaytaradi. */
