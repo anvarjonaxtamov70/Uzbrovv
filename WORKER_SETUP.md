@@ -1,5 +1,18 @@
 # Cloudflare Worker — bot va do'kon (bepul, uxlamaydi)
 
+> ## 🎓 2.4.0: Shogird AI va to'lov kartasi
+>
+> **AI (Shogird)** endi Worker orqali ishlaydi (Render shart emas). Worker →
+> Settings → Variables and Secrets → *Secret* qo'shing:
+> `GROQ_API_KEY` — https://console.groq.com/keys dan olinadi (bepul).
+> Ixtiyoriy: `GROQ_TEXT_MODEL` (standart `openai/gpt-oss-120b`) va
+> `GROQ_FALLBACK_MODEL` (standart `openai/gpt-oss-20b`).
+> Tekshirish: `/health` da `"version": "2.4.0"` va `"ai": true`.
+>
+> **To'lov kartasi** endi Mini App → Boshqaruv → «To'lov kartasi» da
+> o'zgartiriladi (yopiq `private/payment` tugunida saqlanadi). U yerda karta
+> kiritilgan bo'lsa `PAY_CARD_NUMBER`/`PAY_CARD_HOLDER` secret'lari e'tiborsiz.
+
 > ## 🧵 2.3.0: Chexollar, zalog, kafolat, «Tez kunda»
 >
 > Rul chexol materiallari, o'rindiq dizaynlari, navbat zalogi (chek bilan),

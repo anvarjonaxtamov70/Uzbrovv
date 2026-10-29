@@ -73,7 +73,7 @@ const DEFAULT_MAX_AGE = 86400; // 24 soat
 // berishga to'g'ri keladi).
 // Har deploy'da ko'tariladi — `/health` dagi bu raqam Cloudflare'da
 // YANGI nusxa turganini tasdiqlashning eng oson yo'li.
-const VERSION = "2.3.0";
+const VERSION = "2.4.0";
 const FEATURES = [
   // 2.0.0 — BOT Worker'da: webhook, menyu, holat tugmalari, mijoz↔admin
   // yozishmasi; /me — Bi-LED, navbat va KAFOLAT; mijoz navbatni bekor qiladi;
@@ -146,6 +146,10 @@ const FEATURES = [
   "service_warranty",
   "admin_warranties",
   "service_notify",
+  // 2.4.0 — Shogird AI Worker'da (Groq, GROQ_API_KEY) va to'lov kartasi
+  // admin paneldan (`private/payment`).
+  "shogird_ai",
+  "admin_payment",
 ];
 
 /** Mini App'dan yuklanadigan fayl chegarasi.
@@ -215,6 +219,7 @@ export default {
       if (path === "/booking-cancel") return await handleBookingCancel(request, env);
       if (path === "/biled-order") return await handleBiledOrder(request, env);
       if (path === "/service-notify") return await handleServiceNotify(request, env);
+      if (path === "/shogird") return await handleShogird(request, env);
       // Story'ga javob: adminga QAYSI story'dan kelganini bildirib yuboradi
       if (path === "/story-reply") return await handleStoryReply(request, env);
 
@@ -234,6 +239,7 @@ export default {
       if (path === "/admin/order-status") return await handleAdminOrderStatus(request, env);
       if (path === "/admin/warranties") return await handleAdminWarranties(request, env);
       if (path === "/admin/warranty-set") return await handleAdminWarrantySet(request, env);
+      if (path === "/admin/payment") return await handleAdminPayment(request, env);
 
       return json({ ok: false, error: "Bunday manzil yo'q" }, 404);
     } catch (error) {
@@ -264,6 +270,7 @@ async function handleHealth(env, deep, origin) {
       firebase_key: !!(env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY),
       db_url: !!c.dbUrl,
       admins: c.admins.length,
+      ai: !!env.GROQ_API_KEY,
     },
     time: new Date().toISOString(),
   };
@@ -420,7 +427,7 @@ async function handleMe(request, env) {
   return json({
     // Render `/api/config` o'rnini bosadi: to'lov rekvizitlari FAQAT imzosi
     // tasdiqlangan mijozga beriladi (ochiq `config.js` ga yozilmaydi).
-    config: workerConfig(env),
+    config: await workerConfig(env, c, token),
     biled: data.biled,
     bookings: data.bookings,
     warranties,
@@ -1186,6 +1193,372 @@ async function handleBiledOrder(request, env) {
   // Admin darhol biladi (holat tugmalari bilan), mijoz esa tasdiq oladi
   await notifyBiled(env, c, token, key, record, verified.user).catch(() => {});
   return json({ ok: true, order: { id: key, code: record.code, total, total_label: fmtPrice(total) } }, 201);
+}
+
+// =====================================================================
+//  2.4.0 — 🎓 SHOGIRD (AI) WORKER'DA va TO'LOV KARTASI ADMIN PANELDAN
+//
+//  NEGA. Shogird AI ilgari faqat Render (`/api/shogird`, Python) orqali
+//  ishlardi. Render o'chirilgach Mini App har doim «Asosiy ma'lumotlar
+//  rejimi» da qolib, AI umuman ishlamas edi. Endi Worker Groq'ga o'zi
+//  murojaat qiladi:
+//    • kalit — Worker secret `GROQ_API_KEY` (brauzerga hech qachon chiqmaydi);
+//    • model — `GROQ_TEXT_MODEL` (standart openai/gpt-oss-120b), o'chirilsa
+//      zaxira `GROQ_FALLBACK_MODEL` (standart openai/gpt-oss-20b);
+//    • bilim — JONLI Firebase: xizmatlar, tovarlar (qoldig'i bilan), Bi-LED
+//      konfigurator narxlari, rul materiallari, o'rindiq dizaynlari, zalog;
+//    • suhbat tarixi Mini App'dan keladi (Worker xotira saqlamaydi);
+//    • kartochkalar MODEL tanlamaydi — javob va savol katalog bilan
+//      solishtiriladi, ya'ni yo'q tovar/narx hech qachon chiqmaydi.
+//
+//  Karta: `private/payment` (YOPIQ tugun) = {card_number, card_holder}.
+//  Admin «Boshqaruv → To'lov kartasi» da o'zgartiradi. Bo'sh bo'lsa
+//  eski `PAY_CARD_NUMBER`/`PAY_CARD_HOLDER` secret'lari ishlaydi.
+// =====================================================================
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const SG_MAX_Q = 700;
+const SG_HISTORY = 8;
+const SG_COOLDOWN_MS = 1500;
+const _sgLast = new Map();
+
+/** Kartaning amaldagi rekvizitlari: admin yozgani, bo'lmasa secret. */
+async function paymentConfig(env, c, token) {
+  let row = null;
+  if (c && c.dbUrl) {
+    try {
+      const t = token || (await accessToken(env));
+      row = await rtdbGet(c.dbUrl, `${c.root}/private/payment`, t);
+    } catch (_) {
+      row = null;
+    }
+  }
+  const r = row && typeof row === "object" ? row : {};
+  return {
+    card_number: clean(r.card_number, 40) || clean(env.PAY_CARD_NUMBER, 40),
+    card_holder: clean(r.card_holder, 80) || clean(env.PAY_CARD_HOLDER, 80),
+    source: r.card_number ? "admin" : env.PAY_CARD_NUMBER ? "secret" : "none",
+    updatedAt: Number(r.updatedAt) || null,
+  };
+}
+
+/** POST /admin/payment — {action:"get"} yoki {action:"set", card_number, card_holder} */
+async function handleAdminPayment(request, env) {
+  const gate = await requireAdmin(request, env);
+  if (gate.error) return gate.error;
+  const { c, body, uid } = gate;
+  const token = await accessToken(env);
+  if (clean(body.action, 8) === "set") {
+    const digits = String(body.card_number || "").replace(/\D/g, "");
+    if (digits.length !== 16) {
+      return json({ ok: false, error: "validation", message: "Karta raqami 16 ta raqam bo'lishi kerak" }, 400);
+    }
+    const holder = clean(body.card_holder, 80).replace(/\s+/g, " ");
+    if (holder.length < 3) {
+      return json({ ok: false, error: "validation", message: "Karta egasining ism-familiyasini kiriting" }, 400);
+    }
+    const value = {
+      card_number: digits.replace(/(\d{4})(?=\d)/g, "$1 "),
+      card_holder: holder,
+      updatedAt: Date.now(),
+      updated_by: Number(uid),
+    };
+    await ensureOk(await rtdbPut(c.dbUrl, `${c.root}/private/payment`, value, token), "Karta saqlanmadi");
+    return json({ ok: true, payment: { ...value, source: "admin" } });
+  }
+  return json({ ok: true, payment: await paymentConfig(env, c, token) });
+}
+
+/* ------------------------------------------------------- shogird: bilim */
+function sgNorm(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[’ʻ`ʼ]/g, "'")
+    .replace(/\s+/g, " ");
+}
+
+const SG_STOP = new Set([
+  "fara", "faralar", "uchun", "yangi", "original", "komplekt", "dona", "juft", "zimmer",
+  "uzbrovv", "avto", "mashina", "narxi", "narx", "xizmat", "xizmati", "ornatish",
+  "o'rnatish", "almashtirish", "tovar", "mahsulot", "yil", "oy", "kun", "soat", "bir", "ham", "eng", "har",
+]);
+
+const SG_THEME_HINTS = {
+  polish: ["xira", "sarg", "sarig", "polirov", "yaltir", "xiralash", "tusi ketgan", "oqarib"],
+  clean: ["bug'", "bug ", "namlik", "suv kir", "terlagan", "ichi kir", "chang", "tozala", "germet"],
+  glass: ["shisha", "yoril", "darz", "singan", "sinib"],
+  biled: ["linza", "bi-led", "biled", "bi led", "yorug", "nur ", "xenon", "ksenon", "ko'rmaydi"],
+  config: ["konfigurator", "r50", "r80", "r90", "ochki", "angel", "bmw"],
+  wheel: ["rul", "shturval"],
+  seat: ["o'rindiq", "orindiq", "sidenya", "chexol", "chehol"],
+  aqua: ["akva", "aqua", "naqsh", "karbon naqsh"],
+  tint: ["tanirov", "tonirov", "oyna qorayt"],
+  armor: ["broni", "bronli", "plyonka", "kuzov himoya"],
+};
+
+function sgTokens(name) {
+  return (sgNorm(name).match(/[a-z0-9']+/g) || []).filter(
+    (w) => !SG_STOP.has(w) && (w.length >= 3 || /\d/.test(w))
+  );
+}
+
+function sgHits(tokens, low) {
+  let n = 0;
+  for (const t of tokens) {
+    if (t.length >= 4 ? low.includes(t) : new RegExp("(^|[^a-z0-9])" + t.replace(/[^a-z0-9']/g, "") + "($|[^a-z0-9])").test(low)) n++;
+  }
+  return n;
+}
+
+/** Jonli katalog (60 s kesh) — model uchun matn va kartochka uchun ro'yxat. */
+async function sgKnowledge(env, c, token) {
+  const [services, products, categories, cfgNode, wheels, seats, settings] = await Promise.all([
+    cachedNode(c, token, "catalog/services"),
+    cachedNode(c, token, "catalog/products"),
+    cachedNode(c, token, "catalog/categories"),
+    cachedNode(c, token, "catalog/configurator"),
+    cachedNode(c, token, "catalog/wheel_materials"),
+    cachedNode(c, token, "catalog/seat_designs"),
+    cachedNode(c, token, "catalog/settings"),
+  ]);
+  const svc = [];
+  for (const [k, r] of entriesOf(services)) {
+    if (!catalogRowAvailable(r)) continue;
+    const theme = serviceTheme(r);
+    const soon = serviceSoon(r);
+    svc.push({
+      id: r.id != null ? r.id : k,
+      name: clean(r.name, 120),
+      theme,
+      soon,
+      price: Number(r.price) || 0,
+      price_label: soon ? null : fmtPrice(Number(r.price) || 0),
+      warranty: clean(r.warranty, 40),
+      duration: Number(r.duration_min) || 0,
+      description: clean(r.description, 200),
+      sort: Number(r.sort) || 0,
+    });
+  }
+  svc.sort((a, b) => a.sort - b.sort);
+  const prods = [];
+  for (const [k, p] of entriesOf(products)) {
+    if (!catalogRowAvailable(p)) continue;
+    prods.push({
+      id: p.id != null ? p.id : k,
+      name: clean(p.name, 120),
+      code: clean(p.code, 40),
+      price: Number(p.price) || 0,
+      price_label: fmtPrice(Number(p.price) || 0),
+      stock: Number(p.stock) || 0,
+      warranty: clean(p.warranty, 40),
+      cat: clean(productCategoryName(p, categories), 60),
+    });
+  }
+  const studio = studioCatalog(cfgNode);
+  const pick = (g) =>
+    Object.values(studio)
+      .filter((r) => r.group === g && catalogRowAvailable(r))
+      .sort((a, b) => (a.sort || 0) - (b.sort || 0));
+  const wm = entriesOf(wheels).map(([, r]) => r).filter(catalogRowAvailable);
+  const sd = entriesOf(seats).map(([, r]) => r).filter(catalogRowAvailable);
+  const bk = (settings && settings.booking) || {};
+  const deposit = bk.deposit_on === 0 || bk.deposit_on === false ? 0 : Number(bk.deposit) >= 0 && bk.deposit != null ? Number(bk.deposit) : 100000;
+
+  const lines = [];
+  lines.push("XIZMATLAR (🛠 Xizmatlar bo'limi):");
+  svc.forEach((s) =>
+    lines.push(
+      `- ${s.name}: ${s.soon ? "TEZ KUNDA (hali ochilmagan, narx va navbat yo'q)" : s.price_label}` +
+        (s.warranty && !s.soon ? `, kafolat ${s.warranty}` : "") +
+        (s.duration && !s.soon ? `, ~${s.duration} daqiqa` : "") +
+        (s.theme === "glass" ? " (narx mashina rusumiga qarab farq qiladi, 2 fara)" : "") +
+        (s.theme === "wheel" ? " (narx tanlangan materialga qarab)" : "") +
+        (s.theme === "seat" ? " (narx tanlangan dizaynga qarab)" : "")
+    )
+  );
+  lines.push("");
+  lines.push("BI-LED KONFIGURATOR (🛠 Xizmatlar → Bi-LED konfigurator, 3D ko'rinishda; narxlar 2 fara, o'rnatish bilan):");
+  pick("lens").forEach((r) => lines.push(`- Linza ${r.name}: ${fmtPrice(r.price)}` + [r.size, r.kelvin, r.lumen].filter(Boolean).map((x) => ", " + x).join("") + (r.warranty ? `, kafolat ${r.warranty}` : "")));
+  pick("inner").forEach((r) => lines.push(`- Fara ichi ${r.name}: ${r.price ? fmtPrice(r.price) : "bepul"}`));
+  pick("ring").forEach((r) => lines.push(`- Ochki ${r.name}: ${fmtPrice(r.price)} (xrom yoki qora${r.code === "glow" ? ", rangini mijoz tanlaydi" : ""})`));
+  if (catalogRowAvailable(studio.glass)) lines.push(`- Yangi fara shishasi: odatda ${fmtPrice(studio.glass.price)}, mashinaga qarab farq qiladi`);
+  if (catalogRowAvailable(studio.housing)) lines.push(`- Yangi korpus: odatda ${fmtPrice(studio.housing.price)}, mashinaga qarab`);
+  if (wm.length) {
+    lines.push("");
+    lines.push("RUL CHEXOL MATERIALLARI:");
+    wm.slice(0, 12).forEach((m) =>
+      lines.push(`- ${clean(m.name, 60)}: ${fmtPrice(Number(m.price) || 0)}; ranglar: ${rowsList(m.colors).map((x) => clean(x.name, 30)).join(", ") || "—"}`)
+    );
+  }
+  if (sd.length) {
+    lines.push("");
+    lines.push("O'RINDIQ CHEXOL DIZAYNLARI:");
+    sd.slice(0, 12).forEach((d) => lines.push(`- ${clean(d.name, 60)}: ${fmtPrice(Number(d.price) || 0)}`));
+  }
+  lines.push("");
+  lines.push(
+    deposit > 0
+      ? `NAVBAT: kun → vaqt → ${fmtPrice(deposit)} zalog (kartaga o'tkazib, chek rasmini yuklaydi); usta chekni ko'rib tasdiqlaydi.`
+      : "NAVBAT: kun → vaqt → band qilish (zalog hozir yo'q)."
+  );
+  const inStock = prods.filter((p) => p.stock > 0).slice(0, 60);
+  if (inStock.length) {
+    lines.push("");
+    lines.push("DO'KONDAGI TOVARLAR (🏠 Asosiy bo'limi, mavjudlari):");
+    inStock.forEach((p) => lines.push(`- ${p.name}${p.code ? " [" + p.code + "]" : ""}: ${p.price_label}${p.cat ? " (" + p.cat + ")" : ""}${p.warranty ? ", kafolat " + p.warranty : ""}`));
+  }
+  return { text: lines.join("\n"), services: svc, products: prods, deposit };
+}
+
+function sgMatch(know, question, answer) {
+  const low = sgNorm(question + " \n " + answer);
+  const qlow = sgNorm(question);
+  const themes = new Set(Object.keys(SG_THEME_HINTS).filter((t) => SG_THEME_HINTS[t].some((h) => qlow.includes(h))));
+  const services = know.services
+    .map((s) => {
+      let score = 10 * sgHits(sgTokens(s.name), low);
+      if (s.theme && themes.has(s.theme)) score += 8;
+      if (s.soon) score -= 4;
+      return { score, s };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 2)
+    .map(({ s }) => ({ id: s.id, name: s.name, price_label: s.price_label, warranty: s.warranty, theme: s.theme || null, coming_soon: s.soon }));
+  const products = know.products
+    .map((p) => {
+      let score = 10 * sgHits(sgTokens(p.name), low);
+      if (p.code && p.code.length >= 3 && low.includes(sgNorm(p.code))) score += 20;
+      if (p.stock <= 0) score -= 5;
+      return { score, p };
+    })
+    .filter((x) => x.score >= 10)
+    .sort((a, b) => b.score - a.score || a.p.price - b.p.price)
+    .slice(0, 3)
+    .map(({ p }) => ({ id: p.id, name: p.name, price_label: p.price_label, stock: p.stock }));
+  return { services, products, themes };
+}
+
+const SG_SUGGEST = {
+  polish: ["Polirovka qancha vaqt oladi?", "Polirovkaga kafolat bormi?"],
+  clean: ["Fara ichiga nega bug' yig'iladi?", "Navbat qanday olinadi?"],
+  glass: ["Shisha narxi mashinaga qarabmi?", "Navbat qanday olinadi?"],
+  biled: ["R50, R80 va R90 farqi nima?", "BMW halqa qancha turadi?"],
+  config: ["R50, R80 va R90 farqi nima?", "Qora fara ichi qancha?"],
+  wheel: ["Rul chexol materiallari qanday?", "Navbat qanday olinadi?"],
+  seat: ["O'rindiq dizaynlari qanday?", "Chexol qancha vaqtda tayyor?"],
+};
+
+function sgClean(text) {
+  return String(text || "")
+    .replace(/<\/?[a-z][^>]*>/gi, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 1800);
+}
+
+function sgPrompt(env, know, user, isAdmin) {
+  const b = botConf(env);
+  const name = clean(user.first_name, 40);
+  const contact = [b.phone ? "telefon " + b.phone : "", b.telegram ? "Telegram @" + b.telegram : ""].filter(Boolean).join(", ") || "ustaxona bilan";
+  return `Sen — «Uzbrovv» avtochiroq ustaxonasining SHOGIRDIsan (Mini App ichidagi yordamchi). ${b.city || "Samarqand"}dagi ustaxona. Fara bilan ishlaymiz: Bi-LED linza o'rnatish, fara polirovkasi, ichini tozalash, shishasini va korpusini almashtirish, rul va o'rindiq chexol tikish. Do'konda LED lampalar, DRL va fara materiallari bor.
+
+${isAdmin ? "Bu odam — do'kon ADMINI, unga «admin» deb murojaat qil." : name ? `Mijozning ismi ${name}. «Siz» deb, iliq murojaat qil.` : "Mijozga «siz» deb, iliq murojaat qil."}
+
+MIJOZ ILOVA ICHIDA. Havola yoki «ilovani oching» dema — ilova ichida yo'naltir:
+🏠 Asosiy (tovarlar), 🛠 Xizmatlar (narx, kafolat, «Navbat olish», Bi-LED konfigurator), 🧺 Savatcha (Rasmiylashtirish), ❤ Saqlangan, 👤 Kabinet (buyurtmalar, navbatlar, 🛡 kafolat).
+Sen o'zing buyurtma bermaysan, navbat olmaysan — mijozga qaysi tugmani bosishni ko'rsatasan.
+
+TIL: o'zbek, LOTIN yozuvi. Mijoz ruscha yoki inglizcha yozsa — o'sha tilda. Qisqa va jonli: 3-6 qator. Markdown va HTML ISHLATMA (yulduzcha, #, <b> yo'q), oddiy matn va zarur bo'lsa «•» bilan punktlar.
+
+MUAMMO: «faram xira», «ichida bug'», «yorug'lik kam» kabi gaplarda sabab va yechimni qisqa tushuntir, mos xizmat va narxni ayt. Kerak bo'lsa bitta aniqlashtiruvchi savol ber (mashina modeli).
+
+QAT'IY:
+• Narx, kafolat, mavjudlikni FAQAT pastdagi JONLI MA'LUMOTdan ol. U yerda yo'q narsa narxini o'ylab topma — «ustadan aniqlab beraman» de va aloqani ber: ${contact}.
+• «TEZ KUNDA» xizmatga narx aytma, navbat taklif qilma — «ochilganda xabar bering» tugmasini bosishni ayt.
+• Chegirma, bepul xizmat yoki aniq tayyor bo'lish muddatini VA'DA QILMA.
+• Mavzudan tashqari savolga (siyosat, tibbiyot va h.k.) muloyim rad et va avtochiroq mavzusiga qayt.
+
+JONLI MA'LUMOT:
+${know.text}`;
+}
+
+/** POST /shogird — {initData, text, history:[{role:"me"|"sg", text}]} */
+async function handleShogird(request, env) {
+  const c = cfg(env);
+  const body = await readJson(request);
+  const verified = await verifyInitData(body.initData, env);
+  if (!verified.ok) return json({ ok: false, error: verified.error, blocked: !!verified.blocked }, verified.status || 401);
+  if (!env.GROQ_API_KEY) return json({ ok: false, reason: "no_key", error: "no_key", message: "AI kaliti sozlanmagan" }, 200);
+  const question = clean(body.text, SG_MAX_Q);
+  if (question.length < 2) return json({ ok: false, error: "empty", message: "Savolni yozing" }, 400);
+  const uid = String(verified.user.id);
+  const now = Date.now();
+  if (now - (_sgLast.get(uid) || 0) < SG_COOLDOWN_MS) {
+    return json({ ok: false, error: "too_fast", message: "Bir lahza kuting…" }, 429);
+  }
+  _sgLast.set(uid, now);
+  if (_sgLast.size > 2000) _sgLast.clear();
+
+  const token = await accessToken(env);
+  const know = await sgKnowledge(env, c, token);
+  const history = (Array.isArray(body.history) ? body.history : [])
+    .slice(-SG_HISTORY)
+    .map((m) => ({ role: m && m.role === "me" ? "user" : "assistant", content: clean(m && m.text, 1200) }))
+    .filter((m) => m.content);
+  const messages = [
+    { role: "system", content: sgPrompt(env, know, verified.user, c.admins.includes(uid)) },
+    ...history,
+    { role: "user", content: question },
+  ];
+  const primary = clean(env.GROQ_TEXT_MODEL, 80) || "openai/gpt-oss-120b";
+  const fallback = clean(env.GROQ_FALLBACK_MODEL, 80) || "openai/gpt-oss-20b";
+  let answer = "";
+  let lastErr = "";
+  for (const model of primary === fallback ? [primary] : [primary, fallback]) {
+    const payload = { model, messages, temperature: 0.5, max_completion_tokens: 1400 };
+    if (/gpt-oss/i.test(model)) {
+      payload.reasoning_effort = "low";
+      payload.include_reasoning = false;
+    }
+    let res;
+    try {
+      res = await fetch(GROQ_URL, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${env.GROQ_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      lastErr = "network";
+      continue;
+    }
+    if (res.status === 401 || res.status === 403) {
+      console.error("[shogird] GROQ_API_KEY rad etildi:", res.status);
+      return json({ ok: false, reason: "bad_key", error: "bad_key", message: "AI kaliti noto'g'ri" }, 200);
+    }
+    if (res.status === 429) {
+      lastErr = "rate";
+      continue;
+    }
+    if (!res.ok) {
+      lastErr = "http_" + res.status;
+      console.error("[shogird] Groq", model, res.status, (await res.text().catch(() => "")).slice(0, 300));
+      continue;
+    }
+    const data = await res.json().catch(() => null);
+    const msg = data && data.choices && data.choices[0] && data.choices[0].message;
+    answer = sgClean(msg && msg.content);
+    if (answer) break;
+    lastErr = "empty";
+  }
+  if (!answer) {
+    return json({ ok: false, reason: lastErr === "rate" ? "busy" : "ai_down", error: lastErr || "ai_down", message: "AI hozir javob bera olmadi" }, 200);
+  }
+  const match = sgMatch(know, question, answer);
+  const theme = [...match.themes][0];
+  const suggests = (SG_SUGGEST[theme] || ["Xizmat narxlari qanday?", "Navbat qanday olinadi?", "Kafolat qancha?"]).slice(0, 3);
+  return json({ ok: true, text: answer, services: match.services, products: match.products, suggests, ai: true });
 }
 
 // =====================================================================
@@ -3678,16 +4051,19 @@ function appUrl(env, page) {
 }
 
 /** Render `/api/config` o'rnini bosuvchi sozlamalar (faqat imzolangan /me da). */
-function workerConfig(env) {
+async function workerConfig(env, c, token) {
   const b = botConf(env);
+  // 2.4.0 — karta admin paneldan (`private/payment`), bo'lmasa secret
+  const pay = await paymentConfig(env, c, token);
   return {
     currency: clean(env.CURRENCY, 12) || "so'm",
-    pay_card_number: clean(env.PAY_CARD_NUMBER, 40),
-    pay_card_holder: clean(env.PAY_CARD_HOLDER, 80),
+    pay_card_number: pay.card_number,
+    pay_card_holder: pay.card_holder,
     pay_admin_username: clean(env.PAY_ADMIN_USERNAME || env.SHOP_TELEGRAM, 40).replace(/^@+/, "") || b.telegram,
     shop_phone: b.phone,
     delivery_city: b.city,
-    ai_enabled: false,
+    // 2.4.0 — Shogird AI Worker'da: kalit bo'lsa yoqiq
+    ai_enabled: !!env.GROQ_API_KEY,
   };
 }
 

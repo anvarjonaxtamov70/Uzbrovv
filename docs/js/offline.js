@@ -1766,6 +1766,20 @@
     );
   }
 
+  /** 🎓 Shogird AI (Worker 2.4.0+). `history` — oxirgi xabarlar. */
+  async function shogird(text, history) {
+    await ensureWorkerFeature("shogird_ai");
+    return callWorker("/shogird", { text: text, history: history || [] });
+  }
+
+  /** To'lov kartasi (admin): o'qish va o'zgartirish — Worker 2.4.0+. */
+  async function adminPayment(set) {
+    await ensureWorkerFeature("admin_payment");
+    var body = set ? { action: "set", card_number: set.card_number, card_holder: set.card_holder } : { action: "get" };
+    var res = await callWorker("/admin/payment", body);
+    return (res && res.payment) || null;
+  }
+
   /** Barcha kafolatlar (admin) — Worker 2.3.0+. */
   async function adminWarranties() {
     await ensureWorkerFeature("admin_warranties");
@@ -1854,6 +1868,8 @@
     bookingSettings: bookingSettings,
     serviceNotify: serviceNotify,
     adminWarranties: adminWarranties,
+    shogird: shogird,
+    adminPayment: adminPayment,
     adminWarrantySet: adminWarrantySet,
     freeSlots: freeSlots,
     dateLabel: dateLabel,
