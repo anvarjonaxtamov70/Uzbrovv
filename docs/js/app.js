@@ -2801,7 +2801,7 @@
      yuklanadi: takror chaqiruv o'sha Promise'ni qaytaradi.
      ==================================================================== */
 
-  const SCRIPT_VERSION = "82"; // index.html dagi `?v=` bilan bir xil bo'lsin
+  const SCRIPT_VERSION = "83"; // index.html dagi `?v=` bilan bir xil bo'lsin
   const _scripts = new Map();
 
   function loadScript(src) {
@@ -11396,6 +11396,8 @@
      ikki joyda takrorlanmasin. */
   window.ZIMMER_APP = {
     api: api,
+    // To'liq ekran rasm ko'ruvchi (galereya) — admin zalog chekini shu bilan ochadi
+    openViewer: openViewer,
     toast: toast,
     haptic: haptic,
     esc: esc,

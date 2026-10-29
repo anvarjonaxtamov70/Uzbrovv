@@ -73,7 +73,7 @@ const DEFAULT_MAX_AGE = 86400; // 24 soat
 // berishga to'g'ri keladi).
 // Har deploy'da ko'tariladi — `/health` dagi bu raqam Cloudflare'da
 // YANGI nusxa turganini tasdiqlashning eng oson yo'li.
-const VERSION = "2.4.0";
+const VERSION = "2.4.1";
 const FEATURES = [
   // 2.0.0 — BOT Worker'da: webhook, menyu, holat tugmalari, mijoz↔admin
   // yozishmasi; /me — Bi-LED, navbat va KAFOLAT; mijoz navbatni bekor qiladi;
@@ -3358,6 +3358,25 @@ function userLink(uid, name, username) {
 }
 
 /** Adminlarga bir xil xabar va holat tugmalari. Kamida bittasiga yetsa — true. */
+/** Rasm + izoh (caption) barcha adminlarga. Izoh 1024 belgigacha. */
+async function sendPhotoToAdmins(env, c, photoUrl, caption, keyboard) {
+  if (!env.BOT_TOKEN || !c.admins.length || !CATALOG_URL_RE.test(String(photoUrl || ""))) return false;
+  let cap = String(caption || "");
+  if (cap.length > 1024) cap = cap.replace(/\n\n<i>↩️[^]*$/, "").slice(0, 1024);
+  let anyOk = false;
+  for (const chatId of c.admins) {
+    const res = await tgCall(env, "sendPhoto", {
+      chat_id: chatId,
+      photo: photoUrl,
+      caption: cap,
+      parse_mode: "HTML",
+      ...(keyboard ? { reply_markup: keyboard } : {}),
+    }).catch(() => null);
+    anyOk = anyOk || !!(res && res.ok);
+  }
+  return anyOk;
+}
+
 async function sendToAdmins(env, c, text, keyboard) {
   if (!env.BOT_TOKEN || !c.admins.length) return false;
   let anyOk = false;
@@ -3462,12 +3481,22 @@ async function notifyBooking(env, c, token, key, rec, user) {
     `📞 ${escHtml(rec.phone || "")}\n` +
     (rec.price ? `💰 ${fmtPrice(rec.price)}\n` : "") +
     (rec.deposit_amount
-      ? `💳 Zalog: <b>${fmtPrice(rec.deposit_amount)}</b> — <a href="${escHtml(rec.deposit_receipt || "")}">chekni ko'rish</a>\n` +
+      ? `💳 Zalog: <b>${fmtPrice(rec.deposit_amount)}</b> — chek rasmda 👆\n` +
         "<i>Chekni tekshirib «✅ Tasdiqlash» ni bosing.</i>\n"
       : "") +
     `👤 Mijoz ID: <code>${Number(rec.uid) || 0}</code>\n\n` +
     "<i>↩️ Mijozga yozish uchun shu xabarga «Reply» qiling.</i>";
-  const ok = await sendToAdmins(env, c, adminText, statusKeyboard("booking", key, "pending", "new"));
+  const kb = statusKeyboard("booking", key, "pending", "new");
+  /* 2.4.1 — zalog cheki RASM bo'lib keladi (Telegram'ning o'z galereyasida
+     ochiladi, havola emas). Rasm yuborilmasa — oddiy matn + havola. */
+  let ok = false;
+  if (rec.deposit_receipt) ok = await sendPhotoToAdmins(env, c, rec.deposit_receipt, adminText, kb);
+  if (!ok) {
+    const fallback = rec.deposit_receipt
+      ? adminText.replace("chek rasmda 👆", `<a href="${escHtml(rec.deposit_receipt)}">chekni ko'rish</a>`)
+      : adminText;
+    ok = await sendToAdmins(env, c, fallback, kb);
+  }
   if (ok) await rtdbPatch(c.dbUrl, `${c.root}/bookings/${key}`, { notified_admin: true }, token).catch(() => {});
   await sendMessage(
     env,
