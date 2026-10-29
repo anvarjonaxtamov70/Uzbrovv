@@ -173,6 +173,12 @@ async def remember(
     return row
 
 
+def clear_all_caches() -> None:
+    """Barcha keshlarni tozalaydi (botni tozalashdan keyin)."""
+    _pushed.clear()
+    _cloud_missing.clear()
+
+
 def forget_cache(user_id: int) -> None:
     """Profil o'zgargandan keyin keshni tozalaydi (keyingi push kafolatlanadi)."""
     _pushed.pop(user_id, None)

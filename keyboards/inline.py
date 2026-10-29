@@ -343,7 +343,8 @@ def admin_menu_kb() -> InlineKeyboardMarkup:
     kb.button(text="📢 Xabar yuborish", callback_data="adm:broadcast")
     kb.button(text="👤 Adminlar", callback_data="adm:admins")
     kb.button(text="🔧 Firebase", callback_data="adm:firebase")
-    kb.adjust(2, 2, 2, 2, 2, 2, 1)
+    kb.button(text="🧹 Botni tozalash", callback_data="adm:reset")
+    kb.adjust(2, 2, 2, 2, 2, 2, 2)
     return kb.as_markup()
 
 

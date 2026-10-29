@@ -16,3 +16,8 @@ class Checkout(StatesGroup):
 
 class Broadcast(StatesGroup):
     text = State()
+
+
+class ResetData(StatesGroup):
+    password = State()
+    confirm = State()

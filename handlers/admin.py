@@ -7,9 +7,11 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import VERSION, parse_ids
+from config import VERSION, check_reset_password, parse_ids
 from database import queries as q
+from handlers import ai_chat
 from keyboards.inline import (
     admin_back_kb,
     admin_biled_actions_kb,
@@ -23,7 +25,8 @@ from keyboards.inline import (
 from keyboards.reply import cancel_kb, main_menu
 from services import admins as admin_registry
 from services import firebase, orders, sync
-from states import Broadcast
+from services import reset as reset_service
+from states import Broadcast, ResetData
 from utils.commands import apply_admin_commands, reset_user_commands
 from utils.filters import IsAdmin
 from utils.helpers import (
@@ -79,7 +82,7 @@ async def admin_stats(callback: CallbackQuery) -> None:
     stats = await q.get_stats(today_iso())
     text = (
         "📊 <b>Statistika</b>\n\n"
-        f"👥 Foydalanuvchilar: <b>{stats['users']}</b>\n\n"
+        f"👥 Mijozlar (ro'yxatdan o'tgan): <b>{stats['users']}</b>\n\n"
         "🔥 <b>Bi-LED buyurtmalar</b>\n"
         f"   Jami: <b>{stats['biled_total']}</b> · Yangi: <b>{stats['biled_new']}</b>\n"
         f"   Summa: <b>{fmt_price(stats['biled_revenue'])}</b>\n\n"
@@ -516,6 +519,148 @@ async def broadcast_send(message: Message, state: FSMContext, bot: Bot) -> None:
 
     await status.edit_text(f"✅ Yuborildi: <b>{sent}</b>\n❌ Yuborilmadi: <b>{failed}</b>")
     await message.answer(ADMIN_TITLE, reply_markup=admin_menu_kb())
+
+
+# ================================================================ botni tozalash
+#
+# Tovarlar, narxlar va ro'yxatdan o'tgan mijozlar QOLADI. Buyurtmalar,
+# navbatlar, statistika, xabarlar, savat/saqlanganlar O'CHADI. Alohida
+# parol bilan himoyalangan (`config.check_reset_password`).
+
+RESET_MAX_ATTEMPTS = 3
+
+RESET_INFO = (
+    "🧹 <b>Botni tozalash</b>\n\n"
+    "<b>Saqlanadi:</b>\n"
+    "• tovarlar, narxlar, kategoriyalar, xizmatlar\n"
+    "• banner, story, aksiya, musiqa\n"
+    "• adminlar va bloklanganlar\n"
+    "• ismi va telefoni bor mijozlar (ro'yxatdan o'tgan holida)\n\n"
+    "<b>O'chiriladi:</b>\n"
+    "• barcha buyurtmalar, Bi-LED buyurtmalar, navbatlar\n"
+    "• statistika, VIP belgilar, story javob/ko'rish/reaksiyalari\n"
+    "• mijozlarning savati va «Saqlanganlar»i, AI suhbatlari\n"
+    "• ismi yoki telefoni yo'q mijozlar\n\n"
+    "⚠️ Tozalashdan oldin zaxira nusxa olinadi.\n\n"
+    "🔑 Davom etish uchun <b>tozalash parolini</b> yuboring:"
+)
+
+
+def _reset_confirm_kb():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🧹 Ha, hammasini tozalash", callback_data="adm:reset:yes")
+    kb.button(text="⬅ Yo'q, qaytish", callback_data="adm:reset:no")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+@router.callback_query(F.data == "adm:reset")
+async def reset_start(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(ResetData.password)
+    await state.update_data(attempts=0)
+    await callback.message.answer(RESET_INFO, reply_markup=cancel_kb())
+    await callback.answer()
+
+
+@router.message(ResetData.password)
+async def reset_password(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip()
+    if text == BTN_CANCEL:
+        await state.clear()
+        await message.answer("❌ Bekor qilindi.", reply_markup=main_menu(message.from_user.id))
+        return
+
+    # Parol chatda qolmasin
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    if not check_reset_password(text):
+        data = await state.get_data()
+        attempts = int(data.get("attempts", 0)) + 1
+        logger.warning(
+            "Tozalash paroli noto'g'ri (admin %s, %s-urinish)", message.from_user.id, attempts
+        )
+        if attempts >= RESET_MAX_ATTEMPTS:
+            await state.clear()
+            await message.answer(
+                "⛔ Parol noto'g'ri. Urinishlar tugadi — tozalash bekor qilindi.",
+                reply_markup=main_menu(message.from_user.id),
+            )
+            return
+        await state.update_data(attempts=attempts)
+        await message.answer(
+            f"❌ Parol noto'g'ri. Qolgan urinishlar: <b>{RESET_MAX_ATTEMPTS - attempts}</b>"
+        )
+        return
+
+    await state.set_state(ResetData.confirm)
+    await message.answer("✅ Parol to'g'ri.", reply_markup=main_menu(message.from_user.id))
+    await message.answer(
+        "⚠️ <b>Oxirgi tasdiq</b>\n\nBuyurtmalar, navbatlar, statistika va xabarlar "
+        "butunlay o'chiriladi. Bu amalni bot ichidan qaytarib bo'lmaydi.\n\nDavom etamizmi?",
+        reply_markup=_reset_confirm_kb(),
+    )
+
+
+@router.callback_query(F.data == "adm:reset:no")
+async def reset_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await edit_or_send(callback.message, ADMIN_TITLE, admin_menu_kb())
+    await callback.answer("Bekor qilindi")
+
+
+@router.callback_query(F.data == "adm:reset:yes")
+async def reset_run(callback: CallbackQuery, state: FSMContext) -> None:
+    if await state.get_state() != ResetData.confirm.state:
+        await callback.answer("Avval parolni kiriting", show_alert=True)
+        return
+    await state.clear()
+    await callback.answer()
+    await edit_or_send(callback.message, "⏳ Tozalanmoqda... Biroz kuting.", None)
+
+    try:
+        report = await reset_service.reset_bot()
+    except reset_service.ResetAborted as error:
+        await edit_or_send(
+            callback.message,
+            f"⛔ Tozalash boshlanmadi: {html_escape(str(error))}\n\nHech narsa o'chirilmadi.",
+            admin_back_kb(),
+        )
+        return
+    except Exception as error:
+        logger.exception("Botni tozalashda xato")
+        await edit_or_send(
+            callback.message,
+            f"❌ Tozalashda xato: {html_escape(str(error))}\n\n"
+            "Zaxira nusxa: <code>backups/before_reset</code>",
+            admin_back_kb(),
+        )
+        return
+
+    ai_chat._talks.clear()
+
+    local = report.local
+    lines = [
+        "✅ <b>Bot tozalandi</b>\n",
+        f"📦 Buyurtmalar: <b>{local.get('orders', 0)}</b>",
+        f"🔥 Bi-LED buyurtmalar: <b>{local.get('biled_orders', 0)}</b>",
+        f"🗓 Navbatlar: <b>{local.get('bookings', 0)}</b>",
+        f"🛒 Savatdagi tovarlar: <b>{local.get('cart_items', 0)}</b>",
+        f"⭐ Saqlanganlar: <b>{local.get('favorites', 0)}</b>",
+        f"👤 Ismi/telefoni yo'q mijozlar: <b>{report.users_removed_local}</b>"
+        f" (bulutda: {report.users_removed_cloud})",
+    ]
+    if report.cloud_failed:
+        lines.append(
+            "\n⚠️ Bulutda o'chirilmadi: " + html_escape(", ".join(report.cloud_failed))
+            + "\nQaytadan urinib ko'ring."
+        )
+    elif not report.cloud:
+        lines.append("\nℹ️ Firebase ulanmagan — faqat mahalliy baza tozalandi.")
+    await edit_or_send(callback.message, "\n".join(lines), admin_back_kb())
 
 
 # ==================================================================== adminlar

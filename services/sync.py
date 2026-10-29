@@ -20,7 +20,7 @@ import re
 import time
 from datetime import UTC, datetime
 
-from config import config, remove_runtime_admin, set_runtime_admins
+from config import all_admins, config, remove_runtime_admin, set_runtime_admins
 from database import db
 from database import queries as q
 from services import firebase
@@ -250,7 +250,14 @@ def _profile_payload(user_id: int, profile: dict) -> dict:
 
 
 async def push_user(user_id: int, profile: dict) -> None:
-    """Mijoz profilini Firebase'ga yozadi (Avto_A1 bilan bir xil ko'rinishda)."""
+    """Mijoz profilini Firebase'ga yozadi (Avto_A1 bilan bir xil ko'rinishda).
+
+    Ismi yoki telefoni yo'q (ro'yxatdan o'tmagan) foydalanuvchi bulutga
+    yozilmaydi — admin paneldagi mijozlar ro'yxatida faqat to'liq mijozlar
+    bo'lsin.
+    """
+    if not q.is_complete_profile(profile.get("full_name"), profile.get("phone")):
+        return
     await _write(f"users/{user_id}/profile", _profile_payload(user_id, profile))
 
 
@@ -290,6 +297,8 @@ async def push_all_users() -> int:
             if row is None:
                 continue
             profile = {key: row[key] for key in row.keys()}
+            if not q.is_complete_profile(profile.get("full_name"), profile.get("phone")):
+                continue
             payload[str(user_id)] = {"profile": _profile_payload(user_id, profile)}
         except Exception as error:
             logger.warning("Mijoz #%s tayyorlanmadi: %s", user_id, error)
@@ -389,6 +398,8 @@ async def restore_users() -> int:
 
         name = profile.get("name") or "Mijoz"
         phone = profile.get("phone")
+        if not q.is_complete_profile(name, phone):
+            continue  # ro'yxatdan o'tmagan — tiklanmaydi
         username = profile.get("username") or None
         if isinstance(username, str):
             username = username.lstrip("@") or None
@@ -410,6 +421,77 @@ async def restore_users() -> int:
     if restored:
         logger.info("Firebase'dan %s mijoz qaytarildi", restored)
     return restored
+
+
+async def purge_incomplete_cloud_users() -> int:
+    """Firebase'dagi ismi yoki telefoni yo'q mijoz profillarini o'chiradi.
+
+    Qaytaradi: o'chirilgan profillar soni (Firebase ulanmagan bo'lsa 0).
+    """
+    if not firebase.is_enabled():
+        return 0
+    node = await firebase.get("users")
+    if not isinstance(node, dict):
+        return 0
+
+    doomed: list[str] = []
+    for key, value in node.items():
+        if not isinstance(value, dict):
+            doomed.append(str(key))
+            continue
+        profile = value.get("profile") if isinstance(value.get("profile"), dict) else value
+        if not q.is_complete_profile(profile.get("name"), profile.get("phone")):
+            doomed.append(str(key))
+
+    removed = 0
+    for start in range(0, len(doomed), 200):
+        chunk = doomed[start : start + 200]
+        if await firebase.patch("users", {key: None for key in chunk}):
+            removed += len(chunk)
+    if removed:
+        logger.info("Firebase'dan %s ta to'liq bo'lmagan mijoz profili o'chirildi", removed)
+    return removed
+
+
+# Botni tozalashda bulutdan BUTUNLAY o'chiriladigan tugunlar. Katalog,
+# tovarlar, adminlar, mijoz profillari, bloklanganlar va to'lov
+# rekvizitlari bu ro'yxatda YO'Q — ular saqlanadi.
+RESET_CLOUD_NODES = (
+    "orders",
+    "biled_orders",
+    "bookings",
+    "pending_orders",
+    "slots",
+    "crm_vip",
+    "service_waitlist",
+    "story_replies",
+    "story_views",
+    "story_reactions",
+)
+
+
+async def reset_cloud_activity() -> dict[str, bool]:
+    """Bulutdagi buyurtma/statistika/xabar tugunlarini o'chiradi.
+
+    Mijozlarning «Saqlanganlar» ro'yxati (`users/{uid}/favorites`) ham
+    o'chiriladi, profil (`users/{uid}/profile`) esa qoladi.
+    Qaytaradi: tugun -> o'chirildimi.
+    """
+    if not firebase.is_enabled():
+        return {}
+    result: dict[str, bool] = {}
+    for node in RESET_CLOUD_NODES:
+        result[node] = await firebase.delete(node)
+
+    users = await firebase.get("users", {"shallow": "true"})
+    if isinstance(users, dict) and users:
+        keys = list(users)
+        ok = True
+        for start in range(0, len(keys), 200):
+            chunk = keys[start : start + 200]
+            ok = await firebase.patch("users", {f"{key}/favorites": None for key in chunk}) and ok
+        result["users/*/favorites"] = ok
+    return result
 
 
 # ------------------------------------------------------------------ adminlar
@@ -1856,6 +1938,8 @@ async def initial_sync(bot=None) -> None:
         return
     try:
         await restore_admins()
+        # Ismi/telefoni yo'q mijozlar bulutdan tozalanadi (tiklanmasin ham)
+        await purge_incomplete_cloud_users()
         await restore_users()
         await import_products()
         # Admin panelda qilingan katalog o'zgarishlari — demo katalog ustidan
@@ -1914,6 +1998,9 @@ async def initial_sync(bot=None) -> None:
         await push_all_booking_slots()
         # Saqlanganlar ham tovar nomiga bog'lanadi — katalogdan keyin
         await restore_favorites()
+        # Mahalliy bazadan ham ismi/telefoni yo'q mijozlarni olib tashlaymiz
+        # (buyurtmalar tiklangandan KEYIN — tarixi borlar saqlanib qolsin).
+        await q.purge_incomplete_users(keep_ids=all_admins())
         await flush_pending()
     except Exception as error:
         logger.warning("Boshlang'ich sinxronizatsiya xatosi: %s", error)
