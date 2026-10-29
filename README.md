@@ -132,6 +132,14 @@ Ilovaning pastidagi menyuda adminlarga **⚙️ Admin** tugmasi ko'rinadi
 - **Katalogni boshqarish** — 10 bo'limning hammasi: Bi-LED linzalar,
   ochkilar, optika ranglari, mashinalar, mahsulotlar, kategoriyalar,
   xizmatlar, bannerlar, stories, aksiyalar.
+- **🧹 Botni tozalash** (Boshqaruv → «Xavfli hudud», alohida parol bilan) —
+  buyurtmalar, navbatlar, statistika, VIP belgilar, «Saqlanganlar» va story
+  javoblari/ko'rishlari o'chadi; tovarlar, narxlar va ismi + raqami bor
+  mijozlar ro'yxatdan o'tgan holida qoladi. Ismi yoki raqami yo'q
+  foydalanuvchilar ham o'chadi. Mijozlar oynasida ular ko'rsatilmaydi va
+  «O'chirish» tugmasi bilan alohida o'chiriladi. Parol Worker'da
+  tekshiriladi (`RESET_PASSWORD` secret bilan almashtiriladi), o'chirishdan
+  oldin zaxira `{root}_reset_backup` ga yoziladi. Botda: `/tozalash`.
 
 Har bir element uchun: barcha maydonlarni tahrirlash, **rasm/video
 yuklash** (telefondan tanlaysiz yoki URL yozasiz), yashirish/ko'rsatish,

@@ -16,6 +16,7 @@
 //    POST /booking       — navbat; POST /booking-cancel — mijoz bekor qiladi
 //    POST /biled-order   — Bi-LED o'rnatish buyurtmasi
 //    POST /admin/*       — Mini App boshqaruv paneli
+//    POST /admin/reset   — «Botni tozalash» (admin + alohida parol, 2.5.0)
 //    GET  /media?id=     — Telegram fayl proksisi (file_id rasmlar uchun)
 //
 //  Secret'lar (Worker > Settings > Variables and Secrets):
@@ -24,6 +25,7 @@
 //     FIREBASE_PRIVATE_KEY    — serviceAccount.json dagi private_key
 //     PAY_CARD_NUMBER         — (ixtiyoriy) to'lov kartasi raqami
 //     PAY_CARD_HOLDER         — (ixtiyoriy) karta egasi
+//     RESET_PASSWORD          — (ixtiyoriy) «Botni tozalash» parolini almashtirish
 //  Oddiy o'zgaruvchilar:
 //     FIREBASE_DB_URL         — https://zimmer-42840-default-rtdb.firebaseio.com
 //     FIREBASE_ROOT           — zimmer
@@ -73,7 +75,7 @@ const DEFAULT_MAX_AGE = 86400; // 24 soat
 // berishga to'g'ri keladi).
 // Har deploy'da ko'tariladi — `/health` dagi bu raqam Cloudflare'da
 // YANGI nusxa turganini tasdiqlashning eng oson yo'li.
-const VERSION = "2.4.1";
+const VERSION = "2.5.0";
 const FEATURES = [
   // 2.0.0 — BOT Worker'da: webhook, menyu, holat tugmalari, mijoz↔admin
   // yozishmasi; /me — Bi-LED, navbat va KAFOLAT; mijoz navbatni bekor qiladi;
@@ -150,6 +152,8 @@ const FEATURES = [
   // admin paneldan (`private/payment`).
   "shogird_ai",
   "admin_payment",
+  // 2.5.0 — «Botni tozalash» (`/admin/reset`, alohida parol) va bot `/tozalash`
+  "admin_reset",
 ];
 
 /** Mini App'dan yuklanadigan fayl chegarasi.
@@ -240,6 +244,8 @@ export default {
       if (path === "/admin/warranties") return await handleAdminWarranties(request, env);
       if (path === "/admin/warranty-set") return await handleAdminWarrantySet(request, env);
       if (path === "/admin/payment") return await handleAdminPayment(request, env);
+      // 🧹 Botni tozalash — admin + alohida parol
+      if (path === "/admin/reset") return await handleAdminReset(request, env);
 
       return json({ ok: false, error: "Bunday manzil yo'q" }, 404);
     } catch (error) {
@@ -2658,7 +2664,9 @@ async function handleAdminUsers(request, env) {
     rtdbGet(c.dbUrl, `${c.root}/crm_vip`, token).catch(() => null),
   ]);
   const obj = (v) => (v && typeof v === "object" ? v : {});
-  return json({ ok: true, users: obj(node), blocked: obj(blockedNode), vip: obj(vipNode) });
+  // `admins` — Mijozlar oynasi tozalanadigan (ismi/raqami yo'q) foydalanuvchilarni
+  // sanaganda adminlarni chiqarib tashlashi uchun (server ham ularni o'chirmaydi).
+  return json({ ok: true, users: obj(node), blocked: obj(blockedNode), vip: obj(vipNode), admins: c.admins });
 }
 
 // ---------------------------------------------------------------------
@@ -3762,6 +3770,287 @@ async function handleAdminMessage(request, env) {
   return json({ ok: true });
 }
 
+// =====================================================================
+//  🧹 POST /admin/reset — «BOTNI TOZALASH» (2.5.0)
+//     { mode: "full" | "incomplete", password, confirm: "TOZALASH" }
+//
+//  NEGA WORKER'DA
+//  PR #148 dagi tugma va `/tozalash` Python botda edi. 2.0.0 dan bot
+//  Cloudflare Worker'da ishlaydi (webhook shu yerga), Python bot esa
+//  ishga tushmaydi — ya'ni o'sha tugma jonli botda YO'Q edi. Endi ayni
+//  amal shu yerda: Mini App «Boshqaruv → Xavfli hudud» va bot `/tozalash`.
+//
+//  mode "full":
+//    O'CHADI: do'kon buyurtmalari (pending_orders + eski SQLite nusxasi
+//      orders), Bi-LED buyurtmalari, navbatlar va band vaqtlar (slots),
+//      qoldiq rezerv markerlari, VIP belgilar, «Ishga tushganda xabar
+//      bering» ro'yxati, story javoblari / ko'rishlari / reaksiyalari,
+//      mijozlarning «Saqlanganlar»i. Statistika va kafolatlar shulardan
+//      hisoblangani uchun nolga tushadi. Ismi yoki raqami yo'q
+//      foydalanuvchilar ham o'chadi.
+//    QOLADI: katalog (tovar, narx, ombor qoldig'i, kategoriya, mashina,
+//      konfigurator, xizmat, banner, story, musiqa, sozlamalar), to'lov
+//      kartasi, bloklanganlar, adminlar; ismi VA raqami bor mijozlar —
+//      `users/{uid}/profile` tegilmaydi, ya'ni bot ham, ilova ham ularni
+//      qayta ro'yxatdan o'tkazmaydi.
+//    Profilida raqami yo'q, lekin buyurtmasida ism va raqam bor mijoz
+//    (Mijozlar oynasi uni ko'rsatadi) o'chirilmaydi — profili buyurtmadagi
+//    ma'lumot bilan to'ldiriladi.
+//  mode "incomplete" (Mijozlar oynasidagi «O'chirish»): faqat ismi yoki
+//    raqami yo'q, buyurtmasi ham yo'q foydalanuvchilar o'chadi.
+//
+//  «Mijoz» qoidasi: `admin-crm.js: complete()` va Python
+//  `queries.is_complete_profile` bilan BIR XIL (`resetIsComplete`).
+//  Adminlar hech qachon o'chirilmaydi.
+//
+//  XAVFSIZLIK: admin bo'lishning ustiga ALOHIDA parol. Repo ochiq — kodda
+//  faqat tuzli SHA-256 xeshi turadi (Python botdagi PBKDF2 Worker'ning
+//  bepul CPU limitiga sig'maydi). Almashtirish: Worker secret
+//  `RESET_PASSWORD`. Noto'g'ri parol — 15 daqiqada ko'pi bilan 5 marta
+//  (`private/reset_attempts/{uid}`, barcha isolate'lar uchun umumiy).
+//
+//  ZAXIRA: o'chirishdan OLDIN butun ildiz `{root}_reset_backup/...` ga
+//  yoziladi (ildizdan TASHQARIDA — aks holda har buyurtma CAS'i katta
+//  nusxani ham o'qib-yozardi). Yozilmasa hech narsa o'chirilmaydi.
+//
+//  POYGA: buyurtma va navbat ildiz ETag CAS bilan yoziladi. Tozalash
+//  ildizni o'zgartirgani uchun ayni paytda kelgan buyurtma 412 olib,
+//  yangi (tozalangan) holatni qayta o'qiydi — o'chirilgan ma'lumot qaytmaydi.
+// =====================================================================
+const RESET_CONFIRM = "TOZALASH";
+const RESET_SALT = "uzbrovv-admin-reset|";
+const RESET_DEFAULT_SHA256 = "32e0efbcec5d182dcd475caa57119f71131685d65d211ae4247c7eef2a7e85a7";
+const RESET_FAIL_LIMIT = 5;
+const RESET_FAIL_WINDOW_MS = 15 * 60 * 1000;
+/* `services/sync.py: RESET_CLOUD_NODES` bilan bir xil + Worker'ning qoldiq
+   rezerv markerlari (buyurtmalar o'chgach ular yetim qoladi). */
+const RESET_WIPE_NODES = [
+  "orders",
+  "pending_orders",
+  "biled_orders",
+  "bookings",
+  "slots",
+  "order_reservations",
+  "crm_vip",
+  "service_waitlist",
+  "story_replies",
+  "story_views",
+  "story_reactions",
+];
+const RESET_ORDER_NODES = ["pending_orders", "orders", "biled_orders", "bookings"];
+// Bot/ilova ism o'rniga qo'yadigan to'ldiruvchilar — ism hisoblanmaydi.
+const RESET_PLACEHOLDER_NAMES = ["mijoz", "nomsiz mijoz"];
+
+/** `users/{uid}` yozuvidagi profil (eski yozuvlarda maydonlar tugunda turadi). */
+function resetProfileOf(raw) {
+  if (!raw || typeof raw !== "object") return {};
+  return raw.profile && typeof raw.profile === "object" ? raw.profile : raw;
+}
+
+/** Ism VA telefon bormi (`admin-crm.js: complete()` bilan bir xil). */
+function resetIsComplete(name, phone) {
+  const n = String(name == null ? "" : name).trim();
+  const p = String(phone == null ? "" : phone).trim();
+  return !!p && !!n && !RESET_PLACEHOLDER_NAMES.includes(n.toLowerCase());
+}
+
+async function resetPasswordHash(env) {
+  const custom = typeof env.RESET_PASSWORD === "string" ? env.RESET_PASSWORD : "";
+  return custom ? sha256Hex(RESET_SALT + custom) : RESET_DEFAULT_SHA256;
+}
+
+/** Faqat NOTO'G'RI urinishlar sanaladi. Limit tugagan bo'lsa to'g'ri parol
+ *  ham tekshirilmaydi (taxmin qilib topishning oldi olinadi). */
+async function checkResetPassword(c, token, env, uid, password) {
+  const path = `${c.root}/private/reset_attempts/${uid}`;
+  const now = Date.now();
+  const cur = (await rtdbGet(c.dbUrl, path, token)) || {};
+  const sameWindow = Number(cur.windowStart) > 0 && now - Number(cur.windowStart) < RESET_FAIL_WINDOW_MS;
+  const fails = sameWindow ? Math.max(0, Number(cur.count) || 0) : 0;
+  if (fails >= RESET_FAIL_LIMIT) {
+    const retryAfter = Math.max(1, Math.ceil((Number(cur.windowStart) + RESET_FAIL_WINDOW_MS - now) / 1000));
+    return {
+      error: json({ ok: false, error: "too_many", message: "Juda ko'p noto'g'ri urinish — birozdan keyin qayta urinib ko'ring", retryAfter }, 429),
+    };
+  }
+  if (constantTimeEqual(await sha256Hex(RESET_SALT + password), await resetPasswordHash(env))) return { ok: true };
+  await casPatchObject(c.dbUrl, path, token, (row) => {
+    const t = Date.now();
+    const same = Number(row.windowStart) > 0 && t - Number(row.windowStart) < RESET_FAIL_WINDOW_MS;
+    return { windowStart: same ? Number(row.windowStart) : t, count: (same ? Math.max(0, Number(row.count) || 0) : 0) + 1 };
+  }).catch(() => {});
+  return {
+    error: json({ ok: false, error: "wrong_password", message: "Parol noto'g'ri", attemptsLeft: Math.max(0, RESET_FAIL_LIMIT - fails - 1) }, 403),
+  };
+}
+
+/** Ildiz nusxasidan o'chiriladigan yo'llar ro'yxatini (bitta PATCH) va
+ *  hisobotni yasaydi. Ma'lumotni o'zgartirmaydi — sof funksiya. */
+function buildResetPlan(root, mode, admins) {
+  const full = mode === "full";
+  const updates = {};
+  const counts = {
+    orders: 0,
+    biled: 0,
+    bookings: 0,
+    story_replies: 0,
+    deleted_users: 0,
+    kept_users: 0,
+    restored_profiles: 0,
+    kept_with_orders: 0,
+  };
+
+  /* Buyurtma egalari: uid -> eng so'nggi buyurtmadagi to'liq ism + raqam.
+     Tugallanmagan claim'lar (processing/failed) buyurtma hisoblanmaydi. */
+  const owners = new Map();
+  for (const node of RESET_ORDER_NODES) {
+    for (const [, row] of entriesOf(root[node])) {
+      if (row.uid == null || row.uid === "" || row.status === "processing" || row.status === "failed") continue;
+      const uid = String(row.uid);
+      const own = owners.get(uid) || { at: -1, name: "", phone: "" };
+      const name = String(row.customer_name || row.name || "").trim();
+      const phone = String(row.phone || "").trim();
+      const at = Number(row.createdAt) || 0;
+      if (resetIsComplete(name, phone) && at >= own.at) Object.assign(own, { at, name, phone });
+      owners.set(uid, own);
+    }
+  }
+
+  if (full) {
+    // Do'kon buyurtmasi ikki nusxada bo'lishi mumkin (Worker + SQLite egizagi) — bir marta sanaymiz
+    const twins = new Set();
+    for (const [, row] of entriesOf(root.pending_orders)) {
+      if (row.status === "processing" || row.status === "failed") continue;
+      counts.orders++;
+      if (row.sqlite_id != null) twins.add(String(row.sqlite_id));
+    }
+    for (const [key, row] of entriesOf(root.orders)) {
+      if (!twins.has(String(row.id != null ? row.id : key))) counts.orders++;
+    }
+    counts.biled = entriesOf(root.biled_orders).length;
+    counts.bookings = entriesOf(root.bookings).length;
+    counts.story_replies = entriesOf(root.story_replies).length;
+    for (const node of RESET_WIPE_NODES) updates[node] = null;
+  }
+
+  const drop = [];
+  for (const [key, raw] of Object.entries(root.users && typeof root.users === "object" ? root.users : {})) {
+    const p = resetProfileOf(raw);
+    const ids = [String(key)];
+    if (p.uid != null && String(p.uid) !== String(key)) ids.push(String(p.uid));
+    const isAdmin = ids.some((id) => admins.includes(id));
+    const own = owners.get(ids[0]) || (ids[1] ? owners.get(ids[1]) : null);
+    const hasFavs = !!(raw && typeof raw === "object" && raw.favorites != null);
+
+    if (isAdmin || resetIsComplete(p.name, p.phone)) {
+      counts.kept_users++;
+      if (full && hasFavs) updates[`users/${key}/favorites`] = null;
+      continue;
+    }
+    if (!full && own) {
+      counts.kept_with_orders++; // tarix buzilmasin
+      continue;
+    }
+    if (full && own && own.phone) {
+      /* Mijozlar oynasi bu mijozni buyurtmasidagi ism/raqam bilan ko'rsatadi —
+         tozalashdan keyin ham qolsin: profil o'shalar bilan to'ldiriladi. */
+      const name = String(p.name || "").trim();
+      const keepName = !!name && !RESET_PLACEHOLDER_NAMES.includes(name.toLowerCase());
+      const fix = {};
+      if (!keepName) fix.name = own.name;
+      if (!String(p.phone || "").trim()) fix.phone = own.phone;
+      if (p.uid == null) fix.uid = Number(key) || String(key);
+      if (raw.profile && typeof raw.profile === "object") {
+        for (const [f, v] of Object.entries(fix)) updates[`users/${key}/profile/${f}`] = v;
+      } else {
+        /* Eski yozuv: maydonlar tugunning o'zida. Yangi `profile` tuguni
+           paydo bo'lgach o'quvchilar faqat uni ko'radi — eski oddiy
+           maydonlar (username, carName...) ham unga ko'chiriladi. */
+        const legacy = {};
+        for (const [f, v] of Object.entries(raw)) if (v !== null && typeof v !== "object") legacy[f] = v;
+        updates[`users/${key}/profile`] = { ...legacy, ...fix };
+      }
+      if (hasFavs) updates[`users/${key}/favorites`] = null;
+      counts.restored_profiles++;
+      counts.kept_users++;
+      continue;
+    }
+    drop.push(String(key));
+  }
+
+  const dropSet = new Set(drop);
+  for (const key of drop) updates[`users/${key}`] = null;
+  counts.deleted_users = drop.length;
+
+  /* incomplete rejimda bu tugunlar butunlay o'chmaydi — o'chirilganlarning
+     izlari alohida olib tashlanadi (full rejimda tugunning o'zi o'chadi). */
+  if (!full && drop.length) {
+    for (const key of drop) {
+      if (root.crm_vip && root.crm_vip[key] != null) updates[`crm_vip/${key}`] = null;
+    }
+    for (const [sid, waiters] of entriesOf(root.service_waitlist)) {
+      for (const key of Object.keys(waiters)) if (dropSet.has(key)) updates[`service_waitlist/${sid}/${key}`] = null;
+    }
+    for (const node of ["story_views", "story_reactions"]) {
+      for (const [story, row] of entriesOf(root[node])) {
+        const users = row.u && typeof row.u === "object" ? row.u : {};
+        for (const key of Object.keys(users)) if (dropSet.has(key)) updates[`${node}/${story}/u/${key}`] = null;
+      }
+    }
+    for (const [rid, row] of entriesOf(root.story_replies)) {
+      if (dropSet.has(String(row.uid))) updates[`story_replies/${rid}`] = null;
+    }
+  }
+  return { updates, counts };
+}
+
+async function handleAdminReset(request, env) {
+  const gate = await requireAdmin(request, env);
+  if (gate.error) return gate.error;
+  const { c, body, uid: by, user } = gate;
+
+  const mode = body.mode === "full" || body.mode === "incomplete" ? body.mode : "";
+  if (!mode) return json({ ok: false, error: "mode", message: "mode: full yoki incomplete" }, 400);
+  if (body.confirm !== RESET_CONFIRM) return json({ ok: false, error: "confirm", message: "Tasdiq kerak" }, 400);
+  const password = typeof body.password === "string" ? body.password : "";
+  if (!password || password.length > 128) return json({ ok: false, error: "password", message: "Parolni kiriting" }, 400);
+
+  const token = await accessToken(env);
+  const pw = await checkResetPassword(c, token, env, by, password);
+  if (pw.error) return pw.error;
+
+  // Butun ildiz bitta o'qiladi (buyurtma commit'i ham shunday qiladi)
+  const read = await rtdbGetStrict(c.dbUrl, c.root, token);
+  const root = read && typeof read === "object" ? read : {};
+
+  const backupPath = `${c.root}_reset_backup/${mode === "full" ? "before_reset" : "before_cleanup"}`;
+  const backup = await rtdbPut(c.dbUrl, backupPath, { at: Date.now(), by: Number(by), mode, data: root }, token);
+  if (!backup.ok) {
+    return json({ ok: false, error: "backup", message: "Zaxira nusxa yozilmadi — hech narsa o'chirilmadi" }, 502);
+  }
+
+  const plan = buildResetPlan(root, mode, c.admins);
+  if (Object.keys(plan.updates).length) {
+    await ensureOk(await rtdbPatch(c.dbUrl, c.root, plan.updates, token), "Tozalanmadi");
+  }
+  _dbOrdersCache = { at: 0, rows: null }; // eski buyurtmalar /me da ko'rinmasin
+
+  const n = plan.counts;
+  const who = escHtml([user.first_name, user.last_name].filter(Boolean).join(" ") || String(by));
+  await notifyAdmins(
+    env,
+    c,
+    mode === "full"
+      ? `🧹 <b>Bot tozalandi</b> — ${who}\n` +
+          `🛍 ${n.orders} · 🔥 ${n.biled} · 🗓 ${n.bookings} o'chdi\n` +
+          `👤 Qolgan mijozlar: ${n.kept_users} · o'chirilgan: ${n.deleted_users}\n` +
+          `💾 Zaxira: <code>${escHtml(backupPath)}</code>`
+      : `🧹 <b>Ismi yoki raqami yo'q foydalanuvchilar o'chirildi</b> — ${who}\n👤 ${n.deleted_users} ta`
+  ).catch(() => {});
+
+  return json({ ok: true, mode, counts: n, backup: backupPath });
+}
+
 function constantTimeEqual(a, b) {
   a = String(a);
   b = String(b);
@@ -4127,7 +4416,10 @@ const BOT_COMMANDS = [
   { command: "aloqa", description: "Biz bilan aloqa" },
   { command: "id", description: "Telegram ID" },
 ];
-const ADMIN_COMMANDS = [{ command: "admin", description: "Boshqaruv: yangi buyurtmalar" }];
+const ADMIN_COMMANDS = [
+  { command: "admin", description: "Boshqaruv: yangi buyurtmalar" },
+  { command: "tozalash", description: "Botni tozalash (parol bilan)" },
+];
 
 let _hookOkUntil = 0;
 let _hookBusy = null;
@@ -4338,6 +4630,21 @@ async function botCommand(cmd, arg, msg, env, c, admin) {
     case "admin":
       return admin
         ? botAdmin(uid, env, c)
+        : sendMessage(env, uid, `⛔ Bu bo'lim faqat adminlar uchun.\n🆔 ID: <code>${uid}</code>`);
+    /* 🧹 Botni tozalash. Parol chatda SO'RALMAYDI (xabar tarixda qolardi va
+       Worker'da suhbat holati yo'q) — tugma Mini App'dagi parolli oynani ochadi. */
+    case "tozalash":
+    case "reset":
+      return admin
+        ? sendMessage(
+            env,
+            uid,
+            "🧹 <b>Botni tozalash</b>\n\n" +
+              "O'chadi: buyurtmalar, navbatlar, statistika, story javoblari va «Saqlanganlar».\n" +
+              "Qoladi: tovarlar, narxlar va ismi + raqami bor mijozlar.\n\n" +
+              "🔑 Tozalash paroli Boshqaruv panelida so'raladi 👇",
+            { reply_markup: { inline_keyboard: [[{ text: "🧹 Botni tozalash", web_app: { url: appUrl(env, "reset") } }]] } }
+          )
         : sendMessage(env, uid, `⛔ Bu bo'lim faqat adminlar uchun.\n🆔 ID: <code>${uid}</code>`);
     case "katalog":
     case "stories":
@@ -4608,7 +4915,14 @@ async function botAdmin(uid, env, c) {
       "• Har yangi buyurtma shu chatga <b>holat tugmalari</b> bilan keladi.\n" +
       "• «🎉 Yetkazildi» / «✨ Topshirildi» bosilsa — mijozning 🛡 kafolati boshlanadi.\n" +
       "• Mijoz xabariga «Reply» qilsangiz — javob to'g'ridan mijozga boradi.",
-    { reply_markup: { inline_keyboard: [[{ text: "⚙ Boshqaruv paneli", web_app: { url: appUrl(env, "admin") } }]] } }
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "⚙ Boshqaruv paneli", web_app: { url: appUrl(env, "admin") } }],
+          [{ text: "🧹 Botni tozalash", web_app: { url: appUrl(env, "reset") } }],
+        ],
+      },
+    }
   );
 }
 

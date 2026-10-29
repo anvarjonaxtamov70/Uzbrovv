@@ -933,8 +933,16 @@
     // Skeletonni tozalaymiz (panelning o'zi ham qayta chizadi)
     if (body) body.innerHTML = "";
 
-    if (window.ZimmerShop) window.ZimmerShop.open();
-    else if (window.ZimmerAdmin) window.ZimmerAdmin.open();
+    // Bot tugmasi so'ragan ichki oyna (`?p=reset`) — faqat bir marta
+    const next = S.adminView;
+    S.adminView = null;
+
+    if (window.ZimmerShop) {
+      await window.ZimmerShop.open();
+      if (next === "reset" && S.page === "admin" && window.ZimmerShop.openReset) {
+        window.ZimmerShop.openReset("full");
+      }
+    } else if (window.ZimmerAdmin) window.ZimmerAdmin.open();
     else if (body) {
       body.append(
         el("p", "empty", "Boshqaruv paneli topilmadi. Ilovani yangilab ko'ring.")
@@ -2802,7 +2810,7 @@
      yuklanadi: takror chaqiruv o'sha Promise'ni qaytaradi.
      ==================================================================== */
 
-  const SCRIPT_VERSION = "84"; // index.html dagi `?v=` bilan bir xil bo'lsin
+  const SCRIPT_VERSION = "85"; // index.html dagi `?v=` bilan bir xil bo'lsin
   const _scripts = new Map();
 
   function loadScript(src) {
@@ -11395,6 +11403,11 @@
     // Bi-LED Studio (3D konfigurator) — bot tugmasi to'g'ridan ochishi mumkin
     if (p === "studio" || p === "config" || p === "konfigurator") return openFlow();
     if (p === "admin" && S.me && S.me.is_admin) return show("admin");
+    // 🧹 Bot `/tozalash` tugmasi — panel to'g'ridan «Botni tozalash» oynasida ochiladi
+    if (p === "reset" && S.me && S.me.is_admin) {
+      S.adminView = "reset";
+      return show("admin");
+    }
   }
 
   /* ---------------------------------------------------- admin panel ko'prigi

@@ -295,6 +295,7 @@ window.ZimmerShop = (function () {
       wheel: '<circle cx="12" cy="12" r="8.3"/><circle cx="12" cy="12" r="2.4"/><path d="M4 12.6c3 .2 5.4 0 5.6-.6M20 12.6c-3 .2-5.4 0-5.6-.6M12 14.4v5.8"/>',
       seat: '<path d="M8.5 3.5h5a1.5 1.5 0 0 1 1.5 1.6l-.8 8.4H8l-1-8.4a1.5 1.5 0 0 1 1.5-1.6z"/><path d="M6 13.5h12l-1 4.5H7z"/><path d="M8 18v2.5M16 18v2.5"/>',
       card: '<rect x="3" y="5.5" width="18" height="13" rx="2.6"/><path d="M3 10h18M7 15h4"/>',
+      trash: '<path d="M4 6.5h16M9.5 6.5V4.5h5v2"/><path d="M6 6.5l1 13a1.5 1.5 0 0 0 1.5 1.4h7a1.5 1.5 0 0 0 1.5-1.4l1-13"/><path d="M10 10.5v6.5M14 10.5v6.5"/>',
     };
     const C = {
       green: "linear-gradient(180deg,#3ad37f,#22a35c)",
@@ -351,7 +352,14 @@ window.ZimmerShop = (function () {
         tile("shop-pay", "blue", "card", "To'lov kartasi", "Karta raqami va egasi"),
         tile("shop-srv", "gray", "wrench", "Xizmatlar va narxlar", "Narx, kafolat, video va «Tez kunda»"),
       ]) +
+      // 🧹 Xavfli hudud — botni «yangi»dek qilish (alohida parol, Worker tekshiradi)
+      '<div class="ig-sec is-danger">Xavfli hudud</div>' +
+      '<div class="ig">' +
+      tile("shop-reset", "red", "trash", "Botni tozalash", "Buyurtma, navbat, statistika va xabarlar") +
+      "</div>" +
       "</div>";
+    const resetRow = $("shop-reset");
+    if (resetRow) resetRow.classList.add("is-danger");
 
     const bind = (id, fn) => {
       const el = $(id);
@@ -409,6 +417,7 @@ window.ZimmerShop = (function () {
     bind("shop-dep", openDepositAdmin);
     bind("shop-pay", openPaymentAdmin);
     bind("shop-war", openWarrantiesAdmin);
+    bind("shop-reset", () => openResetAdmin("full"));
 
     // Sanoqchilar FONDA yuklanadi — menyu darhol ochiladi.
     refreshBadges();
@@ -5574,6 +5583,154 @@ window.ZimmerShop = (function () {
     };
   }
 
+  /* ==================================================================
+     🧹 BOTNI TOZALASH — Worker `/admin/reset` (2.5.0+)
+
+     mode "full" (Xavfli hudud): buyurtmalar, navbatlar, statistika va
+     xabarlar o'chadi; tovar/narx va ismi + raqami bor mijozlar qoladi.
+     mode "incomplete" (Mijozlar oynasi): faqat ismi yoki raqami yo'q,
+     buyurtmasi ham yo'q foydalanuvchilar.
+     Parol SERVERDA tekshiriladi — bu faylda parol ham, xeshi ham yo'q.
+     `from === "crm"` — «orqaga» Mijozlar oynasiga qaytaradi.
+     ================================================================== */
+  function openResetAdmin(mode, from) {
+    const full = mode !== "incomplete";
+    S.view = "reset";
+    S.resetMode = full ? "full" : "incomplete";
+    S.resetFrom = from || null;
+    setHead(
+      full ? "🧹 Botni tozalash" : "🧹 Ismi yoki raqami yo'qlar",
+      full ? "Xavfli amal · alohida parol" : "Ro'yxatdan to'liq o'tmaganlar"
+    );
+    const info = full
+      ? "<b>O'chadi:</b> barcha buyurtmalar (do'kon va Bi-LED), navbatlar va band vaqtlar, statistika, " +
+        "VIP belgilar, mijozlarning «Saqlanganlar»i, story javoblari, ko'rishlar va reaksiyalar, " +
+        "«Ishga tushganda xabar bering» ro'yxati, hamda ismi yoki raqami yo'q foydalanuvchilar.<br><br>" +
+        "<b>Qoladi:</b> tovarlar, narxlar va ombor qoldig'i, katalog, banner, story, xizmatlar, " +
+        "to'lov kartasi, bloklanganlar; ismi va raqami bor mijozlar — ro'yxatdan o'tgan holida."
+      : "Ismi yoki telefon raqami yo'q foydalanuvchilar (masalan, botda faqat /start bosganlar) " +
+        "bazadan o'chiriladi. Buyurtmasi bor foydalanuvchi o'chirilmaydi.";
+    body().innerHTML =
+      '<div class="adm-form">' +
+      '<div class="crm-alert">' + info + "<br><br><b>Tozalashdan oldin zaxira nusxa olinadi. " +
+      "Bu amalni ilova ichidan qaytarib bo'lmaydi.</b></div>" +
+      '<div class="admin-form-group"><div class="apx-head"><div class="apx-ic rs-ic">🔑</div>' +
+      '<div class="apx-tx"><b>Tozalash paroli</b><span>Admin bo\'lishning o\'zi yetmaydi — alohida parol kerak</span></div></div>' +
+      '<input type="password" class="admin-input" id="rs-pw" maxlength="128" autocomplete="off" placeholder="Parolni kiriting">' +
+      '<div class="apx-sale-note" id="rs-note"></div>' +
+      "</div></div>" +
+      '<div class="shop-footer"><button class="btn btn-danger" id="rs-go">🧹 ' +
+      (full ? "Botni tozalash" : "O'chirish") + "</button></div>";
+
+    const input = $("rs-pw");
+    const note = $("rs-note");
+    const btn = $("rs-go");
+    const label = btn.textContent;
+    const warn = (text) => {
+      note.className = "apx-sale-note is-warn";
+      note.textContent = text;
+    };
+    btn.onclick = async () => {
+      if (S.busy) return;
+      const password = input.value;
+      if (!password) {
+        warn("Parolni kiriting");
+        input.focus();
+        return;
+      }
+      if (!(await needFeature("admin_reset", "2.5.0"))) return;
+      const sure = await ask(
+        full
+          ? "Botni tozalaymizmi?\n\nBuyurtmalar, navbatlar, statistika va xabarlar butunlay o'chadi. Tovarlar va mijozlar qoladi."
+          : "Ismi yoki raqami yo'q foydalanuvchilar o'chirilsinmi?"
+      );
+      if (!sure) return;
+      S.busy = true;
+      btn.disabled = true;
+      btn.textContent = "⏳ Tozalanmoqda...";
+      note.textContent = "";
+      try {
+        const res = await window.ZimmerOffline.adminReset(full ? "full" : "incomplete", password);
+        haptic("ok");
+        S.busy = false;
+        showResetDone(full, res);
+      } catch (err) {
+        haptic("err");
+        warn(resetError(err));
+        btn.disabled = false;
+        btn.textContent = label;
+      } finally {
+        S.busy = false;
+      }
+    };
+  }
+
+  function resetError(err) {
+    const e = err || {};
+    const b = e.body || {};
+    if (e.code === "wrong_password") {
+      return "Parol noto'g'ri" + (typeof b.attemptsLeft === "number" ? " — yana " + b.attemptsLeft + " ta urinish qoldi" : "");
+    }
+    if (e.code === "too_many") {
+      return "Juda ko'p noto'g'ri urinish — " + Math.max(1, Math.ceil((Number(b.retryAfter) || 900) / 60)) +
+        " daqiqadan keyin qayta urinib ko'ring";
+    }
+    if (e.code === "forbidden") return "Bu amal faqat admin uchun";
+    if (e.code === "worker_outdated" || e.status === 404) {
+      return "Worker eski — cloudflare-worker.js ni qayta qo'ying (2.5.0+)";
+    }
+    if (e.code === "network") return "Internetga ulanmadi — qayta bosing (bu xavfsiz)";
+    return e.message || "Tozalanmadi — qayta urinib ko'ring";
+  }
+
+  function showResetDone(full, res) {
+    const n = (res && res.counts) || {};
+    // Eski ro'yxatlar keshda qolmasin
+    S.orders = [];
+    if (crm() && crm().invalidate) crm().invalidate();
+    setHead("✅ Tayyor", full ? "Bot tozalandi" : "Foydalanuvchilar o'chirildi");
+    const rows = full
+      ? [
+          ["🛍 Do'kon buyurtmalari", n.orders],
+          ["🔥 Bi-LED buyurtmalari", n.biled],
+          ["🗓 Navbatlar", n.bookings],
+          ["💬 Story javoblari", n.story_replies],
+          ["👤 O'chirilgan (ismi/raqami yo'q)", n.deleted_users],
+          ["✅ Qolgan mijozlar", n.kept_users],
+        ]
+      : [
+          ["👤 O'chirildi", n.deleted_users],
+          ["📦 Buyurtmasi bor — qoldirildi", n.kept_with_orders],
+        ];
+    body().innerHTML =
+      '<div class="ig-wrap"><div class="ig">' +
+      rows
+        .map((r) => '<div class="ig-row"><span class="ig-lbl">' + esc(r[0]) + '</span><span class="ig-val">' + esc(String(r[1] || 0)) + "</span></div>")
+        .join("") +
+      "</div>" +
+      (res && res.backup
+        ? '<p class="rs-foot">💾 Zaxira nusxa: Firebase → <code>' + esc(res.backup) + "</code></p>"
+        : "") +
+      "</div>" +
+      '<div class="shop-footer"><button class="btn btn-primary" id="rs-back">' +
+      (S.resetFrom === "crm" ? "👥 Mijozlarga qaytish" : "⚙ Boshqaruvga qaytish") +
+      "</button></div>";
+    $("rs-back").onclick = () => {
+      haptic();
+      back();
+    };
+    toast(full ? "✅ Bot tozalandi" : "🧹 " + (n.deleted_users || 0) + " ta foydalanuvchi o'chirildi");
+  }
+
+  /** Tashqaridan ochish (Mijozlar oynasi, bot tugmasi `?p=reset`). */
+  function openReset(mode, from) {
+    if (crm() && crm().isActive && crm().isActive()) crm().close();
+    if (stories() && stories().isActive && stories().isActive()) stories().close();
+    if (adm() && adm().isActive && adm().isActive()) adm().close();
+    bindTopbar();
+    openResetAdmin(mode, from);
+  }
+
   function back() {
     /* Xizmatlar oynasi ochiq bo'lsa — avval uning ichki qadami
        (forma -> ro'yxat), keyin ZimmerShop menyusiga. */
@@ -5601,6 +5758,18 @@ window.ZimmerShop = (function () {
     }
     if (S.view === "wheel-form") return openWheelAdmin(), true;
     if (S.view === "seat-form") return openSeatAdmin(), true;
+    if (S.view === "reset") {
+      // Mijozlar oynasidan kelgan bo'lsa — o'sha ro'yxatga (yangilangan holda) qaytamiz
+      if (S.resetFrom === "crm" && crm() && crm().openCustomers) {
+        S.resetFrom = null;
+        S.view = null;
+        if (crm().invalidate) crm().invalidate();
+        crm().openCustomers(true);
+        return true;
+      }
+      renderMenu();
+      return true;
+    }
     if (
       S.view === "wheel" ||
       S.view === "seat" ||
@@ -5641,6 +5810,7 @@ window.ZimmerShop = (function () {
     if (S.view === "deposit") return openDepositAdmin();
     if (S.view === "payment") return openPaymentAdmin();
     if (S.view === "warranties") return openWarrantiesAdmin();
+    if (S.view === "reset") return openResetAdmin(S.resetMode, S.resetFrom);
     if (S.view === "add") return openAdd();
     return open();
   }
@@ -5651,6 +5821,7 @@ window.ZimmerShop = (function () {
     reload: reload,
     isActive: isActive,
     close: close,
+    openReset: openReset, // 🧹 Botni tozalash (Mijozlar oynasi va bot `?p=reset`)
 
     /* ---------------------------------------------------------------
        CRM MODULI UCHUN (docs/js/admin-crm.js)

@@ -255,7 +255,12 @@ window.ZimmerCRM = (function () {
             .adminUsers()
             .then((res) => {
               // Worker 1.10.0+: bloklanganlar va qo'lda VIP xaritalari ham keladi
-              flags = { blocked: (res && res.blocked) || {}, vip: (res && res.vip) || {} };
+              flags = {
+                blocked: (res && res.blocked) || {},
+                vip: (res && res.vip) || {},
+                // Worker 2.5.0+: adminlar ro'yxati (ular tozalashda o'chirilmaydi)
+                admins: (res && Array.isArray(res.admins) && res.admins.map(String)) || [],
+              };
               return (res && res.users) || null;
             })
             .catch((err) => {
@@ -279,10 +284,12 @@ window.ZimmerCRM = (function () {
 
     if (!usersNode && !orders.length && usersFailed) throw usersFailed;
 
+    const extra = { hidden: 0 };
     const data = {
-      customers: buildCustomers(usersNode, orders, flags),
+      customers: buildCustomers(usersNode, orders, flags, extra),
       orders: orders,
       usersFailed: usersFailed,
+      hidden: extra.hidden, // ismi yoki raqami yo'q, buyurtmasiz ro'yxatdan o'tganlar
     };
     CACHE = { at: Date.now(), data: data };
     return data;
@@ -305,9 +312,10 @@ window.ZimmerCRM = (function () {
        2) buyurtmalar — `uid` bo'yicha. Profil o'qilmagan yoki mijoz bazadan
           o'chib ketgan bo'lsa ham buyurtma egasi ro'yxatda qoladi.
      ==================================================================== */
-  function buildCustomers(usersNode, orders, flags) {
+  function buildCustomers(usersNode, orders, flags, extra) {
     const map = {};
     const blockedMap = (flags && flags.blocked) || {};
+    const adminIds = (flags && flags.admins) || [];
     const vipMap = (flags && flags.vip) || {};
 
     const touch = (uid) => {
@@ -381,6 +389,16 @@ window.ZimmerCRM = (function () {
     const PLACEHOLDER = { "mijoz": 1, "nomsiz mijoz": 1 };
     const complete = (c) =>
       !!c.phone && !!c.name && !PLACEHOLDER[c.name.toLowerCase()];
+
+    /* Ro'yxatda ko'rinmaydigan, «Botni tozalash → ismsiz/raqamsizlarni
+       o'chirish» o'chiradiganlar (Worker `buildResetPlan` bilan bir xil):
+       ro'yxatdan o'tgan, to'liq emas, buyurtmasi yo'q, admin emas. */
+    if (extra) {
+      extra.hidden = Object.keys(map).filter((k) => {
+        const c = map[k];
+        return c.registered && !complete(c) && c.orders === 0 && adminIds.indexOf(c.uid) < 0;
+      }).length;
+    }
 
     const arr = Object.keys(map).filter((k) => complete(map[k])).map((k) => {
       const c = map[k];
@@ -567,6 +585,19 @@ window.ZimmerCRM = (function () {
     return (
       '<div class="crm-warn">⚠️ <b>Mijoz profillari o\'qilmadi.</b> Ro\'yxat va ' +
       "raqamlar faqat buyurtma bergan mijozlarni qamraydi. " + esc(why) + "</div>"
+    );
+  }
+
+  /** Ismi yoki raqami yo'q (buyurtmasiz) foydalanuvchilar ro'yxatda
+   *  ko'rinmaydi — ularni bazadan o'chirish tugmasi (parol bilan). */
+  function hiddenBar() {
+    const n = (S.data && S.data.hidden) || 0;
+    if (!n || !(shop() && shop().openReset)) return "";
+    return (
+      '<div class="crm-hidden">' +
+      "<span>👤 <b>" + n + " ta</b> foydalanuvchining ismi yoki raqami yo'q — ro'yxatda ko'rsatilmaydi.</span>" +
+      '<button type="button" class="btn-ghost btn-sm" id="crm-hidden-del">O\'chirish</button>' +
+      "</div>"
     );
   }
 
@@ -880,6 +911,7 @@ window.ZimmerCRM = (function () {
 
     body().innerHTML =
       profileWarning() +
+      hiddenBar() +
       '<div class="cst-wrap">' +
       '<div class="cst-tools">' +
       '<label class="cst-search' + (S.query ? " has-text" : "") + '" id="cst-search">' +
@@ -896,6 +928,14 @@ window.ZimmerCRM = (function () {
       '<div id="cst-list"></div>' +
       '<div id="crm-more"></div>' +
       "</div>";
+
+    const del = $("crm-hidden-del");
+    if (del)
+      del.onclick = () => {
+        haptic("light");
+        const s = shop();
+        if (s && s.openReset) s.openReset("incomplete", "crm");
+      };
 
     const input = $("cst-q");
     if (input)
