@@ -4731,6 +4731,33 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   color: #ffd9d9;
 }
 .crm-alert b { color: #fff; font-weight: 800; }
+/* Mijozlar oynasi: ismi yoki raqami yo'q (ko'rinmaydigan) foydalanuvchilar */
+.crm-hidden {
+  display: flex; align-items: center; gap: 10px;
+  border-radius: var(--r-md);
+  padding: 9px 10px 9px 13px;
+  margin-bottom: 12px;
+  font-size: 12.5px; line-height: 1.45;
+  background: rgba(118, 118, 128, 0.12);
+  border: 1px solid rgba(84, 84, 88, 0.36);
+  color: rgba(235, 235, 245, 0.7);
+}
+.crm-hidden span { flex: 1; min-width: 0; }
+.crm-hidden b { color: #fff; font-weight: 700; }
+.crm-hidden .btn-sm { flex: none; padding: 8px 12px; color: #ff6a5f; border-color: rgba(255, 69, 58, 0.4); }
+
+/* 🧹 Botni tozalash — admin menyusidagi «Xavfli hudud» */
+.ig-sec.is-danger { color: rgba(255, 69, 58, 0.85); }
+.ig-row.is-danger .ig-tx b { color: #ff453a; }
+.apx-ic.rs-ic { color: #ff453a; background: rgba(255, 69, 58, 0.12); }
+#rs-go { font-weight: 700; }
+.rs-foot {
+  margin: 12px 8px 0;
+  font-size: 12.5px; line-height: 1.5;
+  color: rgba(235, 235, 245, 0.55);
+  overflow-wrap: anywhere;
+}
+.rs-foot code { color: rgba(235, 235, 245, 0.8); }
 
 /* ------------------------------------------------ asosiy raqam (tushum) */
 .crm-hero {

@@ -1,5 +1,23 @@
 # Cloudflare Worker — bot va do'kon (bepul, uxlamaydi)
 
+> ## 🧹 2.5.0: Botni tozalash
+>
+> Mini App → Boshqaruv → «Xavfli hudud» → **Botni tozalash** (botda
+> `/tozalash` yoki `/admin` dagi tugma). Buyurtmalar, navbatlar, statistika
+> va xabarlar o'chadi; tovarlar, narxlar va ismi + raqami bor mijozlar
+> qoladi. Ishlashi uchun:
+>
+> 1. `cloudflare-worker.js` ni qayta qo'ying (pastdagi «5 qadam»).
+> 2. `/health` da `"version": "2.5.0"` va `features` ichida `"admin_reset"`
+>    borligini tekshiring.
+> 3. Bot menyusida `/tozalash` chiqishi uchun `/setup` ni bir marta oching.
+>
+> Parol Worker'da tekshiriladi, kodda faqat uning tuzli xeshi turadi.
+> Almashtirish: Worker → Settings → Variables and Secrets → *Secret*
+> `RESET_PASSWORD`. Noto'g'ri parol 15 daqiqada 5 martagacha.
+> O'chirishdan oldin butun baza Firebase'da `zimmer_reset_backup/` ga
+> (ildiz nomi + `_reset_backup`) nusxalanadi. Ombor qoldig'i tiklanmaydi.
+
 > ## 🎓 2.4.0: Shogird AI va to'lov kartasi
 >
 > **AI (Shogird)** endi Worker orqali ishlaydi (Render shart emas). Worker →

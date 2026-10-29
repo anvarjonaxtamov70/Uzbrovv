@@ -1780,6 +1780,18 @@
     return (res && res.payment) || null;
   }
 
+  /** 🧹 Botni tozalash (admin, alohida parol) — Worker 2.5.0+.
+   *  mode: "full" — buyurtma/navbat/statistika/xabarlar; "incomplete" — faqat
+   *  ismi yoki raqami yo'q foydalanuvchilar. Parol serverda tekshiriladi. */
+  async function adminReset(mode, password) {
+    await ensureWorkerFeature("admin_reset");
+    return callWorker("/admin/reset", {
+      mode: mode === "incomplete" ? "incomplete" : "full",
+      password: String(password || ""),
+      confirm: "TOZALASH",
+    });
+  }
+
   /** Barcha kafolatlar (admin) — Worker 2.3.0+. */
   async function adminWarranties() {
     await ensureWorkerFeature("admin_warranties");
@@ -1870,6 +1882,7 @@
     adminWarranties: adminWarranties,
     shogird: shogird,
     adminPayment: adminPayment,
+    adminReset: adminReset,
     adminWarrantySet: adminWarrantySet,
     freeSlots: freeSlots,
     dateLabel: dateLabel,
