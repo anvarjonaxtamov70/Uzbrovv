@@ -1139,8 +1139,10 @@ window.ZimmerShop = (function () {
       (goods ? '<div class="ord-goods">' + goods + "</div>" : "") +
       (meta ? '<div class="ord-meta">' + meta + "</div>" : "") +
       (o.receipt && /^https:\/\//i.test(o.receipt)
-        ? '<a class="ord-receipt" href="' + esc(o.receipt) + '" target="_blank" rel="noopener">' +
-          '<img src="' + esc(o.receipt) + '" alt="" loading="lazy"><span>🧾 Zalog cheki — kattalashtirish</span></a>'
+        ? '<button type="button" class="ord-receipt" data-receipt="' + esc(o.receipt) + '">' +
+          '<span class="ord-rc-img"><img src="' + esc(o.receipt) + '" alt="Zalog cheki" loading="lazy" decoding="async"></span>' +
+          '<span class="ord-rc-tx"><b>Zalog cheki</b><small>Bosing — to\'liq ekranda ochiladi</small></span>' +
+          '<span class="ord-rc-go" aria-hidden="true">›</span></button>'
         : "") +
       (o.total
         ? '<div class="ord-foot"><span>Jami</span><b>' + esc(o.total_label) + "</b></div>"
@@ -1149,6 +1151,19 @@ window.ZimmerShop = (function () {
       "</div>"
     );
   }
+
+  /* Zalog cheki — ilovaning o'z galereyasida (kattalashtirish, surish,
+     pastga surib yopish). Havola orqali brauzerga CHIQMAYDI. Hodisa
+     hujjat darajasida bir marta tutiladi — kartochkalar qayta chizilsa ham ishlaydi. */
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest && e.target.closest("[data-receipt]");
+    if (!b) return;
+    e.preventDefault();
+    const url = b.dataset.receipt;
+    haptic("light");
+    if (app().openViewer) return app().openViewer([url], 0);
+    window.open(url, "_blank");
+  });
 
   async function setOrderStatus(order, status, after) {
     if (S.busy) return;
