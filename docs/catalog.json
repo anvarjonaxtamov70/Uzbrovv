@@ -1,6 +1,6 @@
 {
  "car_id": null,
- "_generated_at": "2026-10-30T06:16:45Z",
+ "_generated_at": "2026-10-30T08:13:13Z",
  "banners": [
   {
    "id": 900001,
@@ -232,6 +232,33 @@
    "name": "BI-ledlar",
    "icon": "🔵",
    "products": [
+    {
+     "id": 900030,
+     "name": "Osman fara oyna",
+     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🔧 O'rnatish xizmati mavjud.\n🛡 1 yil kafolat beriladi.",
+     "price": 260000,
+     "old_price": 280000,
+     "badge": "Kobalt",
+     "stock": 10,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": "1 yil",
+     "car_names": [
+      "Cobalt"
+     ],
+     "car_name": "Cobalt",
+     "price_label": "260 000 so'm",
+     "old_price_label": "280 000 so'm",
+     "photo_url": "https://i.ibb.co/9m8Fnmhw/b79000958722.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/9m8Fnmhw/b79000958722.jpg"
+     ]
+    },
     {
      "id": 900029,
      "name": "Samurai. Bi led. 3dym",
