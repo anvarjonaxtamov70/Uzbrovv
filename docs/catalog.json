@@ -1,6 +1,6 @@
 {
  "car_id": null,
- "_generated_at": "2026-10-30T08:13:13Z",
+ "_generated_at": "2026-10-30T10:10:17Z",
  "banners": [
   {
    "id": 900001,
@@ -233,8 +233,116 @@
    "icon": "🔵",
    "products": [
     {
+     "id": 900034,
+     "name": "Damas 2  osman fara oyna",
+     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🛡 1 yil kafolat beriladi.\n🔧 O'rnatish xizmati mavjud.",
+     "price": 150000,
+     "old_price": 180000,
+     "badge": "Damas 2",
+     "stock": 10,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": "1 yil",
+     "car_names": [
+      "Damas"
+     ],
+     "car_name": "Damas",
+     "price_label": "150 000 so'm",
+     "old_price_label": "180 000 so'm",
+     "photo_url": "https://i.ibb.co/zhwq5gMp/1facee56804f.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/zhwq5gMp/1facee56804f.jpg"
+     ]
+    },
+    {
+     "id": 900033,
+     "name": "Nexia 3. Osman fara oyna",
+     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🛡 1 yil kafolat beriladi.\n🔧 O'rnatish xizmati mavjud.",
+     "price": 250000,
+     "old_price": 270000,
+     "badge": "Nexia 3",
+     "stock": 10,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": "1 yil",
+     "car_names": [
+      "Nexia 3"
+     ],
+     "car_name": "Nexia 3",
+     "price_label": "250 000 so'm",
+     "old_price_label": "270 000 so'm",
+     "photo_url": "https://i.ibb.co/35gcDsVL/a90ea209baca.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/35gcDsVL/a90ea209baca.jpg"
+     ]
+    },
+    {
+     "id": 900032,
+     "name": "Nexia 2. Osman fara oyna",
+     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🛡 1 yil kafolat beriladi.\n🔧 O'rnatish xizmati mavjud.",
+     "price": 160000,
+     "old_price": 190000,
+     "badge": "Nexia 2",
+     "stock": 10,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": "1 yil",
+     "car_names": [
+      "Nexia 2"
+     ],
+     "car_name": "Nexia 2",
+     "price_label": "160 000 so'm",
+     "old_price_label": "190 000 so'm",
+     "photo_url": "https://i.ibb.co/5WVBtjWw/a3b31c4b3bd0.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/5WVBtjWw/a3b31c4b3bd0.jpg"
+     ]
+    },
+    {
+     "id": 900031,
+     "name": "Jentra osman fara oyna",
+     "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🛡 1 yil kafolat beriladi.\n🔧 O'rnatish xizmati mavjud.",
+     "price": 260000,
+     "old_price": 280000,
+     "badge": "Jentra",
+     "stock": 10,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": "1 yil",
+     "car_names": [
+      "Gentra"
+     ],
+     "car_name": "Gentra",
+     "price_label": "260 000 so'm",
+     "old_price_label": "280 000 so'm",
+     "photo_url": "https://i.ibb.co/sv39GF3v/8715d70b31fd.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/sv39GF3v/8715d70b31fd.jpg"
+     ]
+    },
+    {
      "id": 900030,
-     "name": "Osman fara oyna",
+     "name": "Kobalt Osman fara oyna",
      "description": "✅ Original mahsulot, sifat kafolatlanadi.\n🔧 O'rnatish xizmati mavjud.\n🛡 1 yil kafolat beriladi.",
      "price": 260000,
      "old_price": 280000,
