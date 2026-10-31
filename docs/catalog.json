@@ -1,6 +1,6 @@
 {
  "car_id": null,
- "_generated_at": "2026-10-31T12:10:58Z",
+ "_generated_at": "2026-10-31T14:07:36Z",
  "banners": [
   {
    "id": 900001,
@@ -266,7 +266,7 @@
      "price": 250000,
      "old_price": 270000,
      "badge": "Nexia 3",
-     "stock": 10,
+     "stock": 9,
      "car_id": null,
      "product_type": "oddiy",
      "sizes": [],
