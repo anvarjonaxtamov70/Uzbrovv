@@ -1,6 +1,6 @@
 {
  "car_id": null,
- "_generated_at": "2026-11-21T17:09:18Z",
+ "_generated_at": "2026-11-21T22:50:52Z",
  "banners": [
   {
    "id": 900001,
@@ -232,6 +232,58 @@
    "name": "BI-ledlar",
    "icon": "🔵",
    "products": [
+    {
+     "id": 900035,
+     "name": "Bi led uchun maxsus ramka",
+     "description": "Bi led uchun maxsus ramka",
+     "price": 60000,
+     "old_price": 70000,
+     "badge": "2t",
+     "stock": 50,
+     "car_id": null,
+     "product_type": "oddiy",
+     "sizes": [],
+     "warranty": null,
+     "car_names": [
+      "Damas",
+      "Labo",
+      "Tico",
+      "Matiz",
+      "Spark",
+      "Spark 2",
+      "Ravon R2",
+      "Nexia 1",
+      "Nexia 3",
+      "Ravon R3",
+      "Espero",
+      "Nubira",
+      "Leganza",
+      "Magnus",
+      "Lacetti",
+      "Gentra",
+      "Aveo",
+      "Cobalt",
+      "Ravon R4",
+      "Onix",
+      "Malibu",
+      "Orlando",
+      "Tracker",
+      "Tracker 2",
+      "Kobalt",
+      "Lasseti"
+     ],
+     "car_name": "Damas",
+     "price_label": "60 000 so'm",
+     "old_price_label": "70 000 so'm",
+     "photo_url": "https://i.ibb.co/d48pWVjh/9142d45187a7.jpg",
+     "photo_external": true,
+     "video_url": null,
+     "video_external": true,
+     "has_media": true,
+     "images": [
+      "https://i.ibb.co/d48pWVjh/9142d45187a7.jpg"
+     ]
+    },
     {
      "id": 900034,
      "name": "Damas 2  osman fara oyna",
